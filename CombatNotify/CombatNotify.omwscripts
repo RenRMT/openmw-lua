@@ -1,0 +1,2 @@
+PLAYER: scripts/CombatNotify/player.lua
+NPC, CREATURE: scripts/CombatNotify/actor.lua
