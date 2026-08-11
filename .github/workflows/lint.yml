@@ -1,0 +1,74 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install luacheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1 luarocks
+          sudo luarocks install luacheck
+
+      - name: Run luacheck
+        run: luacheck . --config .luacheckrc
+
+      - name: Reject APIs not available in the OpenMW Lua sandbox
+        run: |
+          set -e
+          # io.*, most of os.*, dofile/loadfile/loadstring/load, collectgarbage,
+          # and package.* are all unavailable in OpenMW's sandboxed Lua env.
+          FORBIDDEN='(\bio\.[a-zA-Z]|\bos\.(execute|remove|rename|tmpname|getenv|exit)\b|\bdofile[[:space:]]*\(|\bloadfile[[:space:]]*\(|\bloadstring[[:space:]]*\(|\bload[[:space:]]*\(|\bcollectgarbage[[:space:]]*\(|\bpackage\.)'
+          if grep -RInE "$FORBIDDEN" --include='*.lua' . ; then
+            echo "::error::Found a call not available in the OpenMW Lua sandbox (see matches above)."
+            exit 1
+          fi
+          echo "No sandbox-restricted APIs found."
+
+      - name: Validate .omwscripts files
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          status=0
+          valid_flags='ACTIVATOR|ARMOR|BOOK|CLOTHING|CONTAINER|CREATURE|CUSTOM|DOOR|GLOBAL|INGREDIENT|LIGHT|LOAD|MENU|MISC_ITEM|NPC|PLAYER|POTION|WEAPON|APPARATUS|LOCKPICK|PROBE|REPAIR'
+          for f in **/*.omwscripts; do
+            dir=$(dirname "$f")
+            lineno=0
+            while IFS= read -r line || [ -n "$line" ]; do
+              lineno=$((lineno + 1))
+              line="${line%%#*}"                      # strip comments
+              line="$(echo -n "$line" | xargs)"        # trim whitespace
+              [ -z "$line" ] && continue
+
+              if [[ ! "$line" =~ ^(${valid_flags})([[:space:]]*,[[:space:]]*(${valid_flags}))*:[[:space:]]*.+\.lua$ ]]; then
+                echo "::error file=$f,line=$lineno::Malformed or unrecognized line: $line"
+                status=1
+                continue
+              fi
+
+              script_path="${line#*:}"
+              script_path="$(echo -n "$script_path" | xargs)"
+              if [ ! -f "$dir/$script_path" ]; then
+                echo "::error file=$f,line=$lineno::Referenced script not found: $script_path"
+                status=1
+              fi
+            done < "$f"
+          done
+          exit $status
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Install PyYAML
+        run: pip install pyyaml
+
+      - name: Validate l10n contexts and locale files
+        run: python3 .github/scripts/validate_l10n.py
