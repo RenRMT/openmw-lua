@@ -29,8 +29,7 @@ local function refreshIndicator()
 end
 
 local function onCombatStatusChanged(data)
-    attackerCount = attackerCount + (data.inCombat and 1 or -1)
-    if attackerCount < 0 then attackerCount = 0 end
+    attackerCount = math.max(0, attackerCount + (data.inCombat and 1 or -1))
     refreshIndicator()
 end
 
