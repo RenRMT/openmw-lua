@@ -18,6 +18,7 @@ local config = require('scripts.BalanceOfPower.core.config')
 local log = require('scripts.BalanceOfPower.core.log')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
+local resolve = require('scripts.BalanceOfPower.core.resolve')
 local state = require('scripts.BalanceOfPower.core.state')
 
 local M = {}
@@ -43,11 +44,10 @@ function M.runDay(day)
     -- Phase 6 hooks in here: invasion.grow(day) -- ambient growth and
     -- escalation stage transitions, before any territory is contested.
 
-    -- Phase 2 hooks in here: resolve.run(day, batch) -- the frontier
-    -- pass and then the anchor siege pass. The batch argument is
-    -- explicit from the start so that staggering resolution across
-    -- several smaller timers later is a scheduling change rather than a
-    -- rewrite of the resolution logic.
+    -- The whole world in one pass, which is what the MVP wants. Passing
+    -- an explicit batch here instead is how staggering across smaller
+    -- timers happens later, without resolve itself changing.
+    resolve.run(day)
 
     power.commitBatch()
 
@@ -82,8 +82,11 @@ function M.poll()
     if data.lastResolvedDay == nil then
         -- First tick of a new game, or of a save made before this
         -- framework was installed: establish a baseline instead of
-        -- resolving every day since the calendar epoch.
+        -- resolving every day since the calendar epoch, and let the
+        -- factions claim the ground they project onto before any
+        -- contest starts.
         data.lastResolvedDay = today
+        resolve.assignInitialControl()
         log.debug('baseline day set to %d', today)
         return
     end

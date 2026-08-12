@@ -10,10 +10,10 @@ Load order: this mod must load **before** any pack that registers data against i
 
 ## Status
 
-Phase 1 of [the implementation plan](../implementation-plan.md) — foundations
-only; see [next-steps.md](../next-steps.md) for what comes next. To exercise
-any of this in-game, enable [BalanceOfPower_DevSandbox](../BalanceOfPower_DevSandbox/README.md)
-alongside it.
+Phases 1–2 of [the implementation plan](../implementation-plan.md); see
+[next-steps.md](../next-steps.md) for what comes next. To exercise any of this
+in-game, enable [BalanceOfPower_DevSandbox](../BalanceOfPower_DevSandbox/README.md)
+alongside it. The simulation logic has unit tests — see [tests/](../tests/README.md).
 
 What exists:
 
@@ -21,12 +21,51 @@ What exists:
 - faction power, reaction-driven propagation, atomic per-pass batching
 - persistent state with central default-fill for save compatibility
 - the in-game day tick driver
+- territory resolution: projection maths, derived initial control, frontier
+  rolls, anchor sieges
 - the event bus
 
-What doesn't exist yet: territory resolution (phase 2), patrol spawning
-(phase 4), player hooks (phase 5), invasion escalation and corruption
-(phase 6). `registerInvasion` accepts and validates an invading faction, and
-its power is tracked like anyone else's, but nothing escalates yet.
+What doesn't exist yet: patrol spawning (phase 4), player hooks (phase 5),
+invasion escalation and corruption (phase 6). `registerInvasion` accepts and
+validates an invading faction, and its power and territory are simulated like
+anyone else's, but nothing escalates or corrupts yet.
+
+## How territory works
+
+Every power center projects influence that decays linearly to zero at its
+`influenceRange`. A faction's strength at a place is its **strongest single
+projection** there, never the sum — so a faction can't out-project a rival by
+accumulating minor outposts.
+
+Whoever projects most at a territory is who ends up holding it. Not instantly:
+taking ground off an existing owner is a daily roll whose odds are the two
+sides' share of projected strength, so a strong claimant wins reliably rather
+than immediately and a front creeps instead of snapping. Ground nobody holds
+needs no roll at all, only enough projection to clear `MIN_CLAIM_POWER`.
+
+A consequence worth internalising: **while the current owner is also the
+strongest projector, no rival roll happens.** Rolls decide how long a takeover
+takes, not who wins it. Ownership only moves when the projection ordering
+changes — which happens when faction power moves.
+
+The starting map is derived the same way. A pack that authors no `defaultOwner`
+gets ownership assigned from its power centers on the first tick, which is what
+makes a procedurally generated frontier grid viable. An authored `defaultOwner`
+overrides that, which is how an invasion homeland stays with its invader.
+
+Frontier cells are contestable regardless of what is next to them — proximity
+decay is already the adjacency rule, since a faction with no foothold nearby
+projects nothing and cannot win. Anchors are different: a settlement must be
+surrounded (`SURROUND_SHARE` of its `adjacentFrontier` in rival hands) for
+`siegeThreshold` consecutive days before it can be rolled for at all, and then
+the defender's projection is multiplied by `defenseMultiplier`.
+
+### Scale
+
+Influence ranges are in world units, and **a Morrowind exterior cell is 8192
+units across**. Ranges below that project onto nothing but their own cell. The
+tier defaults are sized in cells: roughly 5 (capital), 3 (regional) and 1.5
+(outpost).
 
 ## Using it from a content pack
 
@@ -131,8 +170,12 @@ I.BalanceOfPower.awardPower(factionId, baseDelta, playerRankMultiplier)
 
 Also available: `getPower`, `setPower`, `getOwner`, `getTerritory`,
 `getTerritoryForCell`, `getFaction`, `factionIds`, `territoryIds`,
-`getInvasion`, `getInvasionStage`, `isCorrupted`, `getCurrentDay`,
-`powerSummary`, `dump`, `isDebug`.
+`getEffectivePower`, `getProjection`, `getInvasion`, `getInvasionStage`,
+`isCorrupted`, `getCurrentDay`, `powerSummary`, `dump`, `isDebug`.
+
+`getProjection(territoryId)` returns the faction that projects most onto a
+territory and how strongly — i.e. who will end up holding it. If that differs
+from `getOwner`, the territory is actively contested.
 
 `forceDay(count)` resolves days immediately instead of waiting for the game
 calendar. It's a testing aid, and it runs the simulation *ahead* of game time —
@@ -163,6 +206,7 @@ scripts/BalanceOfPower/
   core/state.lua     per-save state, serialization, default-fill
   core/registry.lua  authored data from packs, validation, merging
   core/power.lua     power, reaction propagation, batching
+  core/resolve.lua   projection maths, initial control, flips and sieges
   core/driver.lua    the clock: day rollover, catch-up, forced ticks
   core/api.lua       the public interface
 ```

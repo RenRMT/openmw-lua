@@ -44,22 +44,43 @@ moves a faction and everyone with an opinion about it.
 
 ---
 
-## Phase 2 — Resolution loop
+## Phase 2 — Resolution loop ✅
 
-**Ships:** `core/resolve.lua`.
+**Ships:** `core/resolve.lua`, plus a headless test suite under `BalanceOfPower/tests/`.
 
 - `proximityFactor` / `effectivePower` — multi-power-center evaluation taking
   the **strongest** contribution, not the sum (doc 3.2).
-- Pass 1: frontier cells roll against rival-held neighbours, gated by cooldown.
+- Initial control derived from power centers, so a generated frontier grid
+  needs no hand-authored ownership. An authored `defaultOwner` overrides it.
+- Pass 1: frontier cells, contestable regardless of adjacency, gated by
+  cooldown. The attacker is whoever projects most; the roll decides how long
+  the takeover takes, not who wins it.
 - Pass 2: anchors accumulate a siege streak while surrounded, and only become
-  contestable once the streak and cooldown both clear.
+  contestable once the streak and cooldown both clear, with the defender's
+  projection multiplied by `defenseMultiplier`.
 - `BoP_TerritoryFlipped` and `BoP_AnchorSieged`.
 - `resolve.run(day, batch)` takes an explicit batch from the start, so
   staggering resolution later is a scheduling change, not a rewrite.
 
 **Why here:** pure math over the registry and state, with no engine surface at
 all. It can be exercised against a hand-written toy landmass before any real
-territory data exists.
+territory data exists — which is exactly what the test suite added alongside it
+does.
+
+**Design decisions settled here** (the open questions from the previous plan):
+
+- The attacker at a territory is whichever faction projects the most power onto
+  it — deterministic, no random selection among rivals.
+- Ownership is derived from projection at initialization, subject to a
+  configurable `MIN_CLAIM_POWER` floor for taking ground nobody holds.
+- Frontier cells are always contestable; there is no adjacency gate, because
+  proximity decay already prevents a faction from taking ground it can't reach.
+- Freshly flipped territory gets a hard cooldown, not a temporary defence bonus.
+
+**Also corrected here:** the design doc's illustrative `influenceRange = 6000`
+is smaller than one exterior cell (8192 units), so a capital would have
+projected onto nothing but its own cell and no frontier cell would ever have
+been contested. Tier defaults are now sized in cells.
 
 ---
 

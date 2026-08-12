@@ -13,6 +13,7 @@ local events = require('scripts.BalanceOfPower.core.events')
 local log = require('scripts.BalanceOfPower.core.log')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
+local resolve = require('scripts.BalanceOfPower.core.resolve')
 local state = require('scripts.BalanceOfPower.core.state')
 
 local M = {
@@ -111,6 +112,28 @@ function M.territoryIds(kind)
         end
     end
     return out
+end
+
+--- How strongly a faction projects onto a territory. 0 if it doesn't
+-- reach, isn't territorial, or the territory has no centroid.
+function M.getEffectivePower(factionId, territoryId)
+    local territory = registry.territories[territoryId]
+    if not territory then
+        return 0
+    end
+    return resolve.effectivePower(factionId, territory)
+end
+
+--- Who projects most onto a territory, and how strongly. This is the
+-- faction that will end up holding it, given time and no change in
+-- anyone's power.
+-- @return factionId|nil, value
+function M.getProjection(territoryId)
+    local territory = registry.territories[territoryId]
+    if not territory then
+        return nil, 0
+    end
+    return resolve.strongestProjector(territory)
 end
 
 function M.getInvasion(invasionId)

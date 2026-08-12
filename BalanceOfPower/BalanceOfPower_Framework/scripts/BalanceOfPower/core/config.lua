@@ -61,10 +61,17 @@ M.POWER_EVENT_EPSILON = 0.01
 -- distance at which its contribution decays to zero (world units).
 -- Design doc 3.2: minor holdings should be authorable without individual
 -- tuning, so an outpost only needs an id and coords.
+--
+-- Scale matters more than it looks. A Morrowind exterior cell is 8192
+-- units across, so the design document's illustrative 6000 would not
+-- reach even the neighbouring cell -- a capital would project onto
+-- nothing but itself, and no frontier cell would ever be contested. The
+-- doc's figure predates the anchor/frontier split; these are sized in
+-- cells instead: roughly 5, 3 and 1.5 cells of reach.
 M.POWER_CENTER_DEFAULTS = {
-    capital  = { weight = 1.00, influenceRange = 6000 },
-    regional = { weight = 0.50, influenceRange = 3000 },
-    outpost  = { weight = 0.25, influenceRange = 1500 },
+    capital  = { weight = 1.00, influenceRange = 40000 },
+    regional = { weight = 0.50, influenceRange = 24000 },
+    outpost  = { weight = 0.25, influenceRange = 12000 },
 }
 
 M.DEFAULT_POWER_CENTER_TIER = 'regional'
@@ -87,6 +94,24 @@ M.ANCHOR_DEFAULTS = {
 -- Frontier cells are the layer that's meant to visibly creep, so they
 -- recover from a flip far faster than a settlement does.
 M.FRONTIER_COOLDOWN_DAYS = 3
+
+--------------------------------------------------------------------------
+-- Resolution
+--------------------------------------------------------------------------
+
+-- The floor for taking ground nobody holds. An unowned territory has no
+-- defender to roll against, so projection alone decides it -- this stops
+-- a faction claiming distant ground it barely reaches, and is what keeps
+-- the edges of the map empty until someone actually reaches them.
+--
+-- For scale: a capital-tier center on a faction at the default base
+-- power of 50 projects the full 50 at its own seat, and about 40 one
+-- cell away.
+M.MIN_CLAIM_POWER = 5
+
+-- What share of an anchor's adjacent frontier a rival must hold before
+-- the anchor counts as surrounded and its siege streak starts climbing.
+M.SURROUND_SHARE = 0.6
 
 --------------------------------------------------------------------------
 -- Daily tick

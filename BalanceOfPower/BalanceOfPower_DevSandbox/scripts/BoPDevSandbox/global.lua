@@ -13,7 +13,11 @@
 --     reactions fallback gets exercised;
 --   * anchors of both tiers, frontier cells, and an invasion whose home
 --     territory is declared before the faction that owns it exists --
---     which is the deferred-reference-check path.
+--     which is the deferred-reference-check path;
+--   * no authored defaultOwner anywhere except the invasion homeland,
+--     so the starting map is derived entirely from where the power
+--     centres are -- the same thing phase 3's generated frontier grid
+--     will rely on.
 --
 -- Coordinates are real Vvardenfell exterior cell centres, so you can
 -- walk into these cells and watch the readout change. They are only
@@ -58,7 +62,12 @@ BoP.registerLandmass({
             basePower = 55,
             patrolRoster = { 'hlaalu guard' },
             powerCenters = {
-                { id = 'balmora_seat', tier = 'capital', coords = cellCentre(-3, -2) },
+                -- Ranges are explicit rather than left to the tier
+                -- defaults, so the three factions' reach overlaps and
+                -- there is something to contest. See the README for the
+                -- resulting projection table.
+                { id = 'balmora_seat', tier = 'capital',
+                  coords = cellCentre(-3, -2), influenceRange = 60000 },
             },
         },
         {
@@ -69,7 +78,8 @@ BoP.registerLandmass({
             basePower = 50,
             patrolRoster = { 'imperial guard' },
             powerCenters = {
-                { id = 'seyda_neen_garrison', tier = 'regional', coords = cellCentre(-2, -9) },
+                { id = 'seyda_neen_garrison', tier = 'capital',
+                  coords = cellCentre(-2, -9), influenceRange = 60000 },
             },
         },
         {
@@ -85,8 +95,13 @@ BoP.registerLandmass({
                 ['imperial legion'] = -3,
                 ['sixth house'] = 1,
             },
+            -- Camped between the two settlements with a shorter reach,
+            -- so they contest nothing at rest but can take the middle
+            -- ground once their power is pushed up. This is the faction
+            -- to push if you want to watch a front move.
             powerCenters = {
-                { id = 'raider_camp', tier = 'outpost', coords = cellCentre(-3, -6) },
+                { id = 'raider_camp', tier = 'capital',
+                  coords = cellCentre(-3, -6), influenceRange = 40000 },
             },
         },
     },
@@ -99,7 +114,6 @@ BoP.registerLandmass({
             cells = { cellId(-3, -2) },
             centroid = cellCentre(-3, -2),
             adjacentFrontier = { 'dev_frontier_a', 'dev_frontier_b' },
-            defaultOwner = 'hlaalu',
         },
         {
             id = 'dev_seyda_neen',
@@ -108,13 +122,16 @@ BoP.registerLandmass({
             cells = { cellId(-2, -9), 'Seyda Neen, Census and Excise Office' },
             centroid = cellCentre(-2, -9),
             adjacentFrontier = { 'dev_frontier_c', 'dev_frontier_d' },
-            defaultOwner = 'imperial legion',
         },
         {
-            -- Invader homeland. Its defaultOwner is registered further
-            -- down by registerInvasion, i.e. after this call -- which is
-            -- exactly the forward reference validateReferences exists to
-            -- tolerate. If it warned about this, that would be a bug.
+            -- The one authored owner in the pack. An invasion homeland
+            -- has to stay with its invader regardless of who projects
+            -- onto it, which is what an authored defaultOwner is for.
+            --
+            -- The faction it names is registered further down by
+            -- registerInvasion, i.e. after this call -- exactly the
+            -- forward reference validateReferences exists to tolerate.
+            -- If it warned about this, that would be a bug.
             id = 'dev_red_mountain',
             displayName = 'Red Mountain',
             tier = 'city',
@@ -132,7 +149,6 @@ BoP.registerLandmass({
             centroid = cellCentre(-4, -2),
             adjacentFrontier = { 'dev_frontier_b' },
             adjacentAnchors = { 'dev_balmora' },
-            defaultOwner = 'hlaalu',
         },
         {
             id = 'dev_frontier_b',
@@ -141,7 +157,6 @@ BoP.registerLandmass({
             centroid = cellCentre(-3, -3),
             adjacentFrontier = { 'dev_frontier_a', 'dev_frontier_c' },
             adjacentAnchors = { 'dev_balmora' },
-            defaultOwner = 'hlaalu',
         },
         {
             id = 'dev_frontier_c',
@@ -150,7 +165,6 @@ BoP.registerLandmass({
             centroid = cellCentre(-2, -8),
             adjacentFrontier = { 'dev_frontier_b', 'dev_frontier_d' },
             adjacentAnchors = { 'dev_seyda_neen' },
-            defaultOwner = 'imperial legion',
         },
         {
             id = 'dev_frontier_d',
@@ -159,7 +173,6 @@ BoP.registerLandmass({
             centroid = cellCentre(-1, -9),
             adjacentFrontier = { 'dev_frontier_c' },
             adjacentAnchors = { 'dev_seyda_neen' },
-            defaultOwner = 'imperial legion',
         },
     },
 })
@@ -229,6 +242,29 @@ function handlers.BoPDev_ForceDay(data)
     report(string.format('Ran %d day(s), now day %d\n%s', data.count or 1, day, standings()))
 end
 
+--- Every faction's projection onto a territory, strongest first. This is
+-- the number that actually decides ownership, so it's the one to read
+-- when the map isn't doing what you expected.
+local function projectionTable(territory)
+    local rows = {}
+    for _, id in ipairs(BoP.factionIds()) do
+        local value = BoP.getEffectivePower(id, territory.id)
+        if value > 0 then
+            rows[#rows + 1] = { id = id, value = value }
+        end
+    end
+    table.sort(rows, function(a, b) return a.value > b.value end)
+
+    if #rows == 0 then
+        return '  (nobody projects here)'
+    end
+    local lines = {}
+    for _, row in ipairs(rows) do
+        lines[#lines + 1] = string.format('  %s %.1f', BoP.getFaction(row.id).displayName, row.value)
+    end
+    return table.concat(lines, '\n')
+end
+
 --- Answers "what territory am I standing in?" for the cell watcher.
 function handlers.BoPDev_WhereAmI(data)
     local territory = BoP.getTerritoryForCell(data.cell)
@@ -236,13 +272,40 @@ function handlers.BoPDev_WhereAmI(data)
         report(string.format('%s: no registered territory', data.cell))
         return
     end
+
     local owner = BoP.getOwner(territory.id)
     local ownerFaction = owner and BoP.getFaction(owner)
-    report(string.format('%s (%s)\nowner: %s%s',
+    local claimant = BoP.getProjection(territory.id)
+
+    -- If the strongest projector isn't the owner, this cell is actively
+    -- contested and will change hands within a few days.
+    local contested = ''
+    if claimant and claimant ~= owner then
+        contested = string.format('\ncontested by: %s', BoP.getFaction(claimant).displayName)
+    end
+
+    report(string.format('%s (%s)\nowner: %s%s%s\nprojection:\n%s',
         territory.displayName,
         territory.kind == 'anchor' and territory.tier or 'frontier',
-        ownerFaction and ownerFaction.displayName or (owner or 'unclaimed'),
-        BoP.isCorrupted(territory.id) and '  [CORRUPTED]' or ''))
+        ownerFaction and ownerFaction.displayName or 'unclaimed',
+        BoP.isCorrupted(territory.id) and '  [CORRUPTED]' or '',
+        contested,
+        projectionTable(territory)))
+end
+
+--- The whole map, owner by owner. The fastest way to see a front move.
+function handlers.BoPDev_Map()
+    local lines = {}
+    for _, id in ipairs(BoP.territoryIds()) do
+        local territory = BoP.getTerritory(id)
+        local owner = BoP.getOwner(id)
+        local claimant = BoP.getProjection(id)
+        lines[#lines + 1] = string.format('%-22s %-18s%s',
+            territory.displayName,
+            owner and BoP.getFaction(owner).displayName or '-',
+            (claimant and claimant ~= owner) and '  <- contested' or '')
+    end
+    report(string.format('Day %s\n%s', tostring(BoP.getCurrentDay()), table.concat(lines, '\n')))
 end
 
 --- Deliberately bad registration, to check that validation fires and

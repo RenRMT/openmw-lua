@@ -23,13 +23,23 @@ local KEYS = {
     forceDay    = input.KEY.F12,  -- run a day now, without sleeping
     toggleWatch = input.KEY.F9,   -- show/hide the live event feed
     badRegister = input.KEY.F8,   -- prove validation rejects bad data
+    pushRaiders = input.KEY.F7,   -- push the faction that can move a front
+    map         = input.KEY.F6,   -- who holds what, and what's contested
 }
 
 -- Which faction Ctrl+F11 pushes, and by how much. Hlaalu is a good
--- subject: it has a real reaction row, so the propagation to everyone
--- else is real game data rather than something authored here.
+-- subject for watching *propagation*: it has a real reaction row, so
+-- everyone else moves on real game data rather than anything authored
+-- here.
 local AWARD_FACTION = 'hlaalu'
-local AWARD_AMOUNT = 10
+local AWARD_AMOUNT = 25
+
+-- Ctrl+F7 pushes the raiders instead, which is the one that moves the
+-- map: their camp sits between the two settlements, so raising their
+-- power walks their projection outward over the frontier and eventually
+-- puts Seyda Neen under siege. See the README for the thresholds.
+local PUSH_FACTION = 'dev_raiders'
+local PUSH_AMOUNT = 50
 
 -- How often to check whether the player has changed cell.
 local CELL_POLL = 1 * time.second
@@ -95,6 +105,13 @@ local function onKeyPress(key)
             faction = AWARD_FACTION,
             amount = key.withShift and -AWARD_AMOUNT or AWARD_AMOUNT,
         })
+    elseif key.code == KEYS.pushRaiders then
+        core.sendGlobalEvent('BoPDev_Award', {
+            faction = PUSH_FACTION,
+            amount = key.withShift and -PUSH_AMOUNT or PUSH_AMOUNT,
+        })
+    elseif key.code == KEYS.map then
+        core.sendGlobalEvent('BoPDev_Map', {})
     elseif key.code == KEYS.forceDay then
         core.sendGlobalEvent('BoPDev_ForceDay', { count = key.withShift and 7 or 1 })
     elseif key.code == KEYS.badRegister then
@@ -146,7 +163,9 @@ end
 
 local function onActive()
     lastCellKey = nil
-    show('BoP dev sandbox loaded.\nCtrl+F10 dump, Ctrl+F11 award, Ctrl+F12 run a day,\n'
+    show('BoP dev sandbox loaded.\n'
+        .. 'Ctrl+F6 map, Ctrl+F7 push raiders, Ctrl+F10 dump,\n'
+        .. 'Ctrl+F11 award Hlaalu, Ctrl+F12 run a day,\n'
         .. 'Ctrl+F9 event feed, Ctrl+F8 validation test.')
 end
 
