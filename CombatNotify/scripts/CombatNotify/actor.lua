@@ -3,9 +3,7 @@ local types = require('openmw.types')
 local I = require('openmw.interfaces')
 local time = require('openmw_aux.time')
 
--- Tune this. Hostile actors that are actively engaged tend to sit well
--- above their peaceful baseline; passive/neutral actors usually sit low.
--- Playtest and adjust -- exact values vary by creature/faction.
+-- you could tune this value but it won't change script behavior 
 local FIGHT_THRESHOLD = 50
 
 local targetingPlayer = false
@@ -24,8 +22,7 @@ local function checkCombat()
         return
     end
 
-    -- Cheap early-out: most actors most of the time aren't worked up
-    -- enough to be fighting anyone, so skip the AI package lookup entirely.
+    -- most actors most of the time aren't agressive enough to be fighting anyone so skip the AI package lookup
     local fight = types.Actor.stats.ai.fight(self).modified
     if fight < FIGHT_THRESHOLD then
         clearStatus()
