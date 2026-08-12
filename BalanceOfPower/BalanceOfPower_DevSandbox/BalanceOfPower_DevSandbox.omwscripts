@@ -1,0 +1,15 @@
+# Balance of Power -- development sandbox.
+#
+# A throwaway content pack plus an on-screen debug console, for testing
+# the framework before the real Morrowind data pack exists.
+#
+# DO NOT enable this in a playthrough you care about. It registers
+# fictional territory and writes simulation state into your save.
+#
+# MUST load after BalanceOfPower_Framework.
+
+# Registers the toy landmass and invasion, and answers debug commands.
+GLOBAL: scripts/BoPDevSandbox/global.lua
+
+# Hotkeys, on-screen output, and the cell watcher.
+PLAYER: scripts/BoPDevSandbox/player.lua
