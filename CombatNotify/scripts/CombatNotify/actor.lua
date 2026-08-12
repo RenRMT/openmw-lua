@@ -3,7 +3,7 @@ local types = require('openmw.types')
 local I = require('openmw.interfaces')
 local time = require('openmw_aux.time')
 
--- you could tune this value but it won't change script behavior 
+-- you could tune this value but it won't change script behavior
 local FIGHT_THRESHOLD = 50
 
 local targetingPlayer = false
