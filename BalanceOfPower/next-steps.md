@@ -26,7 +26,7 @@ Three mods, all on branch `feat/balance-of-power-framework`:
 
 - `BalanceOfPower_Framework` — content-free engine
 - `BalanceOfPower_Morrowind` — Vvardenfell and Solstheim
-- `BalanceOfPower_DevSandbox` — debug overlay; registers no content, so it
+- `BalanceOfPower_Debug` — debug overlay; registers no content, so it
   composes with any content pack
 
 ### The one thing most likely to confuse a newcomer
@@ -42,7 +42,7 @@ nothing yet moves power on its own — that arrives with phase 6.
 ## Step 0 — Load the Morrowind pack and look at the map
 
 Enable `BalanceOfPower_Framework`, then `BalanceOfPower_Morrowind`, then
-`BalanceOfPower_DevSandbox` for the hotkeys. The overlay registers no content of
+`BalanceOfPower_Debug` for the hotkeys. The overlay registers no content of
 its own, so it composes with the pack rather than colliding with it.
 
 At load you should see roughly:
@@ -173,7 +173,7 @@ data entry for a mechanism that's already proven (`awardPower` works).
   - It belongs in its own optional mod, not the framework or a content pack.
 - **The framework has no "give me the current state" call for player scripts.**
   Events fire on change only, and the API is global-context, so any UI mod
-  needs a request/response bridge like the dev sandbox improvises. Worth adding
+  needs a request/response bridge like the debug overlay improvises. Worth adding
   a snapshot event before phase 7, independent of whether the map ever gets
   built.
 

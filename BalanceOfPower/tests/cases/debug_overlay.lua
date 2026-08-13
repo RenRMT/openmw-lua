@@ -24,12 +24,12 @@ local function loadWithOverlay()
     state.fillDefaults(registry)
     resolve.assignInitialControl()
 
-    local overlay = require('scripts.BoPDevSandbox.global')
+    local overlay = require('scripts.BoPDebug.global')
     return overlay.eventHandlers
 end
 
 local function lastReport()
-    local reports = world._test.eventsNamed('BoPDev_Report')
+    local reports = world._test.eventsNamed('BoPDebug_Report')
     expect.greater(#reports, 0, 'the overlay reported something')
     return reports[#reports].text
 end
@@ -51,7 +51,7 @@ function M.registersNothing()
     local frontier = #registry.frontierIds
     local landmasses = registry.generation
 
-    require('scripts.BoPDevSandbox.global')
+    require('scripts.BoPDebug.global')
 
     expect.equal(registry.countFactions(), factions, 'faction count unchanged')
     expect.equal(#registry.anchorIds, anchors, 'anchor count unchanged')
@@ -62,8 +62,8 @@ end
 --- Loading it with the framework but no content pack must not error --
 -- that's a perfectly reasonable way to run it.
 function M.loadsWithoutAnyContent()
-    local overlay = require('scripts.BoPDevSandbox.global')
-    overlay.eventHandlers.BoPDev_Dump()
+    local overlay = require('scripts.BoPDebug.global')
+    overlay.eventHandlers.BoPDebug_Dump()
     expect.truthy(string.find(lastReport(), 'No factions registered', 1, true),
         'says so rather than erroring')
 end
@@ -74,7 +74,7 @@ end
 
 function M.dumpReportsStandings()
     local handlers = loadWithOverlay()
-    handlers.BoPDev_Dump()
+    handlers.BoPDebug_Dump()
 
     local text = lastReport()
     expect.truthy(string.find(text, 'House Hlaalu', 1, true), 'names a faction')
@@ -90,7 +90,7 @@ function M.boostPushesWhoeverHoldsTheGroundYouAreOn()
     expect.truthy(owner, 'Balmora is held by somebody')
     local before = power.getLive(owner)
 
-    handlers.BoPDev_Boost({ cell = '#-3,-2', target = 'owner', amount = 50 })
+    handlers.BoPDebug_Boost({ cell = '#-3,-2', target = 'owner', amount = 50 })
 
     expect.greater(power.getLive(owner), before, 'the holder was pushed')
 end
@@ -100,7 +100,7 @@ function M.boostCanWeaken()
 
     local owner = state.getOwner('balmora')
     local before = power.getLive(owner)
-    handlers.BoPDev_Boost({ cell = '#-3,-2', target = 'owner', amount = -50 })
+    handlers.BoPDebug_Boost({ cell = '#-3,-2', target = 'owner', amount = -50 })
 
     expect.greater(before, power.getLive(owner), 'the holder was weakened')
 end
@@ -111,21 +111,21 @@ function M.boostReportsWhenThereIsNoChallenger()
     local handlers = loadWithOverlay()
 
     -- A faction's own seat: it holds the ground and projects strongest.
-    handlers.BoPDev_Boost({ cell = '#-3,-2', target = 'challenger', amount = 50 })
+    handlers.BoPDebug_Boost({ cell = '#-3,-2', target = 'challenger', amount = 50 })
     expect.truthy(string.find(lastReport(), 'No challenger', 1, true), 'says so')
 end
 
 function M.boostReportsWhenNotStandingInTerritory()
     local handlers = loadWithOverlay()
 
-    handlers.BoPDev_Boost({ cell = '#999,999', target = 'owner', amount = 50 })
+    handlers.BoPDebug_Boost({ cell = '#999,999', target = 'owner', amount = 50 })
     expect.truthy(string.find(lastReport(), 'Not standing in any registered territory',
         1, true), 'says so')
 end
 
 function M.whereAmIDescribesTheGround()
     local handlers = loadWithOverlay()
-    handlers.BoPDev_WhereAmI({ cell = '#-3,-2' })
+    handlers.BoPDebug_WhereAmI({ cell = '#-3,-2' })
 
     local text = lastReport()
     expect.truthy(string.find(text, 'Balmora', 1, true), 'names the territory')
@@ -136,7 +136,7 @@ function M.forceDayAdvancesTheSimulation()
     local handlers = loadWithOverlay()
     local before = state.get().lastResolvedDay or 0
 
-    handlers.BoPDev_ForceDay({ count = 3 })
+    handlers.BoPDebug_ForceDay({ count = 3 })
 
     expect.greater(state.get().lastResolvedDay, before, 'days were resolved')
 end
@@ -147,18 +147,18 @@ function M.selfTestRejectsDuplicateRegistrationWithoutBreakingAnything()
     local handlers = loadWithOverlay()
     local factions = registry.countFactions()
 
-    handlers.BoPDev_SelfTest()
+    handlers.BoPDebug_SelfTest()
 
     local text = lastReport()
     expect.truthy(string.find(text, 'Rejected as expected', 1, true), 'was rejected')
     expect.falsy(string.find(text, 'FAIL', 1, true), 'not reported as a failure')
     expect.equal(registry.countFactions(), factions, 'registry intact afterwards')
-    expect.isNil(registry.landmasses.bopdev_should_not_exist, 'nothing half-registered')
+    expect.isNil(registry.landmasses.bopdebug_should_not_exist, 'nothing half-registered')
 end
 
 function M.mapDrawsAndSummarises()
     local handlers = loadWithOverlay()
-    handlers.BoPDev_Map({ mode = 'contest' })
+    handlers.BoPDebug_Map({ mode = 'contest' })
 
     local text = lastReport()
     expect.truthy(string.find(text, 'contest', 1, true), 'names the mode')

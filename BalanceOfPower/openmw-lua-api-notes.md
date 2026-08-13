@@ -127,7 +127,7 @@ Checked directly against the docs while building the framework, so these no long
 - **`core.getGameTime()`** — returns game time in **seconds**, so an in-game day index is `math.floor(core.getGameTime() / time.day)`.
 - **`world.players`** — exists; an ObjectList, currently always one element. Used to broadcast framework events to player scripts.
 - **Cell fields** — `name` (can be empty), `isExterior`, `gridX` / `gridY` (exteriors only), `region` (can be nil), `id`. Also `world.getCellByName`, `world.getCellById`, `world.getExteriorCell(gridX, gridY, cellOrName)`.
-- **Player cell-change detection** — no dedicated built-in event was found; polling the player's `cell` field from a player script is the working approach (the phase 1 dev sandbox does this on a 1-second timer). Relevant to the phase 4 spawn subsystem.
+- **Player cell-change detection** — no dedicated built-in event was found; polling the player's `cell` field from a player script is the working approach (the debug overlay does this on a 1-second timer). Relevant to the phase 4 spawn subsystem.
 - **In-game console Lua commands** — `lua player` / `luap`, `lua global` / `luag`, `lua selected` / `luas`, `lua menu` / `luam`. `luag` is what reaches a global-script interface: `luag require('openmw.interfaces').BalanceOfPower.dump()`.
 - **`onKeyPress` / `KeyboardEvent`** — fields `code` (a `KeyCode`), `symbol`, `withCtrl`, `withAlt`, `withShift`, `withSuper`; `input.KEY` includes `F1`–`F12`, letters `A`–`Z`, digits `_0`–`_9`, arrows and modifiers. Also `input.registerActionHandler` and `input.registerTriggerHandler`.
 

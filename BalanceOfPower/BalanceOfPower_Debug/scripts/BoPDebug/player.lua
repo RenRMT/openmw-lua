@@ -86,7 +86,7 @@ local function checkCell()
         return
     end
     lastCellKey = key
-    core.sendGlobalEvent('BoPDev_WhereAmI', { cell = key })
+    core.sendGlobalEvent('BoPDebug_WhereAmI', { cell = key })
 end
 
 --------------------------------------------------------------------------
@@ -102,26 +102,26 @@ local function onKeyPress(key)
         if key.withShift then
             mapMode = mapMode % #MAP_MODES + 1
         end
-        core.sendGlobalEvent('BoPDev_Map', { mode = MAP_MODES[mapMode] })
+        core.sendGlobalEvent('BoPDebug_Map', { mode = MAP_MODES[mapMode] })
 
     elseif key.code == KEYS.dump then
-        core.sendGlobalEvent('BoPDev_Dump', {})
+        core.sendGlobalEvent('BoPDebug_Dump', {})
 
     elseif key.code == KEYS.forceDay then
-        core.sendGlobalEvent('BoPDev_ForceDay', { count = key.withShift and 7 or 1 })
+        core.sendGlobalEvent('BoPDebug_ForceDay', { count = key.withShift and 7 or 1 })
 
     elseif key.code == KEYS.boostOwner or key.code == KEYS.boostRival then
         -- Refresh rather than trusting the poll, so a press immediately
         -- after crossing a border targets the cell you're actually in.
         lastCellKey = cellKey(self.cell) or lastCellKey
-        core.sendGlobalEvent('BoPDev_Boost', {
+        core.sendGlobalEvent('BoPDebug_Boost', {
             cell = lastCellKey,
             target = key.code == KEYS.boostRival and 'challenger' or 'owner',
             amount = key.withShift and -BOOST_AMOUNT or BOOST_AMOUNT,
         })
 
     elseif key.code == KEYS.selfTest then
-        core.sendGlobalEvent('BoPDev_SelfTest', {})
+        core.sendGlobalEvent('BoPDebug_SelfTest', {})
 
     elseif key.code == KEYS.toggleWatch then
         watching = not watching
@@ -185,7 +185,7 @@ return {
         onKeyPress = onKeyPress,
     },
     eventHandlers = {
-        BoPDev_Report = function(data) show(data.text) end,
+        BoPDebug_Report = function(data) show(data.text) end,
 
         BoP_PowerChanged = onPowerChanged,
         BoP_TerritoryFlipped = onTerritoryFlipped,

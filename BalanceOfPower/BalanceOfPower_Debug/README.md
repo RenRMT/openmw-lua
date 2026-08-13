@@ -19,11 +19,11 @@ Add to `openmw.cfg`, **framework first, this one last**:
 ```ini
 data="D:\projects\openmw-lua\BalanceOfPower\BalanceOfPower_Framework"
 data="D:\projects\openmw-lua\BalanceOfPower\BalanceOfPower_Morrowind"
-data="D:\projects\openmw-lua\BalanceOfPower\BalanceOfPower_DevSandbox"
+data="D:\projects\openmw-lua\BalanceOfPower\BalanceOfPower_Debug"
 
 content=BalanceOfPower_Framework.omwscripts
 content=BalanceOfPower_Morrowind.omwscripts
-content=BalanceOfPower_DevSandbox.omwscripts
+content=BalanceOfPower_Debug.omwscripts
 ```
 
 It only needs the framework to have loaded, but putting it last keeps the

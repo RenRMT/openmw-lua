@@ -20,7 +20,7 @@ local I = require('openmw.interfaces')
 
 local BoP = I.BalanceOfPower
 if not BoP then
-    error('BoPDevSandbox: the BalanceOfPower framework interface is not available. '
+    error('BoPDebug: the BalanceOfPower framework interface is not available. '
         .. 'Check that BalanceOfPower_Framework.omwscripts loads BEFORE this mod.', 0)
 end
 
@@ -30,7 +30,7 @@ end
 
 local function report(text)
     for _, player in ipairs(world.players) do
-        player:sendEvent('BoPDev_Report', { text = text })
+        player:sendEvent('BoPDebug_Report', { text = text })
     end
 end
 
@@ -81,7 +81,7 @@ end
 
 local handlers = {}
 
-function handlers.BoPDev_Dump()
+function handlers.BoPDebug_Dump()
     BoP.dump()
     report(string.format('Day %s\n%s\n(full detail in openmw.log)',
         tostring(BoP.getCurrentDay()), standings()))
@@ -89,7 +89,7 @@ end
 
 --- The text map goes to the log, since it's far too wide for a message
 -- box. On screen, just enough to know it worked and what it was drawn as.
-function handlers.BoPDev_Map(data)
+function handlers.BoPDebug_Map(data)
     local mode = data.mode or 'owner'
     BoP.dumpMap({ mode = mode })
 
@@ -104,7 +104,7 @@ function handlers.BoPDev_Map(data)
         mode, counts.contested, counts.consolidated, counts.empty))
 end
 
-function handlers.BoPDev_ForceDay(data)
+function handlers.BoPDebug_ForceDay(data)
     local count = data.count or 1
     local day = BoP.forceDay(count)
     report(string.format('Ran %d day(s), now day %d\n\n%s', count, day, standings()))
@@ -114,7 +114,7 @@ end
 -- take it. Naming no factions is what lets this work against any content
 -- pack -- and standing on a border and pushing one side is the fastest
 -- way to see the resolution loop actually do something.
-function handlers.BoPDev_Boost(data)
+function handlers.BoPDebug_Boost(data)
     local territory = BoP.getTerritoryForCell(data.cell or '')
     if not territory then
         report('Not standing in any registered territory.')
@@ -155,7 +155,7 @@ function handlers.BoPDev_Boost(data)
 end
 
 --- Answers "whose ground am I standing on?" for the cell watcher.
-function handlers.BoPDev_WhereAmI(data)
+function handlers.BoPDebug_WhereAmI(data)
     local territory = BoP.getTerritoryForCell(data.cell)
     if not territory then
         report(string.format('%s: no registered territory', data.cell))
@@ -201,7 +201,7 @@ end
 -- that a failed pack doesn't take the framework down with it. Uses
 -- whichever faction happens to be registered first, so it works against
 -- any content.
-function handlers.BoPDev_SelfTest()
+function handlers.BoPDebug_SelfTest()
     local ids = BoP.factionIds()
     if #ids == 0 then
         report('No factions registered -- nothing to test against.')
@@ -211,7 +211,7 @@ function handlers.BoPDev_SelfTest()
     local victim = ids[1]
     local ok, err = pcall(function()
         BoP.registerLandmass({
-            id = 'bopdev_should_not_exist',
+            id = 'bopdebug_should_not_exist',
             factions = { { id = victim } },   -- already registered, no extend
         })
     end)

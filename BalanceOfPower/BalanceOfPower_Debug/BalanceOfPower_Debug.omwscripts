@@ -11,7 +11,7 @@
 # care about.
 
 # Answers debug commands by reading the framework's public interface.
-GLOBAL: scripts/BoPDevSandbox/global.lua
+GLOBAL: scripts/BoPDebug/global.lua
 
 # Hotkeys, on-screen output, and the cell watcher.
-PLAYER: scripts/BoPDevSandbox/player.lua
+PLAYER: scripts/BoPDebug/player.lua

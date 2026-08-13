@@ -17,9 +17,10 @@ the ordinary faction engine, needing no new machinery.
 ## Phase 1 — Framework skeleton ✅
 
 **Ships:** `BalanceOfPower_Framework` — `config`, `log`, `events`, `state`,
-`registry`, `power`, `driver`, `api`, `main`. Plus `BalanceOfPower_DevSandbox`,
-a throwaway pack and on-screen debug console for testing it before the real
-Morrowind data exists.
+`registry`, `power`, `driver`, `api`, `main`. Plus `BalanceOfPower_Debug`, an
+on-screen debug console. (It shipped as a self-contained toy world, and was
+rewritten during phase 3 into a content-agnostic overlay that registers nothing
+and composes with any content pack.)
 
 - Registration API (`registerLandmass`, `registerInvasion`) with validation and
   cross-pack faction merging via `extend = true`.
@@ -193,7 +194,7 @@ the abstraction has a gap.
 - l10n for everything player-visible.
 
 Debug tooling is already done: `dump`, `dumpMap` (owner / projection / contest
-views), `forceDay`, and the dev sandbox's hotkeys.
+views), `forceDay`, and the debug overlay's hotkeys.
 
 A graphical map overlay was investigated and deferred — there is no map API in
 Lua, so a true overlay on the vanilla map is impossible without an engine

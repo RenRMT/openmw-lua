@@ -16,7 +16,7 @@ unit tests — see [tests/](../tests/README.md).
 
 For content, enable [BalanceOfPower_Morrowind](../BalanceOfPower_Morrowind/README.md).
 For hotkeys and on-screen readouts over whatever content is loaded, add
-[BalanceOfPower_DevSandbox](../BalanceOfPower_DevSandbox/README.md) on top — it
+[BalanceOfPower_Debug](../BalanceOfPower_Debug/README.md) on top — it
 registers nothing of its own, so it composes with any content pack.
 
 What exists:
