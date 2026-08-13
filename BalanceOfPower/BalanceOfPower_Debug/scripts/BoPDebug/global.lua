@@ -14,8 +14,12 @@
 --
 -- If this file ever needs to know that "hlaalu" exists, something has
 -- gone wrong.
+--
+-- All output goes to openmw.log, which OpenMW's own log viewer (F11)
+-- displays in-game. Nothing is drawn over the HUD: a map is fifty rows
+-- and a message box is not, and anything worth reading twice is worth
+-- having somewhere it can be scrolled back through.
 
-local world = require('openmw.world')
 local I = require('openmw.interfaces')
 
 local BoP = I.BalanceOfPower
@@ -25,13 +29,51 @@ if not BoP then
 end
 
 --------------------------------------------------------------------------
--- Reporting
+-- Output
 --------------------------------------------------------------------------
 
-local function report(text)
-    for _, player in ipairs(world.players) do
-        player:sendEvent('BoPDebug_Report', { text = text })
+-- Short, so it costs little width on a map row, and greppable, so this
+-- mod's output can be pulled out of a log shared with everything else.
+local TAG = '[BoP]'
+local RULE = string.rep('-', 64)
+
+local function defaultEmit(line)
+    -- Blank lines carry the tag but nothing after it, so a separator
+    -- doesn't leave trailing whitespace in the log.
+    if line == '' then
+        print(TAG)
+    else
+        print(TAG .. ' ' .. line)
     end
+end
+
+local emit = defaultEmit
+
+--- Redirect output. Tests use this; so could anything that wants the
+-- debug output somewhere other than the log.
+local function setOutput(fn)
+    emit = fn or defaultEmit
+end
+
+local function out(fmt, ...)
+    if select('#', ...) > 0 then
+        emit(string.format(fmt, ...))
+    else
+        emit(fmt)
+    end
+end
+
+local function blank()
+    emit('')
+end
+
+--- A titled block, so consecutive commands don't run together in a log
+-- that also has the framework's own output in it.
+local function heading(fmt, ...)
+    blank()
+    emit(RULE)
+    out(fmt, ...)
+    emit(RULE)
 end
 
 local function nameOf(factionId)
@@ -39,12 +81,23 @@ local function nameOf(factionId)
     return faction and faction.displayName or tostring(factionId)
 end
 
---- Standings, plus how much ground each faction holds. Land-holding
--- factions first, since they're the ones the map is about.
-local function standings()
+local function dayLabel()
+    local day = BoP.getCurrentDay()
+    return day and ('day ' .. day) or 'not yet ticked'
+end
+
+--------------------------------------------------------------------------
+-- Standings
+--------------------------------------------------------------------------
+
+--- Power and holdings per faction, in aligned columns. Land-holding
+-- factions first, since the map is about them; the power-only factions
+-- follow in their own group rather than mixed in with a blank column.
+local function printStandings()
     local ids = BoP.factionIds()
     if #ids == 0 then
-        return 'No factions registered -- is a content pack loaded?'
+        out('no factions registered -- is a content pack loaded?')
+        return
     end
 
     -- One pass over the map rather than one per faction.
@@ -59,20 +112,31 @@ local function standings()
     local landed, powerOnly = {}, {}
     for _, id in ipairs(ids) do
         local faction = BoP.getFaction(id)
-        if faction.territorial then
-            landed[#landed + 1] = string.format('%s %.0f (%d)',
-                faction.displayName, BoP.getPower(id), held[id] or 0)
-        else
-            powerOnly[#powerOnly + 1] = string.format('%s %.0f',
-                faction.displayName, BoP.getPower(id))
-        end
+        local bucket = faction.territorial and landed or powerOnly
+        bucket[#bucket + 1] = { faction = faction, id = id }
     end
 
-    local text = table.concat(landed, '\n')
-    if #powerOnly > 0 then
-        text = text .. '\n-- no land --\n' .. table.concat(powerOnly, '\n')
+    -- Strongest first: what you want to see when checking whether a push
+    -- landed is the ordering, not the alphabet.
+    local function byPower(a, b)
+        return BoP.getPower(a.id) > BoP.getPower(b.id)
     end
-    return text
+    table.sort(landed, byPower)
+    table.sort(powerOnly, byPower)
+
+    out('  %-26s %8s %7s', 'faction', 'power', 'held')
+    for _, entry in ipairs(landed) do
+        out('  %-26s %8.1f %7d',
+            entry.faction.displayName, BoP.getPower(entry.id), held[entry.id] or 0)
+    end
+
+    if #powerOnly > 0 then
+        out('  -- holds no land --')
+        for _, entry in ipairs(powerOnly) do
+            out('  %-26s %8.1f %7s',
+                entry.faction.displayName, BoP.getPower(entry.id), '-')
+        end
+    end
 end
 
 --------------------------------------------------------------------------
@@ -82,46 +146,45 @@ end
 local handlers = {}
 
 function handlers.BoPDebug_Dump()
-    BoP.dump()
-    report(string.format('Day %s\n%s\n(full detail in openmw.log)',
-        tostring(BoP.getCurrentDay()), standings()))
+    heading('STANDINGS -- %s', dayLabel())
+
+    local anchors = BoP.territoryIds('anchor')
+    local frontier = BoP.territoryIds('frontier')
+    local contested = 0
+    for _, territoryId in ipairs(BoP.territoryIds()) do
+        if BoP.classify(territoryId) == 'contested' then
+            contested = contested + 1
+        end
+    end
+
+    out('  %d anchors, %d frontier cells, %d contested', #anchors, #frontier, contested)
+    blank()
+    printStandings()
 end
 
---- Both halves of the map, in one keypress.
---
--- On screen: a window of the cells around the player. The full map is
--- forty columns by fifty rows, which is fine in a log and useless in a
--- message box -- and standing somewhere specific, the ground around
--- *here* is usually the question anyway.
---
--- In the log: the whole thing, for when it isn't.
+--- Both scales of the map. The window is what you read while standing
+-- somewhere; the full draw is what you read when the question is about
+-- the whole island.
 function handlers.BoPDebug_Map(data)
     local mode = data.mode or 'owner'
+
+    if data.cell then
+        heading('MAP around %s (%s) -- %s', data.cell, mode, dayLabel())
+        for _, line in ipairs(BoP.renderMap({ mode = mode, centreCell = data.cell })) do
+            emit(line)
+        end
+    end
+
+    heading('MAP full (%s) -- %s', mode, dayLabel())
     BoP.dumpMap({ mode = mode })
-
-    local counts = { empty = 0, consolidated = 0, contested = 0 }
-    for _, territoryId in ipairs(BoP.territoryIds()) do
-        local class = BoP.classify(territoryId)
-        counts[class] = (counts[class] or 0) + 1
-    end
-
-    local summary = string.format('%d contested, %d consolidated, %d unreachable'
-        .. '  --  full map in openmw.log',
-        counts.contested, counts.consolidated, counts.empty)
-
-    if not data.cell then
-        report(string.format('Map drawn (mode: %s)\n%s', mode, summary))
-        return
-    end
-
-    local window = BoP.renderMap({ mode = mode, centreCell = data.cell })
-    report(table.concat(window, '\n') .. '\n' .. summary)
 end
 
 function handlers.BoPDebug_ForceDay(data)
     local count = data.count or 1
     local day = BoP.forceDay(count)
-    report(string.format('Ran %d day(s), now day %d\n\n%s', count, day, standings()))
+
+    heading('RAN %d DAY(S) -- now day %d', count, day)
+    printStandings()
 end
 
 --- Push whoever holds the ground under the player, or whoever is about to
@@ -131,7 +194,7 @@ end
 function handlers.BoPDebug_Boost(data)
     local territory = BoP.getTerritoryForCell(data.cell or '')
     if not territory then
-        report('Not standing in any registered territory.')
+        heading('BOOST -- not standing in any registered territory')
         return
     end
 
@@ -141,17 +204,16 @@ function handlers.BoPDebug_Boost(data)
         -- which case there is nobody challenging for this ground.
         local claimant = BoP.getProjection(territory.id)
         local owner = BoP.getOwner(territory.id)
-        if claimant and claimant ~= owner then
-            target = claimant
-        else
-            report(string.format('%s\nNo challenger here -- %s both holds it and '
-                .. 'projects strongest.', territory.displayName, nameOf(owner)))
+        if not claimant or claimant == owner then
+            heading('BOOST -- no challenger at %s', territory.displayName)
+            out('  %s both holds it and projects strongest here.', nameOf(owner))
             return
         end
+        target = claimant
     else
         target = BoP.getOwner(territory.id)
         if not target then
-            report(string.format('%s is unclaimed -- nobody to push.', territory.displayName))
+            heading('BOOST -- %s is unclaimed, nobody to push', territory.displayName)
             return
         end
     end
@@ -159,25 +221,60 @@ function handlers.BoPDebug_Boost(data)
     local before = BoP.getPower(target)
     BoP.awardPower(target, data.amount)
 
+    heading('BOOST %s %+.0f at %s', nameOf(target), data.amount, territory.displayName)
+    out('  power    %.1f -> %.1f', before, BoP.getPower(target))
     -- Whether the *local* picture changed is the interesting part, not
     -- the raw number.
-    local claimant = BoP.getProjection(territory.id)
-    local owner = BoP.getOwner(territory.id)
-    report(string.format('%s %+.0f  (%.0f -> %.0f)\n%s\nholder: %s\nwill hold: %s',
-        nameOf(target), data.amount, before, BoP.getPower(target),
-        territory.displayName, nameOf(owner), nameOf(claimant)))
+    out('  holds    %s', nameOf(BoP.getOwner(territory.id)))
+    out('  will hold %s', nameOf(BoP.getProjection(territory.id)))
 end
 
---- Answers "whose ground am I standing on?" for the cell watcher.
-function handlers.BoPDebug_WhereAmI(data)
+--------------------------------------------------------------------------
+-- Position
+--------------------------------------------------------------------------
+
+--- A single line, printed on every cell change. Walking across
+-- Vvardenfell would otherwise bury the log in full reports.
+function handlers.BoPDebug_Entered(data)
     local territory = BoP.getTerritoryForCell(data.cell)
     if not territory then
-        report(string.format('%s: no registered territory', data.cell))
+        out('%-12s (no registered territory)', data.cell)
         return
     end
 
     local owner = BoP.getOwner(territory.id)
     local claimant = BoP.getProjection(territory.id)
+    local contested = ''
+    if claimant and claimant ~= owner then
+        contested = string.format('  <- %s closing in', nameOf(claimant))
+    end
+
+    out('%-12s %-24s %-20s %s%s', data.cell, territory.displayName,
+        owner and nameOf(owner) or 'unclaimed',
+        BoP.classify(territory.id), contested)
+end
+
+--- The full report, on demand.
+function handlers.BoPDebug_Here(data)
+    local territory = BoP.getTerritoryForCell(data.cell or '')
+    if not territory then
+        heading('HERE -- %s is not registered territory', tostring(data.cell))
+        return
+    end
+
+    local owner = BoP.getOwner(territory.id)
+    local claimant = BoP.getProjection(territory.id)
+
+    heading('HERE -- %s', territory.displayName)
+    out('  cell      %s', data.cell)
+    out('  kind      %s', territory.kind == 'anchor' and territory.tier or 'frontier')
+    out('  region    %s', territory.region or '-')
+    out('  owner     %s%s', owner and nameOf(owner) or 'unclaimed',
+        BoP.isCorrupted(territory.id) and '  [CORRUPTED]' or '')
+    out('  state     %s', BoP.classify(territory.id))
+    if claimant and claimant ~= owner then
+        out('  closing   %s', nameOf(claimant))
+    end
 
     -- Every faction that reaches here, strongest first. This is the
     -- number that decides ownership, so it's what to read when the map
@@ -188,37 +285,75 @@ function handlers.BoPDebug_WhereAmI(data)
     end
     table.sort(rows, function(a, b) return a.value > b.value end)
 
-    local projection = {}
+    blank()
+    out('  projection')
+    if #rows == 0 then
+        out('    (nobody reaches here)')
+    end
     for _, row in ipairs(rows) do
-        projection[#projection + 1] = string.format('  %s %.1f', nameOf(row.id), row.value)
+        out('    %-26s %7.1f', nameOf(row.id), row.value)
     end
-    if #projection == 0 then
-        projection[1] = '  (nobody reaches here)'
-    end
-
-    local contested = ''
-    if claimant and claimant ~= owner then
-        contested = string.format('\ncontested by: %s', nameOf(claimant))
-    end
-
-    report(string.format('%s (%s, %s)\nowner: %s%s%s\nprojection:\n%s',
-        territory.displayName,
-        territory.kind == 'anchor' and territory.tier or 'frontier',
-        BoP.classify(territory.id),
-        owner and nameOf(owner) or 'unclaimed',
-        BoP.isCorrupted(territory.id) and '  [CORRUPTED]' or '',
-        contested,
-        table.concat(projection, '\n')))
 end
+
+--------------------------------------------------------------------------
+-- Event feed
+--------------------------------------------------------------------------
+
+-- Loud by design -- power propagates to every faction with an opinion,
+-- so one award is several events -- so it starts off.
+local watching = false
+
+function handlers.BoPDebug_ToggleFeed()
+    watching = not watching
+    out('event feed %s', watching and 'ON' or 'OFF')
+end
+
+-- The framework broadcasts to global scripts as well as to players, so
+-- these arrive here with no subscription step.
+
+function handlers.BoP_PowerChanged(data)
+    if watching then
+        out('  power   %-26s %+7.2f -> %.1f', nameOf(data.faction), data.delta, data.newTotal)
+    end
+end
+
+function handlers.BoP_AnchorSieged(data)
+    if watching then
+        out('  siege   %-26s %d/%d', data.territory, data.streak, data.threshold)
+    end
+end
+
+-- Always worth knowing about, feed or no feed.
+function handlers.BoP_TerritoryFlipped(data)
+    out('FLIP    %s: %s -> %s', data.territory, tostring(data.from), tostring(data.to))
+end
+
+function handlers.BoP_InvasionEscalated(data)
+    out('ESCALATE %s: %s -> %s', data.invasion, tostring(data.oldStage), data.newStage)
+end
+
+function handlers.BoP_TerritoryCorrupted(data)
+    out('OVERRUN %s', data.territory)
+end
+
+function handlers.BoP_TerritoryLiberated(data)
+    out('RETAKEN %s', data.territory)
+end
+
+--------------------------------------------------------------------------
+-- Self-test
+--------------------------------------------------------------------------
 
 --- Deliberately bad registration, to confirm validation rejects it and
 -- that a failed pack doesn't take the framework down with it. Uses
 -- whichever faction happens to be registered first, so it works against
 -- any content.
 function handlers.BoPDebug_SelfTest()
+    heading('SELF-TEST -- duplicate registration')
+
     local ids = BoP.factionIds()
     if #ids == 0 then
-        report('No factions registered -- nothing to test against.')
+        out('  no factions registered -- nothing to test against.')
         return
     end
 
@@ -231,14 +366,27 @@ function handlers.BoPDebug_SelfTest()
     end)
 
     if ok then
-        report('FAIL: a duplicate registration of "' .. victim .. '" was accepted.')
+        out('  FAIL: a duplicate registration of "%s" was accepted.', victim)
         return
     end
 
-    report(string.format('Rejected as expected:\n%s\n\nFramework still live:\n%s',
-        tostring(err), standings()))
+    out('  rejected as expected:')
+    out('  %s', tostring(err))
+    blank()
+    out('  framework still live:')
+    printStandings()
 end
 
+--------------------------------------------------------------------------
+
+heading('DEBUG OVERLAY LOADED')
+out('  Ctrl+1 map (Shift: next mode)   Ctrl+2 standings')
+out('  Ctrl+3 run a day (Shift: 7)     Ctrl+4 push holder')
+out('  Ctrl+5 push challenger          Ctrl+6 event feed')
+out('  Ctrl+7 self-test                Ctrl+8 report here')
+out('  Shift reverses 4 and 5. Output goes here; F11 opens this viewer.')
+
 return {
+    setOutput = setOutput,
     eventHandlers = handlers,
 }

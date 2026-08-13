@@ -1,9 +1,8 @@
 -- The debug overlay, loaded over real content.
 --
 -- Only the global half is exercised here; the player half needs
--- openmw.input, openmw.self and openmw.ui, which aren't stubbed. What
--- matters most is testable either way: that the overlay adds nothing to
--- the world, and that its commands work without naming a faction.
+-- openmw.input and openmw.self, which aren't stubbed. That half is
+-- input-only anyway -- all output lives here.
 
 local expect = require('support.expect')
 
@@ -16,22 +15,34 @@ local state = require('scripts.BalanceOfPower.core.state')
 
 local M = {}
 
---- Load real content, then the overlay on top of it, and hand back the
--- overlay's event handlers.
+local captured = {}
+
+--- Load the overlay and capture what it prints.
+local function overlayWithCapture()
+    local overlay = require('scripts.BoPDebug.global')
+    captured = {}
+    overlay.setOutput(function(line)
+        captured[#captured + 1] = line
+    end)
+    return overlay.eventHandlers
+end
+
+--- Load real content, then the overlay on top of it.
 local function loadWithOverlay()
     world._test.defineExteriorGrid(-22, 22, -18, 36)
     require('scripts.BalanceOfPowerMorrowind.main')
     state.fillDefaults(registry)
     resolve.assignInitialControl()
-
-    local overlay = require('scripts.BoPDebug.global')
-    return overlay.eventHandlers
+    return overlayWithCapture()
 end
 
-local function lastReport()
-    local reports = world._test.eventsNamed('BoPDebug_Report')
-    expect.greater(#reports, 0, 'the overlay reported something')
-    return reports[#reports].text
+local function output()
+    return table.concat(captured, '\n')
+end
+
+local function says(fragment, what)
+    expect.truthy(string.find(output(), fragment, 1, true),
+        what or ('output mentions ' .. fragment))
 end
 
 --------------------------------------------------------------------------
@@ -49,23 +60,40 @@ function M.registersNothing()
     local factions = registry.countFactions()
     local anchors = #registry.anchorIds
     local frontier = #registry.frontierIds
-    local landmasses = registry.generation
+    local generation = registry.generation
 
     require('scripts.BoPDebug.global')
 
     expect.equal(registry.countFactions(), factions, 'faction count unchanged')
     expect.equal(#registry.anchorIds, anchors, 'anchor count unchanged')
     expect.equal(#registry.frontierIds, frontier, 'frontier count unchanged')
-    expect.equal(registry.generation, landmasses, 'nothing was registered at all')
+    expect.equal(registry.generation, generation, 'nothing was registered at all')
 end
 
 --- Loading it with the framework but no content pack must not error --
 -- that's a perfectly reasonable way to run it.
 function M.loadsWithoutAnyContent()
-    local overlay = require('scripts.BoPDebug.global')
-    overlay.eventHandlers.BoPDebug_Dump()
-    expect.truthy(string.find(lastReport(), 'No factions registered', 1, true),
-        'says so rather than erroring')
+    local handlers = overlayWithCapture()
+    handlers.BoPDebug_Dump()
+    says('no factions registered', 'says so rather than erroring')
+end
+
+--------------------------------------------------------------------------
+-- Everything goes to the log
+--------------------------------------------------------------------------
+
+--- Nothing is drawn over the HUD. A fifty-row map never fitted in a
+-- message box, and OpenMW's own log viewer scrolls back.
+function M.sendsNothingToTheScreen()
+    local handlers = loadWithOverlay()
+    world._test.reset()
+
+    handlers.BoPDebug_Dump()
+    handlers.BoPDebug_Here({ cell = '#-3,-2' })
+    handlers.BoPDebug_Boost({ cell = '#-3,-2', target = 'owner', amount = 50 })
+
+    expect.count(world._test.eventsNamed('BoPDebug_Report'), 0, 'no message-box events')
+    expect.greater(#captured, 0, 'but it did produce output')
 end
 
 --------------------------------------------------------------------------
@@ -76,9 +104,28 @@ function M.dumpReportsStandings()
     local handlers = loadWithOverlay()
     handlers.BoPDebug_Dump()
 
-    local text = lastReport()
-    expect.truthy(string.find(text, 'House Hlaalu', 1, true), 'names a faction')
-    expect.truthy(string.find(text, 'no land', 1, true), 'separates power-only factions')
+    says('STANDINGS', 'titled block')
+    says('House Hlaalu', 'names a faction')
+    says('holds no land', 'separates power-only factions')
+end
+
+--- Ordering by power is what makes a push visible at a glance.
+function M.standingsAreOrderedByPower()
+    local handlers = loadWithOverlay()
+    handlers.BoPDebug_Dump()
+
+    local previous = nil
+    for _, line in ipairs(captured) do
+        local value = string.match(line, '^%s+%S.-%s+(%d+%.%d)%s+%d+%s*$')
+        if value then
+            value = tonumber(value)
+            if previous then
+                expect.truthy(value <= previous, 'standings descend by power')
+            end
+            previous = value
+        end
+    end
+    expect.truthy(previous ~= nil, 'some standings rows were printed')
 end
 
 --- Targeting by standing position is what lets the overlay work against
@@ -93,6 +140,7 @@ function M.boostPushesWhoeverHoldsTheGroundYouAreOn()
     handlers.BoPDebug_Boost({ cell = '#-3,-2', target = 'owner', amount = 50 })
 
     expect.greater(power.getLive(owner), before, 'the holder was pushed')
+    says('BOOST', 'titled block')
 end
 
 function M.boostCanWeaken()
@@ -112,33 +160,74 @@ function M.boostReportsWhenThereIsNoChallenger()
 
     -- A faction's own seat: it holds the ground and projects strongest.
     handlers.BoPDebug_Boost({ cell = '#-3,-2', target = 'challenger', amount = 50 })
-    expect.truthy(string.find(lastReport(), 'No challenger', 1, true), 'says so')
+    says('no challenger', 'says so')
 end
 
 function M.boostReportsWhenNotStandingInTerritory()
     local handlers = loadWithOverlay()
 
     handlers.BoPDebug_Boost({ cell = '#999,999', target = 'owner', amount = 50 })
-    expect.truthy(string.find(lastReport(), 'Not standing in any registered territory',
-        1, true), 'says so')
+    says('not standing in any registered territory', 'says so')
 end
 
-function M.whereAmIDescribesTheGround()
-    local handlers = loadWithOverlay()
-    handlers.BoPDebug_WhereAmI({ cell = '#-3,-2' })
+--------------------------------------------------------------------------
+-- Position
+--------------------------------------------------------------------------
 
-    local text = lastReport()
-    expect.truthy(string.find(text, 'Balmora', 1, true), 'names the territory')
-    expect.truthy(string.find(text, 'projection', 1, true), 'shows who reaches it')
+--- One line per cell entered. Walking across Vvardenfell would otherwise
+-- bury the log in full reports.
+function M.enteringACellPrintsOneLine()
+    local handlers = loadWithOverlay()
+    captured = {}
+
+    handlers.BoPDebug_Entered({ cell = '#-3,-2' })
+
+    expect.count(captured, 1, 'exactly one line')
+    says('Balmora', 'names the territory')
 end
 
-function M.forceDayAdvancesTheSimulation()
+function M.hereGivesTheFullReport()
     local handlers = loadWithOverlay()
-    local before = state.get().lastResolvedDay or 0
+    handlers.BoPDebug_Here({ cell = '#-3,-2' })
 
-    handlers.BoPDebug_ForceDay({ count = 3 })
+    says('HERE', 'titled block')
+    says('Balmora', 'names the territory')
+    says('projection', 'shows who reaches it')
+    says('region', 'carries the region through')
+end
 
-    expect.greater(state.get().lastResolvedDay, before, 'days were resolved')
+function M.hereHandlesUnregisteredGround()
+    local handlers = loadWithOverlay()
+    handlers.BoPDebug_Here({ cell = '#999,999' })
+    says('not registered territory', 'says so')
+end
+
+--------------------------------------------------------------------------
+-- Feed and self-test
+--------------------------------------------------------------------------
+
+--- Power propagates to every faction with an opinion, so one award is
+-- several events. Off by default, or the log is unreadable.
+function M.eventFeedIsOffUntilToggled()
+    local handlers = loadWithOverlay()
+    captured = {}
+
+    handlers.BoP_PowerChanged({ faction = 'hlaalu', delta = 5, newTotal = 60 })
+    expect.count(captured, 0, 'silent by default')
+
+    handlers.BoPDebug_ToggleFeed()
+    captured = {}
+    handlers.BoP_PowerChanged({ faction = 'hlaalu', delta = 5, newTotal = 60 })
+    expect.count(captured, 1, 'reported once toggled on')
+end
+
+--- A territory changing hands is news whether or not the feed is on.
+function M.flipsAreAlwaysReported()
+    local handlers = loadWithOverlay()
+    captured = {}
+
+    handlers.BoP_TerritoryFlipped({ territory = 'balmora', from = 'hlaalu', to = 'redoran' })
+    says('FLIP', 'reported without the feed')
 end
 
 --- The self-test must pick its victim from whatever is registered rather
@@ -149,20 +238,29 @@ function M.selfTestRejectsDuplicateRegistrationWithoutBreakingAnything()
 
     handlers.BoPDebug_SelfTest()
 
-    local text = lastReport()
-    expect.truthy(string.find(text, 'Rejected as expected', 1, true), 'was rejected')
-    expect.falsy(string.find(text, 'FAIL', 1, true), 'not reported as a failure')
+    says('rejected as expected', 'was rejected')
+    expect.falsy(string.find(output(), 'FAIL', 1, true), 'not reported as a failure')
     expect.equal(registry.countFactions(), factions, 'registry intact afterwards')
     expect.isNil(registry.landmasses.bopdebug_should_not_exist, 'nothing half-registered')
 end
 
-function M.mapDrawsAndSummarises()
+function M.mapDrawsAWindowAndTheFullMap()
     local handlers = loadWithOverlay()
-    handlers.BoPDebug_Map({ mode = 'contest' })
+    handlers.BoPDebug_Map({ mode = 'contest', cell = '#-3,-2' })
 
-    local text = lastReport()
-    expect.truthy(string.find(text, 'contest', 1, true), 'names the mode')
-    expect.truthy(string.find(text, 'contested', 1, true), 'summarises the classification')
+    says('MAP around #-3,-2', 'the window is titled')
+    says('MAP full', 'and the full draw follows')
+    says('contested', 'the legend came through')
+end
+
+function M.forceDayAdvancesTheSimulation()
+    local handlers = loadWithOverlay()
+    local before = state.get().lastResolvedDay or 0
+
+    handlers.BoPDebug_ForceDay({ count = 3 })
+
+    expect.greater(state.get().lastResolvedDay, before, 'days were resolved')
+    says('RAN 3 DAY(S)', 'titled block')
 end
 
 return M

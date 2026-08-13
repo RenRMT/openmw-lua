@@ -34,54 +34,74 @@ the game, which makes the edit/test loop fast.
 
 | Key | Does |
 |---|---|
-| `Ctrl+1` | Map of the cells around you, on screen — and the full map to `openmw.log` (`Ctrl+Shift+1` cycles owner → projection → contest) |
+| `Ctrl+1` | Map: a window around you, then the full map (`Ctrl+Shift+1` cycles owner → projection → contest) |
 | `Ctrl+2` | Standings: power and territory count per faction |
 | `Ctrl+3` | Resolve one in-game day now (`Ctrl+Shift+3` for seven) |
 | `Ctrl+4` | Push whoever **holds** the ground you're standing on, +50 (`Shift` for −50) |
 | `Ctrl+5` | Push whoever is about to **take** it, +50 (`Shift` for −50) |
 | `Ctrl+6` | Toggle the live event feed |
 | `Ctrl+7` | Attempt a deliberately invalid registration |
+| `Ctrl+8` | Full report on the cell you're in |
 
 The number row rather than the function keys: Morrowind already uses F1–F12 for
-quick slots, quicksave, quickload and screenshots, and the engine acts on those
-whether or not a modifier is held.
+quick slots, quicksave, quickload, screenshots and the log viewer, and the
+engine acts on those whether or not a modifier is held.
 
-Walking between cells also reports the territory you've entered, who holds it,
-how contested it is, and every faction's projection onto it.
+Walking into a new cell prints one line — territory, holder, how contested, and
+who's closing in. `Ctrl+8` gives the full picture for where you're standing.
 
-### Reading the map
+## Reading the output
 
-`Ctrl+1` gives you both halves at once. On screen, a 13×13 window centred on
-where you're standing — uppercase is a settlement, lowercase its wilderness:
+**Everything goes to `openmw.log`. Nothing is drawn over the HUD.** Press
+**F11** for OpenMW's built-in log viewer, which scrolls back — a fifty-row map
+was never going to fit in a message box, and output worth reading twice is worth
+being able to scroll.
+
+Every line is tagged `[BoP]`, so it can be pulled out of a log shared with the
+framework's own output (`[BalanceOfPower]`) and everything else:
 
 ```
-      8765432101234
-    5 hhrrrrRrrrm.
-    4 hhhrrrrrrrMm
-    3 Hhhrriiir.m.
-    2 hhh.iiIii
-    1 hhhhhhiii
-legend: H/h House Hlaalu   I/i The Empire   M/m Tribunal Temple   R/r House Redoran
+[BoP] ----------------------------------------------------------------
+[BoP] STANDINGS -- day 42
+[BoP] ----------------------------------------------------------------
+[BoP]   36 anchors, 562 frontier cells, 47 contested
+[BoP]
+[BoP]   faction                       power    held
+[BoP]   Tribunal Temple                65.0      53
+[BoP]   The Empire                     65.0      57
+[BoP]   House Hlaalu                   55.0     102
+[BoP]   -- holds no land --
+[BoP]   Camonna Tong                   35.0       -
 ```
 
-The full map of every landmass goes to `openmw.log` on the same keypress, for
-when the window isn't enough. **There is no way to read the log from inside the
-game** — it's a file next to your saves, usually
-`Documents\My Games\OpenMW\openmw.log` on Windows. Tail it in a second window:
+Standings are ordered by power, so whether a push landed is visible at a glance.
+
+`Ctrl+1` prints a window around you first, then the whole map:
+
+```
+[BoP]       8765432101234
+[BoP]     3 Hhhrriiir.m.
+[BoP]     2 hhh.iiIii
+[BoP]     1 hhhhhhiii
+[BoP] legend: H/h House Hlaalu   I/i The Empire   R/r House Redoran
+```
+
+Uppercase is a settlement, lowercase its wilderness. The column header is each
+cell's last x digit, so you can count back to a real grid reference.
+
+To follow along outside the game instead, tail the file — usually
+`Documents\My Games\OpenMW\openmw.log`:
 
 ```powershell
 Get-Content -Wait -Tail 60 "$env:USERPROFILE\Documents\My Games\OpenMW\openmw.log"
 ```
 
-The column header is the last digit of each cell's x coordinate, so you can
-count back to a real grid reference.
-
 ## The loop that shows the simulation working
 
 Territory only moves when the *projection ordering* changes. So:
 
-1. Walk to a border — the cell readout says `contested by: …` when you're on one.
-   `Ctrl+Shift+1` twice gets you the `contest` map, which shows where they are.
+1. Walk to a border — the cell line says `<- … closing in` when you're on one.
+   `Ctrl+Shift+1` twice gets the `contest` map, which shows where they all are.
 2. `Ctrl+5` once or twice to push the challenger.
 3. `Ctrl+3` a few times to run days.
 4. `Ctrl+1` between each to watch the front move.
@@ -93,7 +113,8 @@ watch the cooldown hold ground that has just changed hands.
 
 **`Ctrl+4` / `Ctrl+5` — reaction propagation.** Pushing one faction moves every
 other faction too, scaled by how each feels about it. With the event feed on
-(`Ctrl+6`) you see them move individually. Factions with a real faction record
+(`Ctrl+6`) each one is logged individually; it's off by default because a single
+award produces a dozen lines. Factions with a real faction record
 read their reactions from the game's data; ones without use an authored table —
 both go through identical math, which is the claim in design doc 3.5.
 
@@ -113,8 +134,8 @@ message naming the faction, and the standings printed afterwards should be
 unchanged — proving a bad pack can't half-register or take the framework down
 with it.
 
-**Cell walking — the cell index and projection cache.** Confirms cells map to
-territories, and shows the numbers that actually decide ownership.
+**Cell walking and `Ctrl+8` — the cell index and projection cache.** Confirms
+cells map to territories, and shows the numbers that actually decide ownership.
 
 **Save, quit, reload** — standings and ownership should survive, which is the
 `onSave`/`onLoad` path plus `fillDefaults` seeding anything new.
