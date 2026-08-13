@@ -360,13 +360,27 @@ local function resolveAnchor(territory, day)
         return
     end
 
-    local streak = (data.siegeStreak[territory.id] or 0) + 1
-    data.siegeStreak[territory.id] = streak
-    events.emit(events.ANCHOR_SIEGED, {
-        territory = territory.id,
-        streak = streak,
-        threshold = territory.siegeThreshold,
-    })
+    -- The streak counts consecutive days of encirclement, and stops at
+    -- the threshold: past that the anchor is already rolled for every
+    -- day it stays surrounded, so a higher number changes nothing.
+    --
+    -- Letting it climb would be a number growing without bound in every
+    -- save, and -- because a rival can hold the ring indefinitely while
+    -- the incumbent still out-projects it -- an ANCHOR_SIEGED every day
+    -- forever for a siege nobody can win. Emitting only while the count
+    -- actually moves also matches what the event is documented to mean:
+    -- the pressure went up a notch.
+    local previous = data.siegeStreak[territory.id] or 0
+    local streak = math.min(previous + 1, territory.siegeThreshold)
+
+    if streak > previous then
+        data.siegeStreak[territory.id] = streak
+        events.emit(events.ANCHOR_SIEGED, {
+            territory = territory.id,
+            streak = streak,
+            threshold = territory.siegeThreshold,
+        })
+    end
 
     if streak < territory.siegeThreshold then
         return

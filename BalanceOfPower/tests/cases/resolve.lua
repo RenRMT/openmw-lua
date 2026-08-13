@@ -3,6 +3,8 @@
 
 local expect = require('support.expect')
 
+local core = require('openmw.core')
+
 local config = require('scripts.BalanceOfPower.core.config')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
@@ -379,6 +381,47 @@ function M.siegeStreakClimbsWhileSurrounded()
     resolve.run(2, { 'town' })
 
     expect.equal(state.get().siegeStreak.town, 2, 'streak after two days')
+end
+
+--- The streak stops at the threshold. Past that point it changes
+-- nothing -- the anchor is rolled for every day it stays surrounded --
+-- and this fixture is the case that makes an unbounded count real: the
+-- town sits exactly midway between the two seats, so the incumbent wins
+-- the projection tie and can never actually be taken. Left to climb,
+-- that is a number growing forever in every save.
+function M.siegeStreakStopsAtTheThreshold()
+    anchorUnderSiege()
+    encircle(3)
+    resolve.setRandom(always(0.999))
+
+    local threshold = registry.territories.town.siegeThreshold
+    for day = 1, threshold + 20 do
+        resolve.run(day, { 'town' })
+    end
+
+    expect.equal(state.get().siegeStreak.town, threshold, 'streak is capped')
+end
+
+--- ANCHOR_SIEGED is documented as firing when the streak grows, so once
+-- the streak is capped it has nothing left to report. Without this, a
+-- permanently encircled town emits an event every day for the life of
+-- the save.
+function M.stopsReportingSiegesOnceTheStreakIsCapped()
+    anchorUnderSiege()
+    encircle(3)
+    resolve.setRandom(always(0.999))
+
+    local threshold = registry.territories.town.siegeThreshold
+    for day = 1, threshold do
+        resolve.run(day, { 'town' })
+    end
+    expect.count(core._test.eventsNamed('BoP_AnchorSieged'), threshold, 'one per notch')
+
+    core._test.reset()
+    for day = threshold + 1, threshold + 10 do
+        resolve.run(day, { 'town' })
+    end
+    expect.count(core._test.eventsNamed('BoP_AnchorSieged'), 0, 'silent once capped')
 end
 
 function M.siegeStreakResetsWhenReliefArrives()
