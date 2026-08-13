@@ -294,6 +294,56 @@ M.MIN_CLAIM_POWER = 5
 M.SURROUND_SHARE = 0.6
 
 --------------------------------------------------------------------------
+-- Patrols
+--------------------------------------------------------------------------
+--
+-- Patrols are the only way any of this is visible without a console. A
+-- player never reads a projection number; they notice that the road out
+-- of Balmora has Hlaalu guards on it and the road out of Ald-Ruhn does
+-- not, and that somewhere south of Ghostgate that stopped being true.
+--
+-- These govern the *decision* to spawn, which is all core/patrol.lua
+-- makes. Placing actors and clearing them up is a separate concern with
+-- separate constants.
+
+-- Chance that an eligible faction fields a patrol in a given cell on a
+-- given day. Rolled once per faction per cell per day, not per visit --
+-- see core/patrol.lua on why the roll is seeded rather than random.
+M.PATROL_SPAWN_CHANCE = 0.35
+
+-- Projection required before a faction patrols a cell it does not own.
+-- Only belligerent factions do this at all; it is what makes an invader
+-- appear on ground still held by somebody else, which is the visible
+-- signal that a border is under pressure.
+M.PATROL_MIN_PROJECTION = 5
+
+-- Projection per additional patrol member, above the first.
+M.PATROL_POWER_PER_MEMBER = 40
+
+-- However strong a faction becomes. A dozen guards on one road is a
+-- performance problem and reads as an army rather than a patrol.
+M.PATROL_MAX_MEMBERS = 4
+
+-- Projection per roster tier. Tier 1 is available everywhere a faction
+-- patrols at all; each further tier unlocks at another multiple of this,
+-- capped by what the faction's roster actually defines.
+--
+-- This is how strength scales, in preference to mutating an actor's
+-- level or stats. A record's level is one number among many -- health,
+-- attributes and skills do not follow it -- so scaling that way means
+-- hand-rolling character generation, while a roster tier is data a pack
+-- can author and read back.
+M.PATROL_POWER_PER_TIER = 60
+
+-- Days before the same cell will field another patrol.
+--
+-- Not primarily about density. Without it, walking out of a cell and
+-- back in is an unbounded source of gear and gold, because every patrol
+-- carries a vanilla record's inventory. The cooldown is what stops the
+-- spawn system being a loot printer.
+M.PATROL_COOLDOWN_DAYS = 3
+
+--------------------------------------------------------------------------
 -- Daily tick
 --------------------------------------------------------------------------
 

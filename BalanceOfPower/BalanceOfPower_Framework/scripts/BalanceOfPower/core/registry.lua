@@ -133,6 +133,48 @@ local function copyStrings(value, context, what)
     return out
 end
 
+--- A faction's patrol roster: record ids the framework never interprets,
+-- each carrying the tier at which it becomes available.
+--
+-- Two authoring forms, and the plain one is not a shortcut to be
+-- migrated away from. `'hlaalu guard'` is a tier-1 entry and reads
+-- better than `{ id = 'hlaalu guard', tier = 1 }` for the many factions
+-- whose patrols are all the same calibre; the table form is for the
+-- faction that fields something worse or better as its projection
+-- changes.
+--
+-- Tiers are numbers rather than names on purpose. A name is content --
+-- one pack's "veteran" is another's "housecarl" -- and the framework
+-- would then be storing a vocabulary it can't check and doesn't use.
+local function normalizeRoster(value, context)
+    if value == nil then
+        return {}
+    end
+    checkTable(value, context, 'patrolRoster')
+
+    local out = {}
+    for index, entry in ipairs(value) do
+        local what = string.format('patrolRoster[%d]', index)
+        if type(entry) == 'string' then
+            out[index] = { id = checkString(entry, context, what), tier = 1 }
+        elseif type(entry) == 'table' then
+            local tier = checkNumber(entry.tier, context, what .. '.tier', 1)
+            if tier < 1 then
+                fail(context, what .. '.tier must be 1 or greater')
+            end
+            out[index] = {
+                id = checkString(entry.id, context, what .. '.id'),
+                tier = math.floor(tier),
+            }
+        else
+            fail(context, string.format(
+                '%s must be a record id or { id = ..., tier = ... }, got %s',
+                what, type(entry)))
+        end
+    end
+    return out
+end
+
 --------------------------------------------------------------------------
 -- Power centers
 --------------------------------------------------------------------------
@@ -230,7 +272,7 @@ local function defineFaction(def, context, fallbackLandmass)
         hostile = def.hostile == true,
         landmass = landmass,
         powerCenters = normalizePowerCenters(def.powerCenters, ctx, nil, landmass),
-        patrolRoster = copyStrings(def.patrolRoster, ctx, 'patrolRoster'),
+        patrolRoster = normalizeRoster(def.patrolRoster, ctx),
         -- Authored reaction table, for factions with no ESM faction
         -- record to read reactions from. nil means "look the faction up
         -- in the game data instead" -- see power.reactionsFor.
@@ -260,7 +302,7 @@ local function prepareExtension(faction, def, context)
     return {
         powerCenters = normalizePowerCenters(def.powerCenters, ctx, faction.powerCenters,
             def.landmass or faction.landmass),
-        patrolRoster = copyStrings(def.patrolRoster, ctx, 'patrolRoster'),
+        patrolRoster = normalizeRoster(def.patrolRoster, ctx),
         reactions = def.reactions and checkTable(def.reactions, ctx, 'reactions') or nil,
     }
 end
@@ -270,13 +312,15 @@ local function applyExtension(faction, extension)
         faction.powerCenters[#faction.powerCenters + 1] = center
     end
 
+    -- Deduplicated by record id: two packs listing the same guard is
+    -- ordinary, and the entry that arrives first keeps its tier.
     local seen = {}
     for _, entry in ipairs(faction.patrolRoster) do
-        seen[entry] = true
+        seen[entry.id] = true
     end
     for _, entry in ipairs(extension.patrolRoster) do
-        if not seen[entry] then
-            seen[entry] = true
+        if not seen[entry.id] then
+            seen[entry.id] = true
             faction.patrolRoster[#faction.patrolRoster + 1] = entry
         end
     end

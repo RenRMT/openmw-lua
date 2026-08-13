@@ -139,16 +139,62 @@ move, seats do not.**
 
 ---
 
+---
+
+## Patrols
+
+**Patrol** — actors a faction puts on the ground it holds, and the only part of
+this system a player without a console ever sees. Nobody reads a projection
+number; they notice that the road out of Balmora has guards on it and that
+somewhere south of Ghostgate it stopped.
+
+**Roster** — the record ids a faction fields, authored by a content pack. The
+framework stores them and never looks inside one: what a `hlaalu guard` is, and
+which content file defines it, is the pack's business entirely. **A faction with
+an empty roster fields no patrols**, which is the whole opt-out — there is no
+flag for it.
+
+**Tier** — a number on a roster entry, gating it behind a projection threshold.
+Numbers rather than names because a name would be content: one pack's "veteran"
+is another's "housecarl". Entries at lower tiers stay in the pool, so a strong
+faction fields its best troops *alongside* its ordinary ones.
+
+**Belligerent / hostile** — a faction its pack flagged as one that fights.
+Defaults to nobody: Morrowind's Great Houses dislike each other without
+brawling in the street. A hostile faction attacks the player, and attacks any
+faction it *regards* at or below the hostility threshold — so who it fights
+comes from the reaction table rather than a second list.
+
+Note the direction. Hostility asks how the hostile faction feels about the
+other one, which is the outbound question against inbound storage: the value
+sits on the *other* faction's row.
+
+**Ambient growth** — power a faction gains each day with nobody doing anything
+(`growthPerDay`). It does not propagate through reactions, because a daily drip
+compounds where a one-off award does not — see the constant for the arithmetic.
+A faction that grows on its own is an ordinary faction with a number set, not a
+mode.
+
+---
+
 ## What the framework does not define
 
-The framework simulates influence and ownership. It has no vocabulary for, and
-takes no position on, what happens as a consequence:
+The framework simulates influence and ownership, and provides the mechanisms
+that make them observable. It has no vocabulary for, and takes no position on,
+what anyone does about them:
 
 - **sieges** and settlements changing hands by force
 - **invasion**, escalation stages, corruption of territory
-- **spawns** and patrols
+- what a patrol *is* — its records, its equipment, its dialogue
 
-Those are extensions. They read ownership, projection and surrounded status
-through the interface and keep their own state. If a term for one of them ends
-up in this file, the boundary has moved and that should be a deliberate
-decision rather than a drift.
+Those are extensions and content packs. They read ownership, projection,
+surrounded status and patrol plans through the interface and keep their own
+state. If a term for one of them ends up in this file, the boundary has moved
+and that should be a deliberate decision rather than a drift.
+
+**Patrols moved across this line deliberately**, in August 2026. The earlier
+rule was that anything acting on ownership was an extension, which put spawning
+outside; the rule now is that the framework owns the mechanisms that make
+ownership visible, and decides nothing about who or what. A territory system
+nobody can see is a spreadsheet. The test that keeps it honest is unchanged: no
+faction id, no record id, and no `if landmass ==` anywhere in `core/`.

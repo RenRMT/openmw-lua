@@ -124,7 +124,7 @@ I.BalanceOfPower.registerLandmass({
             id = 'hlaalu',                    -- matches the vanilla faction record id
             displayName = 'House Hlaalu',
             basePower = 50,
-            patrolRoster = { 'hlaalu guard' },
+            patrolRoster = { 'hlaalu guard' },   -- record ids, never inspected
             powerCenters = {
                 { id = 'balmora', tier = 'capital', coords = { x = -22000, y = -14000 },
                   cells = { '#-3,-2', '#-2,-2' } },
@@ -166,9 +166,15 @@ available as long as your pack loads after the framework.
 Anything with a default may be omitted.
 
 **Faction** — `id` (required), `displayName`, `territorial` (default `true`,
-see below), `basePower` (default 50), `landmass`, `powerCenters`,
-`patrolRoster`, `reactions` (only for factions with no ESM faction record —
-see below), `extend` (see below).
+see below), `basePower` (default 50), `growthPerDay` (default 0, see below),
+`hostile` (default `false`, see below), `landmass`, `powerCenters`,
+`patrolRoster` (see below), `reactions` (only for factions with no ESM faction
+record — see below), `extend` (see below).
+
+`growthPerDay` and `hostile` are base configuration like `basePower`: whichever
+pack registers a faction first owns them, and an extending pack setting either
+is ignored with a warning. Which pack won would otherwise depend on load
+order.
 
 **Power center** — `id` (required), `coords` (required, `{x=, y=}`),
 `tier` (`capital` | `regional` | `outpost` | `minor`, default `regional`),
@@ -276,17 +282,108 @@ luag require('openmw.interfaces').BalanceOfPower.dumpReactions()
 it. **A zero in either column is a faction standing outside the politics**,
 which produces no error and is close to invisible in play.
 
-#### One unverified assumption
+#### Records read outbound, and the documentation says otherwise
 
-Whether `core.factions.records[id].reactions` really reads inbound (*"how
-everyone else feels about me"*, which is how OpenMW documents it) or outbound
-(*"how I feel about everyone else"*, which is how the underlying ESM3 `FACT`
-record is conventionally read) has not been confirmed against a running game.
+Settled in-game on 2026-08-13 against the asymmetric Telvanni / Twin Lamps
+pair. `core.factions.records[id].reactions` is **"how I feel about everyone
+else"**, matching the ESM3 `FACT` record, whose ANAM/INTV pairs live on the
+faction's own record. OpenMW's documentation describes it the other way round.
 
-`config.RECORD_REACTIONS_ARE_INBOUND` selects it, so settling the question is a
-one-line change rather than an audit. Authored tables are unaffected — their
-convention is fixed at inbound. See the comment on that constant for the
-console command that answers it.
+The framework shipped the documented reading through phases 1–3 and propagated
+every asymmetric vanilla pair backwards. Nothing looked wrong: symmetric pairs
+behave identically either way, so only the magnitude of a handful of
+relationships was off.
+
+Record data is transposed on the way in, so everything downstream — including
+authored tables — uses the inbound convention above.
+`config.RECORD_REACTIONS_ARE_INBOUND` still selects it, because ESM4 content is
+read through a different code path and may not share ESM3's convention.
+
+**Reading it back out is the direction to be careful about.** Asking "how does
+A feel about B" means looking at *B's* row, which is why `regardOf(a, b)` is a
+function rather than a table you index. Getting it backwards never errors.
+
+### Patrols
+
+The framework decides *that* patrols happen; a content pack decides what they
+are. `planPatrol(territoryId, day)` returns the decision and creates nothing:
+
+```lua
+{ territory = 'west_gash_a4', day = 412, groups = {
+    { faction = 'hlaalu', projection = 61.2, count = 2, tier = 1,
+      records = { 'hlaalu guard', 'hlaalu guard' },
+      hostileToPlayer = false, fights = {} },
+} }
+```
+
+`records` are ids the pack authored, in whatever vocabulary its content files
+use. The framework has never looked inside one.
+
+Who is eligible, and they are different questions: **the owner** patrols ground
+it holds, and **a hostile faction** patrols anywhere it projects above
+`PATROL_MIN_PROJECTION`, held by somebody else or not. That second rule is what
+makes an invader visible on a border before it takes anything.
+
+**A faction with an empty roster fields no patrols.** That is the entire
+opt-out — no flag, no `territorial` check, nothing to remember.
+
+Size and strength both scale with projection: one more member per
+`PATROL_POWER_PER_MEMBER` up to a cap, and one more roster tier per
+`PATROL_POWER_PER_TIER` up to whatever the pack authored. Lower tiers stay in
+the pool, so a strong faction fields its best troops alongside its ordinary
+ones rather than an honour guard.
+
+#### The roll is seeded, not random
+
+`plan` is a pure function of `(territory, day)`. Re-entering a cell gives the
+same patrol back rather than a fresh roll, which matters for three separate
+reasons: patrols cannot be farmed for the gear and gold every vanilla record
+carries; a patrol despawned when its cell went quiet is the same patrol when
+the player returns; and a plan survives a save reload without the world
+rearranging itself.
+
+`PATROL_COOLDOWN_DAYS` handles the same risk across days — pass
+`{ lastSpawnedDay = n }` from whatever tracks live actors.
+
+### Hostility
+
+One rule at three settings, rather than three features:
+
+> A faction fights nobody unless its pack flagged it `hostile`. A flagged
+> faction attacks the player, and fights whoever it regards at or below
+> `HOSTILITY_REACTION_THRESHOLD`.
+
+So a hostile invader, a per-faction enemies list and an everyone-fights-everyone
+toggle (`ALL_FACTIONS_HOSTILE`) are the same rule read differently. None of them
+is a code path of its own.
+
+Defaulting to nobody is deliberate: Morrowind's Great Houses dislike each other
+without brawling in the street, and hostility derived from reaction values
+alone would have Redoran and Telvanni guards fighting everywhere the player
+looked. Even with `ALL_FACTIONS_HOSTILE` on, -3 is rare between vanilla
+factions — what emerges is the handful of real blood feuds, not a general war.
+
+`isHostile(a, b)` is asymmetric: a peaceful faction does not go looking for the
+fight it ends up in. `willFight(a, b)` is the symmetric question, and the one a
+spawn rule wants.
+
+The player has no reaction row, so the flag covers that relationship directly
+rather than adding a second field for a distinction no content has asked for.
+
+### Ambient growth
+
+`growthPerDay` on a faction definition is power gained each resolved day with
+nobody doing anything. Applied before the resolution batch opens, so the day's
+rolls see today's number.
+
+**It does not propagate through the reaction table**, and that default is worth
+understanding before changing it. Every faction in the Morrowind pack sits at
+-3 toward the Sixth House, so propagated growth at 1.5/day drains 0.225 from
+each of them daily against starting standings of 25–50. The whole political map
+reaches `MIN_POWER` within four to seven in-game months, every projection falls
+below `MIN_CLAIM_POWER`, and the world empties — while the growing faction
+gains nothing from it, since its reach is bounded by `influenceRange` rather
+than by power. `GROWTH_PROPAGATES` turns it on if you want it.
 
 ### Awarding power
 
@@ -296,7 +393,9 @@ I.BalanceOfPower.awardPower(factionId, baseDelta, playerRankMultiplier)
 
 Also available: `getPower`, `setPower`, `getOwner`, `getTerritory`,
 `getTerritoryForCell`, `getFaction`, `factionIds`, `territoryIds`,
-`getEffectivePower`, `getProjection`, `classify`, `getReach`, `getSettlement`,
+`regardOf`, `isHostile`, `willFight`, `isHostileToPlayer`, `enemiesOf`,
+`planPatrol`, `getEffectivePower`, `getProjection`, `classify`, `getReach`,
+`getSettlement`,
 `settlementIds`, `getSettlementOwner`, `isSurrounded`, `surroundedSince`,
 `getCurrentDay`, `powerSummary`, `reactionAudit`, `dumpReactions`, `dump`,
 `dumpMap`, `renderMap`, `isDebug`, and the `CELL_SIZE` constant.

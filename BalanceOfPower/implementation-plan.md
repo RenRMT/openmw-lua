@@ -187,23 +187,71 @@ owner".
 
 ---
 
-## Phase 4 — Spawn subsystem *(deferred by request)*
+## Phase 4 — Patrols
 
-Explicitly parked. Everything below it can proceed without it; the cost is that
-territory stays invisible in-world until it lands.
+Un-parked, and the framework's remit widened to take it. Phase 3a's rule was
+that anything acting on ownership is an extension, which put spawning outside;
+the rule now is that **the framework owns the mechanisms that make ownership
+observable, and decides nothing about who or what.** A territory system nobody
+can see is a spreadsheet. The cross-cutting test is unchanged: no faction id,
+no record id, no `if landmass ==` in `core/`.
 
-**Ships:** `core/spawn.lua`.
+### 4a — the decision layer ✅
 
-- Player cell entry looks up the territory, its owner, and spawns 1–3 roster
-  actors with a `Wander` package, friendly to the player.
-- Lighter spawn density on frontier cells than on settlements.
-- A `Combat` package instead of ambient wandering where a rival is already
-  present in contested ground.
+**Ships:** `core/patrol.lua`, `core/hostility.lua`, and ambient growth in
+`core/power.lua`.
 
-**Why here:** the first visible half of the mod, and it's only meaningful once
-ownership actually varies. Triggering on cell entry rather than on ownership
-change also keeps spawns tightly gated to player proximity, which is the main
-lever against the performance risk in doc 7.
+- `planPatrol(territoryId, day)` — who fields how many of what, and who fights
+  whom. Pure: it creates nothing and touches no actor.
+- Eligibility from two different questions. The owner patrols ground it holds;
+  a hostile faction patrols anywhere it projects above a floor, which is what
+  makes an invader visible on a border before it takes anything.
+- Roster tiers, so strength scales without mutating an actor's stats.
+- Hostility as one opt-in rule over the reaction table, replacing what was
+  scoped as three features.
+- `growthPerDay`, which is what makes the map move on its own.
+
+**Design decisions settled here:**
+
+- **A faction with an empty roster fields no patrols.** The whole opt-out, with
+  no flag and no `territorial` check.
+- **The spawn roll is seeded on `(territory, day)`, not random.** Without it,
+  re-entering a cell rerolls, and every patrol becomes a renewable source of
+  the gear and gold a vanilla record carries.
+- **Hostility defaults to nobody.** Derived from reaction values alone it would
+  have Redoran and Telvanni fighting in the street, which is wrong about
+  vanilla.
+- **Ambient growth does not propagate.** A daily drip through the reaction
+  table compounds where a one-off award does not; at the pack's own numbers it
+  empties the entire map inside an in-game year.
+- **Roster tiers are numbers, not names.** A name would be content.
+
+**Two bugs the tests caught**, both of which produce a plausible-looking world
+rather than an error:
+
+- The spawn seed was built as `"territory@day"`, which left the hash nearly
+  linear in the day — consecutive days landed 0.000008 apart, so a cell stayed
+  lucky or unlucky for hundreds of days and the map had almost no patrols on
+  it. The day goes first now.
+- `build.factionsFor` in the Morrowind pack copied a hand-listed set of fields
+  and had been silently dropping `patrolRoster` for as long as the field
+  existed.
+
+### 4b — the actor layer *(blocked)*
+
+**Ships:** the module that creates, places and clears up actors, plus the
+framework's first `PLAYER` script.
+
+Blocked on engine facts that can't be settled headlessly: whether runtime NPC
+records survive a save, whether AI `fight` is settable, whether GameObjects can
+live in `onSave` data, and whether teleport-into-cell places reliably.
+
+It also forces a two-script design: navmesh queries are in `openmw.nearby`
+(local context) and `world.createObject` is global, so placement is decided
+player-side and creation happens global-side. That is what settles the ocean
+question — spawning only in owned cells excludes almost all water already, and
+a navmesh check covers the coastal remainder without an authored exclusion
+list.
 
 ---
 
@@ -223,26 +271,33 @@ faction map). That makes it lower value per hour than phase 6.
 
 ---
 
-## Phase 6 — Invasion subsystem
+## Phase 6 — Invasion subsystem *(dissolved)*
 
-**Ships:** a separate mod. Not `core/invasion.lua` — the framework no longer
-knows what an invasion is. The Sixth House exists in the Morrowind pack as an
-ordinary faction; everything that acts on it lives here.
+**There is no invasion mod.** The subsystem turned out to be two fields on an
+ordinary faction, which is the strongest possible version of the claim this
+phase existed to test — an invader isn't a specialization of the faction
+engine, it's a faction with different numbers.
 
-- Ambient power growth on a curve, independent of player action.
-- Escalation stages gating spawn radius, roll frequency and roster tier.
-- Corruption on a won territory — a flag distinct from plain ownership — held
-  in the extension's own state, not the framework's.
-- Taking settlements, if it wants to. The framework will not do it.
-- Amplified counter-play: player kills and quest completions against the
-  invader push its power back at a higher rate than ordinary awards.
+The Sixth House in the Morrowind pack carries `growthPerDay = 1.5` and
+`hostile = true`, and everything the phase was scoped to build falls out:
 
-It reads ownership, projection and `isSurrounded` through the interface, writes
-through `awardPower`, and runs off `BoP_DayResolved`.
+- **Ambient growth on a curve** — the field.
+- **Escalation stages** — emergent. Projection is power scaled by distance
+  decay, so at low standing the Sixth House reaches barely past Red Mountain
+  and its patrols appear near Ghostgate; the radius grows with its power. No
+  stage table.
+- **Spawn radius and roster tier gated by strength** — both already scale with
+  projection, for every faction equally.
+- **Taking settlements** — it can't, and neither can anyone. Not a gap.
 
-**Why last:** it's a specialization of phases 1–5, and building it last is what
-proves the claim. If it needs new engine code rather than new configuration,
-the abstraction has a gap.
+What's genuinely gone rather than absorbed: **corruption**, a flag distinct
+from ownership, with the services and ambience changes that would follow. If it
+ever gets built it belongs in an extension over `BoP_DayResolved` and the
+ownership map, and needs nothing from the framework it doesn't already expose.
+
+Also still missing: **counter-play**. Nothing pushes the Sixth House back, so
+its power only ever climbs. That's phase 5's quest hooks, which makes phase 5
+the thing standing between this and a playable arc.
 
 ---
 

@@ -11,12 +11,13 @@ Near-term and actionable. The full phase breakdown is in
 | 1 — Framework skeleton | Done, **confirmed working in-game** |
 | 2 — Resolution loop | Done, tested, **never run in-game** |
 | 3 — Morrowind pack + frontier generator | Done, tested, **never run in-game** |
-| 4 — Spawns | Parked by request |
-| 5 — Player hooks | Not started; commerce dropped |
-| 6 — Invasion | Not started — **recommended next**, as a separate mod |
+| 4a — Patrol decisions, hostility, growth | Done, tested, **never run in-game** |
+| 4b — Spawning actual actors | **Blocked** on engine verification — see below |
+| 5 — Player hooks | Not started — **recommended next**; commerce dropped |
+| 6 — Invasion | **Dissolved.** It was two fields on a faction |
 | 7 — Tuning and UX | Not started |
 
-**120 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
+**158 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
 that loads the real Morrowind pack through its own `main.lua` headlessly. What
 tests cannot cover: whether the faction ids match real ESM records, whether the
 derived map looks right against the actual game world, and first-tick timing
@@ -34,8 +35,13 @@ Three mods, all on branch `feat/balance-of-power-framework`:
 While a territory's owner is also its strongest projector, **no rival roll
 happens at all**. Rolls decide how long a takeover takes, not who wins it.
 Territory only moves when the projection ordering changes, which happens when
-faction power moves. A static map is the correct behaviour right now, because
-nothing yet moves power on its own — that arrives with phase 6.
+faction power moves.
+
+The map is no longer static: the Sixth House carries `growthPerDay = 1.5`, so
+it strengthens every day and its border creeps outward on its own. It cannot
+reach Vvardenfell proper — influence decays to exactly zero at `influenceRange`,
+so Balmora isn't far away, it's unreachable — and nothing pushes it back yet,
+which is phase 5's job.
 
 ---
 
@@ -87,10 +93,21 @@ Then check, in the log or via `luag`:
    pass. If there's a visible hitch, `FRONTIER_CELLS_PER_UNIT = 2` cuts the
    count roughly fourfold.
 
-Then let a week of game time pass and see whether anything moves. With no
-player influence and nothing growing the Sixth House, the answer *should* be "almost
-nothing" — power is static, so the projection ordering never changes. Territory
-moving on its own at this stage would be a bug.
+6. **Does `dump()` show the Sixth House as hostile, and with the right
+   enemies?** The line now carries `[+1.50/day]` and `[hostile: ...]`. A
+   hostile faction with an empty enemy list is the failure worth catching — it
+   looks identical to a working one until you watch its patrols ignore a rival.
+   The suite pins the list against the pack data, but only the game can confirm
+   the reaction rows behind it come out as expected once real ESM records are
+   merged in.
+
+Then let a week or two of game time pass. Unlike previous phases, **something
+should move**: the Sixth House gains 1.5 power a day, so its projection grows
+and the cells around Red Mountain change hands. Everything else should stay put
+— nothing else grows, and no other faction's ordering changes.
+
+If the whole map starts emptying instead, `GROWTH_PROPAGATES` has been turned
+on; see the constant.
 
 ---
 
@@ -133,55 +150,44 @@ weak reach and Hlaalu short strong reach without touching the framework.
 
 ## Step 2 — Pick the next system
 
-Phase 4 is parked, so there are two candidates. They're independent.
+### Phase 4b — spawning actual actors *(blocked)*
 
-### Phase 6 — the invasion subsystem *(recommended)*
+The decision layer is done and tested; what's left touches the engine and can't
+be settled from here. Four facts to check in-game, in order of how much depends
+on them:
 
-**A separate mod**, not `core/invasion.lua`. The framework no longer knows what
-an invasion is, and shouldn't: escalation, corruption and taking settlements
-are mechanics, and the framework's remit is influence and ownership.
+1. **Do runtime-created NPC records survive a save/load?** Decides whether a
+   pack can make generic actors in Lua at all, or must ship them in its own
+   `.omwaddon`. A save containing actors whose records vanish on reload is a
+   broken save, not a cosmetic bug.
+2. **Is an actor's AI `fight` value settable?** If so, hostility should set it
+   and let the engine handle approach and re-aggro. If not, it's a `Combat`
+   package, and hostile actors charge across the cell like missiles.
+3. **Can GameObjects live in `onSave` data?** Decides whether despawn tracking
+   survives a reload or has to be rebuilt by sweeping `world.activeActors`.
+4. **Does teleporting a created object into a cell place it correctly?**
+   GitLab #7453 is a leveled-list bug, but it's close enough to this path to be
+   worth five minutes.
 
-The Sixth House is already an ordinary faction in the Morrowind pack, holding
-Red Mountain and reaching barely past it. What the invasion mod adds is
-everything that acts on that.
+Then it needs the framework's first `PLAYER` script: navmesh queries are in
+`openmw.nearby` (local context) and `world.createObject` is global, so
+placement is decided player-side and creation happens global-side.
 
-It reads through the interface — `getOwner`, `getEffectivePower`, `getReach`,
-`classify`, `isSurrounded`, `surroundedSince` — writes through `awardPower`,
-and runs off `BoP_DayResolved`. It keeps its own state in its own global
-script's `onSave`/`onLoad`.
+**Also still content work:** only the Sixth House has a patrol roster. The
+eight vanilla factions need real record ids, and those have to be verified
+against the game rather than guessed — a wrong id fails silently, since the
+framework never inspects one. Until then those factions field nothing, which
+is the empty-roster rule working as intended.
 
-The data that used to live in `data/invasions/sixth_house.lua`, kept here
-because it's the only place it now exists:
-
-```lua
-growthPerDay = 1.5,                     -- ~3 weeks to raiding, ~4 months to overrunning
-homeTerritories = { 'dagoth_ur' },
-escalationThresholds = {
-    { stage = 'stirring',    power = 30 },
-    { stage = 'raiding',     power = 60 },
-    { stage = 'encroaching', power = 100 },
-    { stage = 'overrunning', power = 150 },
-},
-```
-
-The patrol roster moved onto the faction in `data/factions.lua` and is still
-carried by the framework.
-
-**Why this one:** it's the first thing that makes the map move on its own, so
-it's the first time the simulation is worth watching without a debug key. It's
-also the sharpest test of the boundary — if an invasion can be built entirely
-on top of the interface, the split is real.
-
-**The first thing to check when building it:** whether `BoP_DayResolved` is
-delivered soon enough to be useful, and whether the one-day lag from queued
-event delivery matters. If it does, poll `getCurrentDay()` instead.
-
-### Phase 5 — player influence hooks
+### Phase 5 — player influence hooks *(recommended)*
 
 Quest completion and faction rank feeding `awardPower`. Commerce is dropped.
 
-**Why not first:** it needs an authored quest → faction map, which is a lot of
-data entry for a mechanism that's already proven (`awardPower` works).
+**Why this one now:** the Sixth House grows every day and nothing pushes back,
+so the only arc currently available is a slow slide. Counter-play is what makes
+ambient growth a story rather than a countdown. It needs an authored quest →
+faction map, which is data entry, but the mechanism underneath it already works
+and is tested.
 
 ---
 

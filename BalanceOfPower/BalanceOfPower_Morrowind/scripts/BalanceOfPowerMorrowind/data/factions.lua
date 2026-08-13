@@ -191,11 +191,20 @@ return {
         -- becomes, so Balmora is not far away, it is unreachable. The
         -- Sixth House saturates its own country and stops.
         --
-        -- The reaction table is what will make that invasion cost
-        -- everybody something without a line of special-casing: every
-        -- faction hates the Sixth House, so its growth is automatically
-        -- their loss and its setbacks automatically their relief. The
-        -- other half of the relationship is on every faction above,
+        -- The reaction table does two jobs here. It decides who the
+        -- Sixth House attacks -- everyone it regards at -3, which is
+        -- everyone except the Ashlanders and the Camonna Tong -- and it
+        -- makes any *awarded* change to its standing cost or relieve
+        -- everybody else without a line of special-casing.
+        --
+        -- Its daily growth deliberately does not propagate. A drip
+        -- through a table where every entry is -3 compounds until the
+        -- whole map is at zero power; see GROWTH_PROPAGATES. The
+        -- Sixth House costing everyone something is a thing that happens
+        -- when the world acts on its behalf, not something that accrues
+        -- while nobody is looking.
+        --
+        -- The other half of the relationship is on every faction above,
         -- which carries a `sixth house` entry of its own.
         --
         -- Authored rather than left to the game's data, because "the
@@ -240,13 +249,22 @@ return {
             ['morag tong'] = -2,
         },
         -- Vanilla record ids, reused as-is. Nothing here needs the
-        -- Construction Set. Carried for a spawn system to read; the
-        -- framework only stores it.
+        -- Construction Set.
+        --
+        -- Tiered, so what appears gets worse as the Sixth House grows
+        -- rather than being the same on the first day and the last. The
+        -- lower tiers stay in the pool at every tier above them: an
+        -- ascended sleeper leading a knot of ash slaves reads as a cult
+        -- gaining ground, where four of them together reads as a boss
+        -- fight nobody arranged.
+        --
+        -- Tiers are numbers because the framework has no vocabulary for
+        -- them. What "tier 3" means is entirely this file's business.
         patrolRoster = {
-            'ash zombie',
-            'ash ghoul',
             'ash slave',
             'corprus stalker',
+            { id = 'ash zombie', tier = 2 },
+            { id = 'ash ghoul', tier = 3 },
         },
     },
     {

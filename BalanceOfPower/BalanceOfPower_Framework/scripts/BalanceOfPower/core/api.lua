@@ -14,6 +14,7 @@ local frontier = require('scripts.BalanceOfPower.core.frontier')
 local hostility = require('scripts.BalanceOfPower.core.hostility')
 local log = require('scripts.BalanceOfPower.core.log')
 local mapdump = require('scripts.BalanceOfPower.core.mapdump')
+local patrol = require('scripts.BalanceOfPower.core.patrol')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -33,9 +34,11 @@ local M = {
     --    getSettlement, settlementIds, getSettlementOwner. classify()
     --    returns a four-way partition and isSurrounded takes a
     --    settlement id.
-    -- v5 added ambient growth (growthPerDay on a faction definition) and
+    -- v5 added ambient growth (growthPerDay on a faction definition),
     --    hostility (hostile on a faction definition; isHostile,
-    --    willFight, isHostileToPlayer, enemiesOf, regardOf).
+    --    willFight, isHostileToPlayer, enemiesOf, regardOf) and patrol
+    --    planning (planPatrol; patrolRoster entries may now carry a
+    --    tier).
     version = 5,
 
     -- Event name constants, so listeners don't hardcode the strings.
@@ -281,6 +284,34 @@ end
 -- hates enough -- which is worth checking after flagging one.
 function M.enemiesOf(factionId)
     return hostility.enemiesOf(factionId)
+end
+
+--------------------------------------------------------------------------
+-- Patrols
+--------------------------------------------------------------------------
+
+--- What should be standing in a territory on a given day, or nil.
+--
+--   { territory, day, groups = { {
+--       faction, projection, count, tier,
+--       records = { recordId, ... },       -- exactly `count` of them
+--       hostileToPlayer,
+--       fights = { factionId, ... },       -- other groups in this plan
+--   }, ... } }
+--
+-- Decisions only: this creates nothing and touches no actor. `records`
+-- are the ids the faction's pack authored, in whatever vocabulary its
+-- content files use, and the framework has never looked inside them.
+--
+-- The answer is stable for a given territory and day rather than rolled
+-- fresh, so re-entering a cell gives the same patrol back instead of a
+-- new one -- without which every patrol would be a renewable source of
+-- whatever its records happen to carry.
+--
+-- @param opts table|nil { lastSpawnedDay = number } to apply the
+--        per-cell cooldown; omit if nothing has spawned here
+function M.planPatrol(territoryId, day, opts)
+    return patrol.plan(territoryId, day, opts)
 end
 
 --------------------------------------------------------------------------

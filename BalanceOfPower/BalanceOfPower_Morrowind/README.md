@@ -187,8 +187,56 @@ The numbers most worth touching, in order of effect:
    ~1.5 cells of reach.
 2. **`basePower` per faction**, in `data/factions.lua`. Pure guesswork until
    played.
-3. **The Sixth House's `basePower`**, which is where an invasion extension
-   would start pushing from.
+3. **The Sixth House's `growthPerDay`** (1.5), which sets the pace of the only
+   thing on the map that moves on its own. At this rate it doubles its standing
+   in about three weeks and holds every cell it can reach within a few months.
+   Nothing pushes back yet, so this is a countdown rather than a contest until
+   the player-influence hooks land.
+
+## The Sixth House
+
+Not a subsystem, and there is no invasion mod. It is an ordinary faction with
+two fields set:
+
+```lua
+growthPerDay = 1.5,     -- gains power whether or not anyone is watching
+hostile = true,         -- attacks the player, and everyone it regards at -3
+```
+
+Everything that was scoped as an invasion falls out of those. **Escalation is
+emergent:** projection is power scaled by distance decay, so at low standing it
+reaches barely past Red Mountain and its patrols appear near Ghostgate, and the
+radius grows with its power. There is no stage table because there is nothing
+for one to gate.
+
+**It cannot take Vvardenfell**, and not because a rule forbids it. Influence
+decays to exactly zero at `influenceRange` no matter how strong a faction
+becomes, so Balmora is not far away — it is unreachable. The Sixth House
+saturates its own country and stops.
+
+Its enemies come from the reaction table rather than a list: everyone it
+regards at -3, which is every faction except the Ashlanders and the Camonna
+Tong, both authored at -2. No other faction in this pack is flagged hostile, so
+the Great Houses go on tolerating each other exactly as they do in vanilla.
+
+### Patrol rosters
+
+Only the Sixth House has one, tiered so that what appears gets worse as it
+grows:
+
+| Tier | Records |
+|---|---|
+| 1 | `ash slave`, `corprus stalker` |
+| 2 | `ash zombie` |
+| 3 | `ash ghoul` |
+
+Lower tiers stay in the pool at every tier above, so a strong Sixth House
+fields an ash ghoul leading a knot of slaves rather than four ghouls together.
+
+**The eight vanilla factions have no rosters yet**, so they field no patrols —
+that is the empty-roster rule, not an oversight, but it is the pack's main
+remaining content job. It needs real NPC record ids verified against the game:
+the framework never inspects a record id, so a wrong one fails silently.
 
 ## Layout
 

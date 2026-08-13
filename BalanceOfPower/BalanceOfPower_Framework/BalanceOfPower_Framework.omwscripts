@@ -1,7 +1,7 @@
 # Balance of Power -- framework core.
 #
 # Ships no factions and no territories. Content comes from separate
-# data packs that call registerLandmass / registerInvasion through the
+# data packs that call registerLandmass / generateFrontier through the
 # BalanceOfPower interface, and every one of those packs must load
 # AFTER this file.
 

@@ -57,9 +57,9 @@ function M.runDay(day)
 
     -- After the commit, so a listener that reads power back sees settled
     -- numbers. This is the scheduling hook every extension runs from --
-    -- an invasion growing, a spawn system ageing its own state -- and it
-    -- is the only thing the framework offers in place of the mechanics
-    -- that used to live inside this function.
+    -- a corruption mechanic reacting to a flip, a quest system ageing
+    -- its own state -- and it is the only thing the framework offers in
+    -- place of the mechanics that used to live inside this function.
     events.emit(events.DAY_RESOLVED, { day = day })
 
     if config.DEBUG_DAILY_SUMMARY and registry.countFactions() > 0 then

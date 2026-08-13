@@ -6,9 +6,13 @@
 -- 1. Reaction propagation. A faction's power change drags every other
 --    faction along with it, scaled by how that *other* faction feels
 --    about the one that moved. Reading the direction the right way round
---    is what makes the Sixth House story work for free: everyone hates
---    them, so their growth is everyone else's loss, with no special
---    casing anywhere in the invasion code.
+--    is what makes an invader's story work for free: everyone hates
+--    them, so an award in their favour is everyone else's loss, with
+--    nothing anywhere special-casing them.
+--
+--    Ambient growth is the deliberate exception -- see applyDailyGrowth,
+--    and the arithmetic on GROWTH_PROPAGATES for why a daily drip
+--    through this table is not the same thing as an award.
 --
 -- 2. Batching. The resolution loop evaluates many rolls per pass, and
 --    every roll reads power. If a flip resolved early in the pass
