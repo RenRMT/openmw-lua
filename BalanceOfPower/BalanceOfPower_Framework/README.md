@@ -14,10 +14,10 @@ Phases 1–3 of [the implementation plan](../implementation-plan.md); see
 [next-steps.md](../next-steps.md) for what comes next. The simulation logic has
 unit tests — see [tests/](../tests/README.md).
 
-For real content, enable [BalanceOfPower_Morrowind](../BalanceOfPower_Morrowind/README.md).
-For a small synthetic world plus an on-screen debug console, enable
-[BalanceOfPower_DevSandbox](../BalanceOfPower_DevSandbox/README.md) instead —
-**not both**, since they define the same factions.
+For content, enable [BalanceOfPower_Morrowind](../BalanceOfPower_Morrowind/README.md).
+For hotkeys and on-screen readouts over whatever content is loaded, add
+[BalanceOfPower_DevSandbox](../BalanceOfPower_DevSandbox/README.md) on top — it
+registers nothing of its own, so it composes with any content pack.
 
 What exists:
 

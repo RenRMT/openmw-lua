@@ -1,58 +1,44 @@
-# Balance of Power — Dev Sandbox
+# Balance of Power — Debug Overlay
 
-A throwaway content pack plus an on-screen debug console: a world small enough
-to hold in your head, where every mechanic can be triggered on a keypress and
-the consequences fit in one message box.
+Hotkeys and on-screen readouts for whatever Balance of Power content you have
+loaded. It **registers nothing** — no factions, no territory, no invasion — so
+it sits on top of the [Morrowind pack](../BalanceOfPower_Morrowind/README.md),
+or any other content pack, rather than competing with it for faction ids.
 
-The [Morrowind pack](../BalanceOfPower_Morrowind/README.md) is what you want for
-real content. This is what you want when something is behaving oddly and you
-need to isolate it.
+Nothing in it names a faction. The power keys work out what to push from the
+ground the player is standing on, which is both content-agnostic and the fastest
+way to make the simulation do something visible.
 
-> **Don't enable this in a playthrough you care about.** It registers fictional
-> territory and writes simulation state into your save.
->
-> **Do not enable it alongside `BalanceOfPower_Morrowind`.** Both define
-> `hlaalu` and the Sixth House, and redefining a faction is an error rather
-> than a silent overwrite — whichever loads second will fail to register. Pick
-> one: the sandbox for a small world with a debug console, the Morrowind pack
-> for real content.
+> Safe to leave enabled while testing, but it writes power changes and forced
+> days into your save, so don't use it in a playthrough you care about.
 
 ## Setup
 
-Add both mods to `openmw.cfg`, **framework first**:
+Add to `openmw.cfg`, **framework first, this one last**:
 
 ```ini
 data="D:\projects\openmw-lua\BalanceOfPower\BalanceOfPower_Framework"
+data="D:\projects\openmw-lua\BalanceOfPower\BalanceOfPower_Morrowind"
 data="D:\projects\openmw-lua\BalanceOfPower\BalanceOfPower_DevSandbox"
 
 content=BalanceOfPower_Framework.omwscripts
+content=BalanceOfPower_Morrowind.omwscripts
 content=BalanceOfPower_DevSandbox.omwscripts
 ```
 
-Order matters: the sandbox reads the framework's interface at load, and fails
-with an explicit message if the framework hasn't loaded yet.
-
-Load a save. You should see a message listing the hotkeys, and this in
-`openmw.log`:
-
-```
-[BalanceOfPower] framework initialized (interface v1)
-[BalanceOfPower] registered landmass "dev_sandbox": 3 factions, 3 anchors, 4 frontier cells
-[BalanceOfPower] registered invasion "dev_sixth_house" (faction "sixth house"): 1 home territories, 4 stages
-```
-
-`reloadlua` in the console restarts all Lua scripts without restarting the
-game, which makes the edit/test loop fast.
+It only needs the framework to have loaded, but putting it last keeps the
+ordering obvious. `reloadlua` in the console restarts all Lua without restarting
+the game, which makes the edit/test loop fast.
 
 ## Hotkeys
 
 | Key | Does |
 |---|---|
-| `Ctrl+1` | Show the whole map: who holds what, and what's contested |
-| `Ctrl+2` | Dump the simulation — standings on screen, full detail to the log |
+| `Ctrl+1` | Draw the map to `openmw.log` (`Ctrl+Shift+1` cycles owner → projection → contest) |
+| `Ctrl+2` | Standings: power and territory count per faction |
 | `Ctrl+3` | Resolve one in-game day now (`Ctrl+Shift+3` for seven) |
-| `Ctrl+4` | Push the raiders +50 (`Ctrl+Shift+4` for −50) — moves the front |
-| `Ctrl+5` | Award +25 power to Hlaalu (`Ctrl+Shift+5` for −25) |
+| `Ctrl+4` | Push whoever **holds** the ground you're standing on, +50 (`Shift` for −50) |
+| `Ctrl+5` | Push whoever is about to **take** it, +50 (`Shift` for −50) |
 | `Ctrl+6` | Toggle the live event feed |
 | `Ctrl+7` | Attempt a deliberately invalid registration |
 
@@ -60,93 +46,62 @@ The number row rather than the function keys: Morrowind already uses F1–F12 fo
 quick slots, quicksave, quickload and screenshots, and the engine acts on those
 whether or not a modifier is held.
 
-Walking between cells also prints the territory you're standing in, who holds
-it, and every faction's projection onto it — the sandbox covers Balmora
-(`-3,-2`), Seyda Neen (`-2,-9`), Red Mountain (`2,4`) and four frontier cells
-around the first two.
+Walking between cells also reports the territory you've entered, who holds it,
+how contested it is, and every faction's projection onto it.
 
-## The map
+## The loop that shows the simulation working
 
-Nothing here has an authored owner except Red Mountain. The starting map is
-derived from where the power centers are, on the first tick. Projections at
-base power (Hlaalu 55, Legion 50, raiders 25):
+Territory only moves when the *projection ordering* changes. So:
 
-| Territory | Cell | Hlaalu | Legion | Raiders | Starts as |
-|---|---|---|---|---|---|
-| Balmora (city) | `-3,-2` | 55.0 | 1.7 | 0 | Hlaalu |
-| West Gash approach | `-4,-2` | 47.5 | 0.3 | 0 | Hlaalu |
-| Odai headwaters | `-3,-3` | 47.5 | 8.5 | 2.3 | Hlaalu |
-| Bitter Coast north | `-2,-8` | 9.3 | 43.2 | 13.6 | Legion |
-| Bitter Coast east | `-1,-9` | 0.3 | 43.2 | 4.9 | Legion |
-| Seyda Neen (town) | `-2,-9` | 1.9 | 50.0 | 8.0 | Legion |
-| Red Mountain (city) | `2,4` | 0 | 0 | 0 | Sixth House *(authored)* |
+1. Walk to a border — the cell readout says `contested by: …` when you're on one.
+   `Ctrl+Shift+1` twice gets you the `contest` map, which shows where they are.
+2. `Ctrl+5` once or twice to push the challenger.
+3. `Ctrl+3` a few times to run days.
+4. `Ctrl+1` between each to watch the front move.
 
-The raiders are camped at `-3,-6`, between the two settlements, with a shorter
-reach. At rest they contest nothing. Push them and their projection walks
-outward:
-
-- **~80 power** — they out-project the Legion at Bitter Coast north and take it
-  within a day or two.
-- **~165 power** — Bitter Coast east falls too. Seyda Neen is now surrounded on
-  both its frontier cells, so its siege streak starts climbing (`Ctrl+6` to
-  watch the `BoP_AnchorSieged` events).
-- **three more days** — the streak clears the town's threshold and Seyda Neen
-  can be rolled for, with the Legion's projection doubled by the town's defence
-  multiplier. It takes a while. That's the point.
-
-`Ctrl+4` four times then `Ctrl+Shift+3` a few times walks the whole
-sequence. `Ctrl+1` between each shows where the front is.
-
-Balmora is a `city`, with a much steeper defence multiplier and a higher siege
-threshold — it should be effectively untakeable this way, which is the intended
-behaviour (design doc 3.4 reserves real city flips for the invasion subsystem).
+`Ctrl+4` pushes the other way, so you can shove a border back and forth and
+watch the cooldown hold ground that has just changed hands.
 
 ## What each control actually tests
 
-**`Ctrl+5` — reaction propagation.** Hlaalu gains 10, and every other faction
-moves too, scaled by how it feels about Hlaalu. The Imperial Legion and Hlaalu
-values come from the game's own faction records; Sandbox Raiders has no ESM
-record at all and uses an authored reactions table instead. Both paths run
-through the same math, which is the claim in design doc 3.5. Turn on the event
-feed (`Ctrl+6`) first to watch each faction move individually.
+**`Ctrl+4` / `Ctrl+5` — reaction propagation.** Pushing one faction moves every
+other faction too, scaled by how each feels about it. With the event feed on
+(`Ctrl+6`) you see them move individually. Factions with a real faction record
+read their reactions from the game's data; ones without use an authored table —
+both go through identical math, which is the claim in design doc 3.5.
 
-**`Ctrl+3` — the day tick.** The scheduled tick only fires when the game
-calendar rolls over, so without this you'd have to sleep. Note it runs the
-simulation *ahead* of game time, so the scheduled tick then idles until real
-time catches up; a forced day is a real day, not a bonus one.
+**`Ctrl+3` — the day tick.** The scheduled tick only fires when the game calendar
+rolls over, so without this you'd have to sleep. It runs the simulation *ahead*
+of game time, and the scheduled tick then idles until real time catches up: a
+forced day is a real day, not a bonus one.
 
-**`Ctrl+4` then `Ctrl+1` — territory resolution.** The core of phase 2. See
-the map section above for the thresholds. Two behaviours worth confirming
-specifically: a cell whose owner is *also* the strongest projector is never
-rolled for at all, and a cell that has just changed hands is protected by its
-cooldown even if the balance immediately swings back.
+**`Ctrl+1` — resolution.** Two behaviours worth confirming specifically: a cell
+whose owner is *also* its strongest projector is never rolled for at all, and a
+cell that has just changed hands is protected by its cooldown even if the
+balance immediately swings back. Both look like bugs and are not.
 
-**`Ctrl+7` — validation and blast radius.** Tries to register Hlaalu a second
-time without `extend = true`. It should be rejected with a message naming the
-faction, and the standings printed afterwards should be unchanged — proving a
-bad pack can't half-register or take the framework down with it.
+**`Ctrl+7` — validation and blast radius.** Tries to re-register an
+already-registered faction without `extend = true`. It should be rejected with a
+message naming the faction, and the standings printed afterwards should be
+unchanged — proving a bad pack can't half-register or take the framework down
+with it.
 
-**Cell walking — the cell index.** Confirms cells map to territories and that
-ownership defaults were seeded from the static definitions.
+**Cell walking — the cell index and projection cache.** Confirms cells map to
+territories, and shows the numbers that actually decide ownership.
 
-**Save, quit, reload** — standings should survive, which is the `onSave`/
-`onLoad` path plus `fillDefaults` seeding anything new.
-
-Red Mountain is deliberately declared with `defaultOwner = 'sixth house'`
-*before* `registerInvasion` creates that faction. The reference check runs on
-the first tick, once every pack has loaded, so this should produce **no**
-warning. A warning there would be a bug.
+**Save, quit, reload** — standings and ownership should survive, which is the
+`onSave`/`onLoad` path plus `fillDefaults` seeding anything new.
 
 ## Console
 
-The framework's interface is reachable from the in-game console in global
-context:
+Everything here is also reachable from the console in global context, without
+the overlay loaded at all:
 
 ```
+luag require('openmw.interfaces').BalanceOfPower.dumpMap({ mode = 'projection' })
 luag require('openmw.interfaces').BalanceOfPower.dump()
-luag require('openmw.interfaces').BalanceOfPower.awardPower('hlaalu', 25)
-luag require('openmw.interfaces').BalanceOfPower.forceDay(3)
-luag print(require('openmw.interfaces').BalanceOfPower.powerSummary())
+luag require('openmw.interfaces').BalanceOfPower.forceDay(7)
+luag require('openmw.interfaces').BalanceOfPower.awardPower('hlaalu', 50)
 ```
 
 (`luag` is short for `lua global`; there's also `luap` for player context.)

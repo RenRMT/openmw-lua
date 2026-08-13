@@ -43,6 +43,7 @@ SEARCH_ROOTS = [
     # Content packs, so their real main.lua can be required and exercised
     # exactly as the engine would load it.
     PROJECT / "BalanceOfPower_Morrowind",
+    PROJECT / "BalanceOfPower_DevSandbox",
     TESTS / "stubs",
     TESTS,
 ]

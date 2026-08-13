@@ -16,7 +16,7 @@ Near-term and actionable. The full phase breakdown is in
 | 6 — Invasion subsystem | Not started — **recommended next** |
 | 7 — Tuning and UX | Not started |
 
-**86 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
+**97 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
 that loads the real Morrowind pack through its own `main.lua` headlessly. What
 tests cannot cover: whether the faction ids match real ESM records, whether the
 derived map looks right against the actual game world, and first-tick timing
@@ -26,10 +26,8 @@ Three mods, all on branch `feat/balance-of-power-framework`:
 
 - `BalanceOfPower_Framework` — content-free engine
 - `BalanceOfPower_Morrowind` — Vvardenfell and Solstheim
-- `BalanceOfPower_DevSandbox` — small synthetic world with a debug console
-
-The Morrowind pack and the dev sandbox are **mutually exclusive** — both define
-`hlaalu` and the Sixth House, and redefinition is an error by design.
+- `BalanceOfPower_DevSandbox` — debug overlay; registers no content, so it
+  composes with any content pack
 
 ### The one thing most likely to confuse a newcomer
 
@@ -43,8 +41,9 @@ nothing yet moves power on its own — that arrives with phase 6.
 
 ## Step 0 — Load the Morrowind pack and look at the map
 
-Enable `BalanceOfPower_Framework` then `BalanceOfPower_Morrowind` — **not** the
-dev sandbox, which defines the same factions and will collide.
+Enable `BalanceOfPower_Framework`, then `BalanceOfPower_Morrowind`, then
+`BalanceOfPower_DevSandbox` for the hotkeys. The overlay registers no content of
+its own, so it composes with the pack rather than colliding with it.
 
 At load you should see roughly:
 

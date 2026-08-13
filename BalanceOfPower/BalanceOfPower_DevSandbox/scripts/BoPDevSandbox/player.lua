@@ -1,4 +1,4 @@
--- Dev sandbox: the player half of the debug console.
+-- Balance of Power -- debug overlay, player half.
 --
 -- The framework is a global script, so nothing it does is visible from
 -- inside the game on its own -- it writes to openmw.log and that's it.
@@ -24,27 +24,21 @@ local ui = require('openmw.ui')
 -- Grouped by what they do: look at things, advance time, change power,
 -- then the toggles and self-tests.
 local KEYS = {
-    map         = input.KEY._1,   -- who holds what, and what's contested
-    dump        = input.KEY._2,   -- print the whole simulation
-    forceDay    = input.KEY._3,   -- run a day now, without sleeping
-    pushRaiders = input.KEY._4,   -- push the faction that can move a front
-    award       = input.KEY._5,   -- award power, to watch propagation
+    map         = input.KEY._1,   -- draw the map (Shift: next mode)
+    dump        = input.KEY._2,   -- standings and territory counts
+    forceDay    = input.KEY._3,   -- run a day now (Shift: seven)
+    boostOwner  = input.KEY._4,   -- push whoever holds this ground
+    boostRival  = input.KEY._5,   -- push whoever is about to take it
     toggleWatch = input.KEY._6,   -- show/hide the live event feed
-    badRegister = input.KEY._7,   -- prove validation rejects bad data
+    selfTest    = input.KEY._7,   -- prove validation rejects bad data
 }
 
--- Which faction Ctrl+5 pushes, and by how much. Hlaalu is a good subject
--- for watching *propagation*: it has a real reaction row, so everyone
--- else moves on real game data rather than anything authored here.
-local AWARD_FACTION = 'hlaalu'
-local AWARD_AMOUNT = 25
+-- How hard the power keys push. Large on purpose: the point is to move
+-- a front within a few presses, not to tune anything.
+local BOOST_AMOUNT = 50
 
--- Ctrl+4 pushes the raiders instead, which is the one that moves the
--- map: their camp sits between the two settlements, so raising their
--- power walks their projection outward over the frontier and eventually
--- puts Seyda Neen under siege. See the README for the thresholds.
-local PUSH_FACTION = 'dev_raiders'
-local PUSH_AMOUNT = 50
+-- The map views, cycled by Ctrl+Shift+1.
+local MAP_MODES = { 'owner', 'projection', 'contest' }
 
 -- How often to check whether the player has changed cell.
 local CELL_POLL = 1 * time.second
@@ -53,11 +47,12 @@ local CELL_POLL = 1 * time.second
 -- State
 --------------------------------------------------------------------------
 
--- The live event feed is loud by design (power propagates to every
--- faction with an opinion, so one award is several events), so it starts
+-- The live event feed is loud by design -- power propagates to every
+-- faction with an opinion, so one award is several events -- so it starts
 -- off and is toggled on when you want to watch a specific change.
 local watching = false
 local lastCellKey = nil
+local mapMode = 1
 
 --------------------------------------------------------------------------
 -- Helpers
@@ -83,8 +78,8 @@ end
 -- Cell watcher
 --------------------------------------------------------------------------
 
--- Answers "whose ground am I standing on?" as you walk around, which is
--- the only part of phase 1 that's observable without pressing anything.
+-- Answers "whose ground am I standing on?" as you walk around, and keeps
+-- the cell key current so the power keys know what to target.
 local function checkCell()
     local key = cellKey(self.cell)
     if key == nil or key == lastCellKey then
@@ -103,24 +98,31 @@ local function onKeyPress(key)
         return
     end
 
-    if key.code == KEYS.dump then
+    if key.code == KEYS.map then
+        if key.withShift then
+            mapMode = mapMode % #MAP_MODES + 1
+        end
+        core.sendGlobalEvent('BoPDev_Map', { mode = MAP_MODES[mapMode] })
+
+    elseif key.code == KEYS.dump then
         core.sendGlobalEvent('BoPDev_Dump', {})
-    elseif key.code == KEYS.award then
-        core.sendGlobalEvent('BoPDev_Award', {
-            faction = AWARD_FACTION,
-            amount = key.withShift and -AWARD_AMOUNT or AWARD_AMOUNT,
-        })
-    elseif key.code == KEYS.pushRaiders then
-        core.sendGlobalEvent('BoPDev_Award', {
-            faction = PUSH_FACTION,
-            amount = key.withShift and -PUSH_AMOUNT or PUSH_AMOUNT,
-        })
-    elseif key.code == KEYS.map then
-        core.sendGlobalEvent('BoPDev_Map', {})
+
     elseif key.code == KEYS.forceDay then
         core.sendGlobalEvent('BoPDev_ForceDay', { count = key.withShift and 7 or 1 })
-    elseif key.code == KEYS.badRegister then
-        core.sendGlobalEvent('BoPDev_BadRegister', {})
+
+    elseif key.code == KEYS.boostOwner or key.code == KEYS.boostRival then
+        -- Refresh rather than trusting the poll, so a press immediately
+        -- after crossing a border targets the cell you're actually in.
+        lastCellKey = cellKey(self.cell) or lastCellKey
+        core.sendGlobalEvent('BoPDev_Boost', {
+            cell = lastCellKey,
+            target = key.code == KEYS.boostRival and 'challenger' or 'owner',
+            amount = key.withShift and -BOOST_AMOUNT or BOOST_AMOUNT,
+        })
+
+    elseif key.code == KEYS.selfTest then
+        core.sendGlobalEvent('BoPDev_SelfTest', {})
+
     elseif key.code == KEYS.toggleWatch then
         watching = not watching
         show('BoP event feed: ' .. (watching and 'ON' or 'OFF'))
@@ -140,8 +142,6 @@ local function onPowerChanged(data)
     end
 end
 
--- Phase 2 and 6 fire these; they're wired up now so the moment those
--- phases land there's already something watching.
 local function onTerritoryFlipped(data)
     show(string.format('%s: %s -> %s', data.territory, tostring(data.from), tostring(data.to)))
 end
@@ -152,6 +152,8 @@ local function onAnchorSieged(data)
     end
 end
 
+-- Phase 6 fires these; wired up now so there's already something
+-- watching the moment it lands.
 local function onInvasionEscalated(data)
     show(string.format('%s escalated: %s -> %s', data.invasion, tostring(data.oldStage), data.newStage))
 end
@@ -168,11 +170,11 @@ end
 
 local function onActive()
     lastCellKey = nil
-    show('BoP dev sandbox loaded.\n'
-        .. 'Ctrl+1 map, Ctrl+2 dump, Ctrl+3 run a day,\n'
-        .. 'Ctrl+4 push raiders, Ctrl+5 award Hlaalu,\n'
+    show('BoP debug overlay loaded.\n'
+        .. 'Ctrl+1 map, Ctrl+2 standings, Ctrl+3 run a day,\n'
+        .. 'Ctrl+4 push holder, Ctrl+5 push challenger,\n'
         .. 'Ctrl+6 event feed, Ctrl+7 validation test.\n'
-        .. 'Hold Shift to reverse 3, 4 and 5.')
+        .. 'Shift reverses 4 and 5, and cycles the map mode on 1.')
 end
 
 time.runRepeatedly(checkCell, CELL_POLL)

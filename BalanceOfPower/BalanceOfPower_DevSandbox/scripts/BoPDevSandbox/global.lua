@@ -1,28 +1,19 @@
--- Dev sandbox: a throwaway content pack that registers just enough of a
--- world to exercise the framework, plus the global half of the debug
--- console.
+-- Balance of Power -- debug overlay, global half.
 --
--- This is NOT the Morrowind data pack (that's phase 3). The territory
--- graph here is small and hand-written specifically so that every code
--- path in the registry gets hit and the results stay small enough to
--- read in a log line:
+-- Registers nothing. No factions, no territory, no invasion: it reads
+-- whatever content is loaded and drives it. That means it can sit on top
+-- of the Morrowind pack, or any other content pack, or a pack somebody
+-- else wrote, without competing with it for faction ids.
 --
---   * two factions that exist as real ESM faction records, so reaction
---     propagation reads live game data;
---   * one faction that does NOT exist as a record, so the authored
---     reactions fallback gets exercised;
---   * anchors of both tiers, frontier cells, and an invasion whose home
---     territory is declared before the faction that owns it exists --
---     which is the deferred-reference-check path;
---   * no authored defaultOwner anywhere except the invasion homeland,
---     so the starting map is derived entirely from where the power
---     centres are -- the same thing phase 3's generated frontier grid
---     will rely on.
+-- It also means everything here has to be written without naming a
+-- single faction. The power commands work that out from where the player
+-- is standing instead: boost whoever holds this ground, or boost
+-- whoever is about to take it. That turns out to be more useful than
+-- naming factions anyway -- stand on a border, push one side, watch it
+-- move.
 --
--- Coordinates are real Vvardenfell exterior cell centres, so you can
--- walk into these cells and watch the readout change. They are only
--- approximately the right settlements; nothing here is lore-accurate
--- and none of it should survive into phase 3.
+-- If this file ever needs to know that "hlaalu" exists, something has
+-- gone wrong.
 
 local world = require('openmw.world')
 local I = require('openmw.interfaces')
@@ -33,177 +24,8 @@ if not BoP then
         .. 'Check that BalanceOfPower_Framework.omwscripts loads BEFORE this mod.', 0)
 end
 
-local CELL_SIZE = 8192
-
-local function cellId(gridX, gridY)
-    return string.format('#%d,%d', gridX, gridY)
-end
-
-local function cellCentre(gridX, gridY)
-    return {
-        x = gridX * CELL_SIZE + CELL_SIZE / 2,
-        y = gridY * CELL_SIZE + CELL_SIZE / 2,
-    }
-end
-
 --------------------------------------------------------------------------
--- Toy landmass
---------------------------------------------------------------------------
-
-BoP.registerLandmass({
-    id = 'dev_sandbox',
-    displayName = 'Dev Sandbox (Vvardenfell)',
-
-    factions = {
-        {
-            -- Real ESM faction record: reactions come from the game data.
-            id = 'hlaalu',
-            displayName = 'House Hlaalu',
-            basePower = 55,
-            patrolRoster = { 'hlaalu guard' },
-            powerCenters = {
-                -- Ranges are explicit rather than left to the tier
-                -- defaults, so the three factions' reach overlaps and
-                -- there is something to contest. See the README for the
-                -- resulting projection table.
-                { id = 'balmora_seat', tier = 'capital',
-                  coords = cellCentre(-3, -2), influenceRange = 60000 },
-            },
-        },
-        {
-            -- Also a real record, and the id contains a space, which is
-            -- worth having in the test set.
-            id = 'imperial legion',
-            displayName = 'Imperial Legion',
-            basePower = 50,
-            patrolRoster = { 'imperial guard' },
-            powerCenters = {
-                { id = 'seyda_neen_garrison', tier = 'capital',
-                  coords = cellCentre(-2, -9), influenceRange = 60000 },
-            },
-        },
-        {
-            -- No ESM record behind this one, so power.reactionsFor falls
-            -- back to the authored table. Values are how each *other*
-            -- faction feels about the raiders.
-            id = 'dev_raiders',
-            displayName = 'Sandbox Raiders',
-            basePower = 25,
-            patrolRoster = { 'bandit' },
-            reactions = {
-                hlaalu = -3,
-                ['imperial legion'] = -3,
-                ['sixth house'] = 1,
-            },
-            -- Camped between the two settlements with a shorter reach,
-            -- so they contest nothing at rest but can take the middle
-            -- ground once their power is pushed up. This is the faction
-            -- to push if you want to watch a front move.
-            powerCenters = {
-                { id = 'raider_camp', tier = 'capital',
-                  coords = cellCentre(-3, -6), influenceRange = 40000 },
-            },
-        },
-    },
-
-    territories = {
-        {
-            id = 'dev_balmora',
-            displayName = 'Balmora',
-            tier = 'city',
-            cells = { cellId(-3, -2) },
-            centroid = cellCentre(-3, -2),
-            adjacentFrontier = { 'dev_frontier_a', 'dev_frontier_b' },
-        },
-        {
-            id = 'dev_seyda_neen',
-            displayName = 'Seyda Neen',
-            tier = 'town',
-            cells = { cellId(-2, -9), 'Seyda Neen, Census and Excise Office' },
-            centroid = cellCentre(-2, -9),
-            adjacentFrontier = { 'dev_frontier_c', 'dev_frontier_d' },
-        },
-        {
-            -- The one authored owner in the pack. An invasion homeland
-            -- has to stay with its invader regardless of who projects
-            -- onto it, which is what an authored defaultOwner is for.
-            --
-            -- The faction it names is registered further down by
-            -- registerInvasion, i.e. after this call -- exactly the
-            -- forward reference validateReferences exists to tolerate.
-            -- If it warned about this, that would be a bug.
-            id = 'dev_red_mountain',
-            displayName = 'Red Mountain',
-            tier = 'city',
-            cells = { cellId(2, 4) },
-            centroid = cellCentre(2, 4),
-            defaultOwner = 'sixth house',
-        },
-    },
-
-    frontier = {
-        {
-            id = 'dev_frontier_a',
-            displayName = 'West Gash approach',
-            cells = { cellId(-4, -2) },
-            centroid = cellCentre(-4, -2),
-            adjacentFrontier = { 'dev_frontier_b' },
-            adjacentAnchors = { 'dev_balmora' },
-        },
-        {
-            id = 'dev_frontier_b',
-            displayName = 'Odai headwaters',
-            cells = { cellId(-3, -3) },
-            centroid = cellCentre(-3, -3),
-            adjacentFrontier = { 'dev_frontier_a', 'dev_frontier_c' },
-            adjacentAnchors = { 'dev_balmora' },
-        },
-        {
-            id = 'dev_frontier_c',
-            displayName = 'Bitter Coast north',
-            cells = { cellId(-2, -8) },
-            centroid = cellCentre(-2, -8),
-            adjacentFrontier = { 'dev_frontier_b', 'dev_frontier_d' },
-            adjacentAnchors = { 'dev_seyda_neen' },
-        },
-        {
-            id = 'dev_frontier_d',
-            displayName = 'Bitter Coast east',
-            cells = { cellId(-1, -9) },
-            centroid = cellCentre(-1, -9),
-            adjacentFrontier = { 'dev_frontier_c' },
-            adjacentAnchors = { 'dev_seyda_neen' },
-        },
-    },
-})
-
---------------------------------------------------------------------------
--- Toy invasion
---------------------------------------------------------------------------
-
-BoP.registerInvasion({
-    id = 'dev_sixth_house',
-    faction = {
-        id = 'sixth house',
-        displayName = 'Sixth House',
-        basePower = 30,
-        growthPerDay = 1.5,
-        homeTerritories = { 'dev_red_mountain' },
-        patrolRoster = { 'ash zombie', 'ash ghoul' },
-        escalationThresholds = {
-            { stage = 'stirring',    power = 30 },
-            { stage = 'raiding',     power = 60 },
-            { stage = 'encroaching', power = 100 },
-            { stage = 'overrunning', power = 150 },
-        },
-        powerCenters = {
-            { id = 'red_mountain_seat', tier = 'capital', coords = cellCentre(2, 4) },
-        },
-    },
-})
-
---------------------------------------------------------------------------
--- Debug console (global half)
+-- Reporting
 --------------------------------------------------------------------------
 
 local function report(text)
@@ -212,60 +34,127 @@ local function report(text)
     end
 end
 
---- Faction standings, one per line so it stays readable on screen.
-local function standings()
-    local lines = {}
-    for _, id in ipairs(BoP.factionIds()) do
-        local faction = BoP.getFaction(id)
-        lines[#lines + 1] = string.format('%s: %.1f', faction.displayName, BoP.getPower(id))
-    end
-    return table.concat(lines, '\n')
+local function nameOf(factionId)
+    local faction = factionId and BoP.getFaction(factionId)
+    return faction and faction.displayName or tostring(factionId)
 end
+
+--- Standings, plus how much ground each faction holds. Land-holding
+-- factions first, since they're the ones the map is about.
+local function standings()
+    local ids = BoP.factionIds()
+    if #ids == 0 then
+        return 'No factions registered -- is a content pack loaded?'
+    end
+
+    -- One pass over the map rather than one per faction.
+    local held = {}
+    for _, territoryId in ipairs(BoP.territoryIds()) do
+        local owner = BoP.getOwner(territoryId)
+        if owner then
+            held[owner] = (held[owner] or 0) + 1
+        end
+    end
+
+    local landed, powerOnly = {}, {}
+    for _, id in ipairs(ids) do
+        local faction = BoP.getFaction(id)
+        if faction.territorial then
+            landed[#landed + 1] = string.format('%s %.0f (%d)',
+                faction.displayName, BoP.getPower(id), held[id] or 0)
+        else
+            powerOnly[#powerOnly + 1] = string.format('%s %.0f',
+                faction.displayName, BoP.getPower(id))
+        end
+    end
+
+    local text = table.concat(landed, '\n')
+    if #powerOnly > 0 then
+        text = text .. '\n-- no land --\n' .. table.concat(powerOnly, '\n')
+    end
+    return text
+end
+
+--------------------------------------------------------------------------
+-- Commands
+--------------------------------------------------------------------------
 
 local handlers = {}
 
 function handlers.BoPDev_Dump()
     BoP.dump()
-    report(string.format('Day %s\n%s\n(full dump in openmw.log)',
+    report(string.format('Day %s\n%s\n(full detail in openmw.log)',
         tostring(BoP.getCurrentDay()), standings()))
 end
 
-function handlers.BoPDev_Award(data)
-    local before = BoP.getPower(data.faction)
-    BoP.awardPower(data.faction, data.amount, data.multiplier)
-    report(string.format('%s %+.0f  (%.1f -> %.1f)\nPropagation:\n%s',
-        data.faction, data.amount, before, BoP.getPower(data.faction), standings()))
+--- The text map goes to the log, since it's far too wide for a message
+-- box. On screen, just enough to know it worked and what it was drawn as.
+function handlers.BoPDev_Map(data)
+    local mode = data.mode or 'owner'
+    BoP.dumpMap({ mode = mode })
+
+    local counts = { empty = 0, consolidated = 0, contested = 0 }
+    for _, territoryId in ipairs(BoP.territoryIds()) do
+        local class = BoP.classify(territoryId)
+        counts[class] = (counts[class] or 0) + 1
+    end
+
+    report(string.format('Map drawn to openmw.log (mode: %s)\n%d contested, '
+        .. '%d consolidated, %d unreachable',
+        mode, counts.contested, counts.consolidated, counts.empty))
 end
 
 function handlers.BoPDev_ForceDay(data)
-    local day = BoP.forceDay(data.count or 1)
-    report(string.format('Ran %d day(s), now day %d\n%s', data.count or 1, day, standings()))
+    local count = data.count or 1
+    local day = BoP.forceDay(count)
+    report(string.format('Ran %d day(s), now day %d\n\n%s', count, day, standings()))
 end
 
---- Every faction's projection onto a territory, strongest first. This is
--- the number that actually decides ownership, so it's the one to read
--- when the map isn't doing what you expected.
-local function projectionTable(territory)
-    local rows = {}
-    for _, id in ipairs(BoP.factionIds()) do
-        local value = BoP.getEffectivePower(id, territory.id)
-        if value > 0 then
-            rows[#rows + 1] = { id = id, value = value }
+--- Push whoever holds the ground under the player, or whoever is about to
+-- take it. Naming no factions is what lets this work against any content
+-- pack -- and standing on a border and pushing one side is the fastest
+-- way to see the resolution loop actually do something.
+function handlers.BoPDev_Boost(data)
+    local territory = BoP.getTerritoryForCell(data.cell or '')
+    if not territory then
+        report('Not standing in any registered territory.')
+        return
+    end
+
+    local target
+    if data.target == 'challenger' then
+        -- The strongest projector, unless that's already the owner, in
+        -- which case there is nobody challenging for this ground.
+        local claimant = BoP.getProjection(territory.id)
+        local owner = BoP.getOwner(territory.id)
+        if claimant and claimant ~= owner then
+            target = claimant
+        else
+            report(string.format('%s\nNo challenger here -- %s both holds it and '
+                .. 'projects strongest.', territory.displayName, nameOf(owner)))
+            return
+        end
+    else
+        target = BoP.getOwner(territory.id)
+        if not target then
+            report(string.format('%s is unclaimed -- nobody to push.', territory.displayName))
+            return
         end
     end
-    table.sort(rows, function(a, b) return a.value > b.value end)
 
-    if #rows == 0 then
-        return '  (nobody projects here)'
-    end
-    local lines = {}
-    for _, row in ipairs(rows) do
-        lines[#lines + 1] = string.format('  %s %.1f', BoP.getFaction(row.id).displayName, row.value)
-    end
-    return table.concat(lines, '\n')
+    local before = BoP.getPower(target)
+    BoP.awardPower(target, data.amount)
+
+    -- Whether the *local* picture changed is the interesting part, not
+    -- the raw number.
+    local claimant = BoP.getProjection(territory.id)
+    local owner = BoP.getOwner(territory.id)
+    report(string.format('%s %+.0f  (%.0f -> %.0f)\n%s\nholder: %s\nwill hold: %s',
+        nameOf(target), data.amount, before, BoP.getPower(target),
+        territory.displayName, nameOf(owner), nameOf(claimant)))
 end
 
---- Answers "what territory am I standing in?" for the cell watcher.
+--- Answers "whose ground am I standing on?" for the cell watcher.
 function handlers.BoPDev_WhereAmI(data)
     local territory = BoP.getTerritoryForCell(data.cell)
     if not territory then
@@ -274,55 +163,64 @@ function handlers.BoPDev_WhereAmI(data)
     end
 
     local owner = BoP.getOwner(territory.id)
-    local ownerFaction = owner and BoP.getFaction(owner)
     local claimant = BoP.getProjection(territory.id)
 
-    -- If the strongest projector isn't the owner, this cell is actively
-    -- contested and will change hands within a few days.
+    -- Every faction that reaches here, strongest first. This is the
+    -- number that decides ownership, so it's what to read when the map
+    -- isn't doing what you expected.
+    local rows = {}
+    for _, id in ipairs(BoP.getReach(territory.id).ids) do
+        rows[#rows + 1] = { id = id, value = BoP.getEffectivePower(id, territory.id) }
+    end
+    table.sort(rows, function(a, b) return a.value > b.value end)
+
+    local projection = {}
+    for _, row in ipairs(rows) do
+        projection[#projection + 1] = string.format('  %s %.1f', nameOf(row.id), row.value)
+    end
+    if #projection == 0 then
+        projection[1] = '  (nobody reaches here)'
+    end
+
     local contested = ''
     if claimant and claimant ~= owner then
-        contested = string.format('\ncontested by: %s', BoP.getFaction(claimant).displayName)
+        contested = string.format('\ncontested by: %s', nameOf(claimant))
     end
 
-    report(string.format('%s (%s)\nowner: %s%s%s\nprojection:\n%s',
+    report(string.format('%s (%s, %s)\nowner: %s%s%s\nprojection:\n%s',
         territory.displayName,
         territory.kind == 'anchor' and territory.tier or 'frontier',
-        ownerFaction and ownerFaction.displayName or 'unclaimed',
+        BoP.classify(territory.id),
+        owner and nameOf(owner) or 'unclaimed',
         BoP.isCorrupted(territory.id) and '  [CORRUPTED]' or '',
         contested,
-        projectionTable(territory)))
+        table.concat(projection, '\n')))
 end
 
---- The whole map, owner by owner. The fastest way to see a front move.
-function handlers.BoPDev_Map()
-    local lines = {}
-    for _, id in ipairs(BoP.territoryIds()) do
-        local territory = BoP.getTerritory(id)
-        local owner = BoP.getOwner(id)
-        local claimant = BoP.getProjection(id)
-        lines[#lines + 1] = string.format('%-22s %-18s%s',
-            territory.displayName,
-            owner and BoP.getFaction(owner).displayName or '-',
-            (claimant and claimant ~= owner) and '  <- contested' or '')
-    end
-    report(string.format('Day %s\n%s', tostring(BoP.getCurrentDay()), table.concat(lines, '\n')))
-end
-
---- Deliberately bad registration, to check that validation fires and
--- that a failed pack doesn't take the framework down with it.
-function handlers.BoPDev_BadRegister()
-    local ok, err = pcall(function()
-        BoP.registerLandmass({
-            id = 'dev_broken',
-            factions = { { id = 'hlaalu' } },  -- already registered, no extend
-        })
-    end)
-    if ok then
-        report('ERROR: the bad registration was accepted')
+--- Deliberately bad registration, to confirm validation rejects it and
+-- that a failed pack doesn't take the framework down with it. Uses
+-- whichever faction happens to be registered first, so it works against
+-- any content.
+function handlers.BoPDev_SelfTest()
+    local ids = BoP.factionIds()
+    if #ids == 0 then
+        report('No factions registered -- nothing to test against.')
         return
     end
-    -- The framework should still be intact: the rejected pack must not
-    -- have half-registered, and Hlaalu must still be exactly as it was.
+
+    local victim = ids[1]
+    local ok, err = pcall(function()
+        BoP.registerLandmass({
+            id = 'bopdev_should_not_exist',
+            factions = { { id = victim } },   -- already registered, no extend
+        })
+    end)
+
+    if ok then
+        report('FAIL: a duplicate registration of "' .. victim .. '" was accepted.')
+        return
+    end
+
     report(string.format('Rejected as expected:\n%s\n\nFramework still live:\n%s',
         tostring(err), standings()))
 end
