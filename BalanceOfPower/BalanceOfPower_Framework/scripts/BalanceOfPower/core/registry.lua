@@ -179,9 +179,18 @@ local function defineFaction(def, context, fallbackLandmass)
     return {
         id = id,
         displayName = def.displayName or id,
-        -- Flavor-only factions opt out of the territory/power loop but
-        -- still exist in the registry, so a pack can declare one without
-        -- it silently becoming a combatant.
+        -- Whether this faction appears on the map at all. `false` makes
+        -- it a power-only faction: it has a power score, it reacts to
+        -- everyone else through the reaction table, and other systems
+        -- can read its standing -- but it holds no ground, projects no
+        -- influence, and can never be recorded as owning a territory.
+        --
+        -- That's the split between a Great House and a guild. The
+        -- Fighters Guild is a real political force whose fortunes rise
+        -- and fall with its allies'; it just doesn't own Balmora.
+        --
+        -- A faction that shouldn't participate at all is simply not
+        -- registered.
         territorial = def.territorial ~= false,
         basePower = basePower,
         landmass = landmass,
@@ -299,6 +308,11 @@ local function prepareTerritory(def, context, kind, landmassId, staged)
         kind = kind,
         displayName = def.displayName or id,
         landmass = def.landmass or landmassId,
+        -- The game's own region name, where there is one. Carried but
+        -- never acted on: it's the kind of detail a UI, a spawn rule or a
+        -- future region-scoped mechanic will want, and it costs nothing
+        -- to keep hold of it now.
+        region = type(def.region) == 'string' and def.region or nil,
         -- nil is a legitimate authored value, meaning "unclaimed".
         defaultOwner = def.defaultOwner,
         cells = copyStrings(def.cells, ctx, 'cells'),
@@ -417,6 +431,39 @@ function M.registerLandmass(def)
     log.info('registered landmass "%s": %d factions, %d anchors, %d frontier cells',
         id, #landmass.factionIds, anchorCount, #territories - anchorCount)
     return landmass
+end
+
+--- Add frontier cells to a landmass that is already registered.
+--
+-- Split out from registerLandmass because the frontier grid is derived
+-- from the power centers rather than authored alongside them (see
+-- core/frontier.lua), so it can only be built once the landmass's
+-- settlements are in the registry.
+--
+-- Same two-phase discipline: validate everything, then commit.
+function M.registerFrontier(landmassId, definitions)
+    local context = string.format('landmass "%s" frontier', landmassId)
+    local landmass = M.landmasses[landmassId]
+    if not landmass then
+        fail(context, 'this landmass has not been registered')
+    end
+    checkTable(definitions, context, 'definitions')
+
+    local staged, territories = {}, {}
+    for _, def in ipairs(definitions) do
+        territories[#territories + 1] =
+            prepareTerritory(def, context, 'frontier', landmassId, staged)
+    end
+
+    for _, territory in ipairs(territories) do
+        M.territories[territory.id] = territory
+        M.frontierIds[#M.frontierIds + 1] = territory.id
+        landmass.territoryIds[#landmass.territoryIds + 1] = territory.id
+        indexCells(territory)
+    end
+
+    M.generation = M.generation + 1
+    return #territories
 end
 
 --- Register an invading faction (design doc 4.2).

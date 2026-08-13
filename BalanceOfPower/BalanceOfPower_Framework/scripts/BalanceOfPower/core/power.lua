@@ -81,7 +81,18 @@ function M.reactionsFor(factionId)
         end
     end
 
-    reactions = reactions or {}
+    if not reactions or next(reactions) == nil then
+        -- Neither an authored table nor a faction record with reactions.
+        -- The faction will simply never move anyone else's power, which
+        -- is a silent and very easy failure to miss -- a mistyped id, or
+        -- a faction that doesn't exist as an ESM record and was assumed
+        -- to. Say so once, then carry on with an empty table.
+        log.warn('faction "%s" has no reactions: not found in core.factions.records, '
+            .. 'and no `reactions` table was authored for it. It will not propagate '
+            .. 'power to anyone.', tostring(factionId))
+        reactions = {}
+    end
+
     reactionCache[factionId] = reactions
     return reactions
 end
@@ -155,9 +166,14 @@ function M.apply(factionId, delta, opts)
     local changes = { [factionId] = delta }
 
     if not opts.noPropagate then
+        -- Every registered faction reacts, land-holding or not. A guild
+        -- that can't own a single cell still gains or loses standing
+        -- when a Great House does, and that standing is the input other
+        -- systems read. Whether a faction appears on the map is a
+        -- separate question, answered by `territorial`.
         for otherId, reactionValue in pairs(M.reactionsFor(factionId)) do
             local other = registry.factions[otherId]
-            if otherId ~= factionId and other and other.territorial then
+            if otherId ~= factionId and other then
                 local coefficient = allyCoefficient(reactionValue)
                 if coefficient ~= 0 then
                     changes[otherId] = (changes[otherId] or 0) + delta * coefficient

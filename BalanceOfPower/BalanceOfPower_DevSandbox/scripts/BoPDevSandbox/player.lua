@@ -4,8 +4,12 @@
 -- inside the game on its own -- it writes to openmw.log and that's it.
 -- This puts a keyboard in front of it and echoes results on screen.
 --
--- All hotkeys are Ctrl + a function key, so they can't collide with
--- vanilla bindings (quicksave on F5, quickload on F9 and so on).
+-- All hotkeys are Ctrl + a number key. The function keys are not
+-- available: Morrowind already uses F1-F12 for quick slots, quicksave,
+-- quickload and screenshots, and the engine acts on those bindings
+-- whether or not a modifier is held. The number row is free in a clean
+-- install, and the Ctrl requirement keeps these out of the way of
+-- anything a user has bound there themselves.
 
 local core = require('openmw.core')
 local input = require('openmw.input')
@@ -17,24 +21,25 @@ local ui = require('openmw.ui')
 -- Bindings and tuning
 --------------------------------------------------------------------------
 
+-- Grouped by what they do: look at things, advance time, change power,
+-- then the toggles and self-tests.
 local KEYS = {
-    dump        = input.KEY.F10,  -- print the whole simulation
-    award       = input.KEY.F11,  -- award power, to watch propagation
-    forceDay    = input.KEY.F12,  -- run a day now, without sleeping
-    toggleWatch = input.KEY.F9,   -- show/hide the live event feed
-    badRegister = input.KEY.F8,   -- prove validation rejects bad data
-    pushRaiders = input.KEY.F7,   -- push the faction that can move a front
-    map         = input.KEY.F6,   -- who holds what, and what's contested
+    map         = input.KEY._1,   -- who holds what, and what's contested
+    dump        = input.KEY._2,   -- print the whole simulation
+    forceDay    = input.KEY._3,   -- run a day now, without sleeping
+    pushRaiders = input.KEY._4,   -- push the faction that can move a front
+    award       = input.KEY._5,   -- award power, to watch propagation
+    toggleWatch = input.KEY._6,   -- show/hide the live event feed
+    badRegister = input.KEY._7,   -- prove validation rejects bad data
 }
 
--- Which faction Ctrl+F11 pushes, and by how much. Hlaalu is a good
--- subject for watching *propagation*: it has a real reaction row, so
--- everyone else moves on real game data rather than anything authored
--- here.
+-- Which faction Ctrl+5 pushes, and by how much. Hlaalu is a good subject
+-- for watching *propagation*: it has a real reaction row, so everyone
+-- else moves on real game data rather than anything authored here.
 local AWARD_FACTION = 'hlaalu'
 local AWARD_AMOUNT = 25
 
--- Ctrl+F7 pushes the raiders instead, which is the one that moves the
+-- Ctrl+4 pushes the raiders instead, which is the one that moves the
 -- map: their camp sits between the two settlements, so raising their
 -- power walks their projection outward over the frontier and eventually
 -- puts Seyda Neen under siege. See the README for the thresholds.
@@ -164,9 +169,10 @@ end
 local function onActive()
     lastCellKey = nil
     show('BoP dev sandbox loaded.\n'
-        .. 'Ctrl+F6 map, Ctrl+F7 push raiders, Ctrl+F10 dump,\n'
-        .. 'Ctrl+F11 award Hlaalu, Ctrl+F12 run a day,\n'
-        .. 'Ctrl+F9 event feed, Ctrl+F8 validation test.')
+        .. 'Ctrl+1 map, Ctrl+2 dump, Ctrl+3 run a day,\n'
+        .. 'Ctrl+4 push raiders, Ctrl+5 award Hlaalu,\n'
+        .. 'Ctrl+6 event feed, Ctrl+7 validation test.\n'
+        .. 'Hold Shift to reverse 3, 4 and 5.')
 end
 
 time.runRepeatedly(checkCell, CELL_POLL)

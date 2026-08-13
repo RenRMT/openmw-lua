@@ -40,6 +40,9 @@ CASES = TESTS / "cases"
 # `scripts.BalanceOfPower.*` names, exactly as OpenMW's VFS presents them.
 SEARCH_ROOTS = [
     PROJECT / "BalanceOfPower_Framework",
+    # Content packs, so their real main.lua can be required and exercised
+    # exactly as the engine would load it.
+    PROJECT / "BalanceOfPower_Morrowind",
     TESTS / "stubs",
     TESTS,
 ]

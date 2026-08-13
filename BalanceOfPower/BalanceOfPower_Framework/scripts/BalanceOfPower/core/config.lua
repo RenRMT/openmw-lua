@@ -72,6 +72,12 @@ M.POWER_CENTER_DEFAULTS = {
     capital  = { weight = 1.00, influenceRange = 40000 },
     regional = { weight = 0.50, influenceRange = 24000 },
     outpost  = { weight = 0.25, influenceRange = 12000 },
+    -- Farms, shacks, mines, minor manors. Individually negligible and
+    -- barely reaching past their own cell, but they cluster -- a
+    -- plantation belt is a dozen of these overlapping, which is what
+    -- makes a region read as belonging to somebody without any single
+    -- holding being worth contesting.
+    minor    = { weight = 0.15, influenceRange = 10000 },
 }
 
 M.DEFAULT_POWER_CENTER_TIER = 'regional'
@@ -83,17 +89,60 @@ M.DEFAULT_POWER_CENTER_TIER = 'regional'
 M.DEFAULT_ANCHOR_TIER = 'town'
 
 -- Per-tier fallbacks for anchors. defenseMultiplier scales the current
--- owner's effective power during a siege roll; the city value is
--- deliberately steep enough that ordinary faction politics can't take a
--- city, leaving real city flips to the invasion subsystem (doc 3.4).
+-- owner's effective power during a siege roll; the top tiers are
+-- deliberately steep enough that ordinary faction politics can't take
+-- them, leaving real city flips to the invasion subsystem (doc 3.4).
+--
+-- The ladder runs from an isolated fort or Ashlander camp, which should
+-- change hands when the surrounding country does, up to Vivec, which
+-- should not change hands short of catastrophe.
 M.ANCHOR_DEFAULTS = {
-    town = { siegeThreshold = 3, cooldownDays = 20, defenseMultiplier = 2.0 },
-    city = { siegeThreshold = 8, cooldownDays = 60, defenseMultiplier = 8.0 },
+    outpost    = { siegeThreshold = 2,  cooldownDays = 10, defenseMultiplier = 1.5 },
+    village    = { siegeThreshold = 3,  cooldownDays = 15, defenseMultiplier = 2.0 },
+    town       = { siegeThreshold = 4,  cooldownDays = 25, defenseMultiplier = 3.0 },
+    city       = { siegeThreshold = 8,  cooldownDays = 60, defenseMultiplier = 8.0 },
+    metropolis = { siegeThreshold = 12, cooldownDays = 90, defenseMultiplier = 15.0 },
 }
 
 -- Frontier cells are the layer that's meant to visibly creep, so they
 -- recover from a flip far faster than a settlement does.
 M.FRONTIER_COOLDOWN_DAYS = 3
+
+--------------------------------------------------------------------------
+-- Frontier generation
+--------------------------------------------------------------------------
+
+-- World units per exterior cell. 8192 for Morrowind-style content; a
+-- pack for content with a different grid overrides it per call.
+M.CELL_SIZE = 8192
+
+-- Exterior cells per generated frontier territory, along each axis.
+-- 1 gives one territory per cell -- the finest grain, and the most
+-- territories to resolve and persist. 2 or 3 quarters or ninths that
+-- count at the cost of coarser, blockier movement of the front. This is
+-- the main lever on the performance risk in design doc 7.
+M.FRONTIER_CELLS_PER_UNIT = 1
+
+-- Extra reach, in world units, beyond each power center's influence
+-- range when deciding which cells to generate.
+--
+-- Zero, and that is the right default. It is tempting to add slack "so a
+-- growing faction has room to expand into", but influence decays to
+-- exactly zero at influenceRange no matter how powerful the faction is
+-- -- so ground beyond that range can never be claimed by anyone, and
+-- generating it produces territories that are permanently dead: carried
+-- in the save, iterated every day, and ownable by nobody. On the
+-- Morrowind pack a one-cell margin alone produced 482 of them.
+--
+-- Raise it only for a pack that expects power centers to appear at
+-- runtime, where the reachable region genuinely can grow.
+M.FRONTIER_GENERATION_MARGIN = 0
+
+-- Only generate territory for grid positions that the loaded content
+-- files actually define as cells. This is what keeps the Sea of Ghosts
+-- out of the simulation. Turn it off only for testing against synthetic
+-- geography with no game data behind it.
+M.FRONTIER_REQUIRE_EXISTING_CELL = true
 
 --------------------------------------------------------------------------
 -- Resolution

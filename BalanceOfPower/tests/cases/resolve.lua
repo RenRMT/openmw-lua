@@ -416,26 +416,31 @@ end
 --- The defence multiplier is the only thing separating "a town changed
 -- hands" from "a city changed hands", so it has to actually apply.
 --
--- The town sits at the midpoint, so alpha projects 25. Beta at 100
--- projects 50. Undefended, beta's share would be 50/75 = 0.667; with the
--- town's 2x defence it is 50/(50 + 50) = 0.5. A roll at 0.6 therefore
--- distinguishes the two: it wins without the multiplier and loses with
--- it.
+-- The town sits at the midpoint, so both project half their power: alpha
+-- 25, beta 50. The two shares are derived from config rather than
+-- hardcoded, so retuning the tier defaults can't silently turn this into
+-- a test of nothing.
 function M.defenseMultiplierProtectsTheIncumbent()
     anchorUnderSiege()
     encircle(3)
     power.set('beta', 100)
 
-    local threshold = registry.territories.town.siegeThreshold
+    local town = registry.territories.town
+    local undefended = 50 / (50 + 25)
+    local defended = 50 / (50 + 25 * town.defenseMultiplier)
+    expect.greater(undefended - defended, 0.05, 'the multiplier must move the odds meaningfully')
 
-    resolve.setRandom(always(0.6))
-    for day = 1, threshold + 2 do
+    -- Between the two shares: this roll wins without the multiplier and
+    -- must lose with it. That's what makes this a test of the multiplier
+    -- rather than of the siege gate.
+    resolve.setRandom(always((defended + undefended) / 2))
+    for day = 1, town.siegeThreshold + 2 do
         resolve.run(day, { 'town' })
     end
     expect.equal(state.getOwner('town'), 'alpha', 'a roll the multiplier should stop')
 
-    resolve.setRandom(always(0.4))
-    resolve.run(threshold + 3, { 'town' })
+    resolve.setRandom(always(defended / 2))
+    resolve.run(town.siegeThreshold + 3, { 'town' })
     expect.equal(state.getOwner('town'), 'beta', 'a roll it should not stop')
 end
 

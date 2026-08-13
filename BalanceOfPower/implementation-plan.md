@@ -84,22 +84,54 @@ been contested. Tier defaults are now sized in cells.
 
 ---
 
-## Phase 3 — Morrowind data pack
+## Phase 3 — Morrowind data pack ✅
 
-**Ships:** `BalanceOfPower_Morrowind` — the second mod.
+**Ships:** `BalanceOfPower_Morrowind`, plus `core/frontier.lua` in the
+framework.
 
-- The ten territorial factions from doc 5.1, with the merged Empire umbrella.
-- ~18–22 anchors with default ownership following vanilla lore placement.
-- Frontier grid derived procedurally from exterior cell coordinates and
-  bulk-assigned to the nearest anchor, rather than hand-placed.
+- 63 settlements across Vvardenfell and Solstheim, 36 of them contestable
+  anchors, built from a CSV by a script rather than hand-written.
+- Eight land-holding factions and six power-only ones.
+- Frontier grid derived at load from the registered power centers: ~560 cells,
+  averaging 1.2 factions able to reach each.
+- The Sixth House invasion, homeland at Red Mountain.
 
 **Why here:** the first point where territory actually moves in a real game,
 and the first real test of whether the framework needed a single line of
-Morrowind-specific code. If it did, that's a gap to close before phase 4.
+Morrowind-specific code. It didn't — the generator works off power centers and
+never learns what a "Small City" is; that vocabulary stays in the pack's own
+`data/build.lua`.
+
+**Design decisions settled here:**
+
+- `territorial = false` now means **power-only**: the faction has standing and
+  propagates through the reaction table, but holds no ground and projects
+  nothing. That's the guild/Great House split. A faction that shouldn't
+  participate at all is simply not registered.
+- Frontier granularity is one territory per exterior cell, behind
+  `FRONTIER_CELLS_PER_UNIT`.
+- Generation runs at load, not offline, so it can never go stale.
+- Only ground within reach of a power center becomes territory.
+- Minor holdings (farms, shacks, mines) are power centers but not anchors.
+- Solstheim is a separate landmass registered by the same pack, at its
+  **Anthology / Tamriel Rebuilt** position rather than vanilla Bloodmoon's.
+
+**Also corrected here:** the projection cache. Distance geometry is static, so
+it's computed once at load as a factor per (territory, faction) pair; the daily
+pass is then a multiplication with no square roots, and each territory carries
+the short list of factions that can actually reach it.
+
+**A bug the numbers caught:** the generation margin created territory beyond
+every power center's influence range — where projection is exactly zero no
+matter how strong a faction becomes, so the cells were permanently unownable.
+482 of 904 on the Morrowind pack. The margin now defaults to zero.
 
 ---
 
-## Phase 4 — Spawn subsystem
+## Phase 4 — Spawn subsystem *(deferred by request)*
+
+Explicitly parked. Everything below it can proceed without it; the cost is that
+territory stays invisible in-world until it lands.
 
 **Ships:** `core/spawn.lua`.
 

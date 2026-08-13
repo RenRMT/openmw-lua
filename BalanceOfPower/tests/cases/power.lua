@@ -106,7 +106,10 @@ function M.clampsExtremeReactionValues()
     expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6, 'clamped')
 end
 
-function M.skipsNonTerritorialFactions()
+--- `territorial = false` keeps a faction off the map, not out of the
+-- politics. A guild that can't own a cell still rises and falls with its
+-- allies -- that standing is the whole reason to track it.
+function M.propagatesToPowerOnlyFactions()
     threeFactions({
         hlaalu = { reactions = { redoran = 3 } },
         redoran = { territorial = false },
@@ -114,7 +117,8 @@ function M.skipsNonTerritorialFactions()
 
     power.apply('hlaalu', 10)
 
-    expect.equal(power.getLive('redoran'), 50, 'flavor-only faction is not dragged along')
+    expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6,
+        'power-only faction still reacts')
 end
 
 function M.noPropagateMovesOneFactionAlone()

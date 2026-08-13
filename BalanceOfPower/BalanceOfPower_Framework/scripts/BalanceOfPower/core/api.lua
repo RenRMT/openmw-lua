@@ -10,7 +10,9 @@
 local config = require('scripts.BalanceOfPower.core.config')
 local driver = require('scripts.BalanceOfPower.core.driver')
 local events = require('scripts.BalanceOfPower.core.events')
+local frontier = require('scripts.BalanceOfPower.core.frontier')
 local log = require('scripts.BalanceOfPower.core.log')
+local mapdump = require('scripts.BalanceOfPower.core.mapdump')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -39,6 +41,19 @@ function M.registerInvasion(def)
     local invasion = registry.registerInvasion(def)
     state.fillDefaults(registry)
     return invasion
+end
+
+--- Derive a landmass's frontier grid from the power centers registered
+-- on it. Call after registerLandmass, once the settlements are in.
+--
+-- Only ground within reach of some power center becomes territory, so
+-- the size of the resulting map follows from the content rather than
+-- from a bounding box. See core/frontier.lua for the options.
+-- @return number of frontier territories created
+function M.generateFrontier(def)
+    local created = frontier.generate(def)
+    state.fillDefaults(registry)
+    return created
 end
 
 --------------------------------------------------------------------------
@@ -136,6 +151,23 @@ function M.getProjection(territoryId)
     return resolve.strongestProjector(territory)
 end
 
+--- How settled a territory is: 'empty', 'consolidated' or 'contested'.
+function M.classify(territoryId)
+    local territory = registry.territories[territoryId]
+    return territory and resolve.classify(territory) or 'empty'
+end
+
+--- Which factions can reach a territory at all, and by what fraction of
+-- their power. Static geometry, so this is cheap and stable.
+-- @return { ids = {sorted factionIds}, factors = {factionId -> 0..1} }
+function M.getReach(territoryId)
+    local territory = registry.territories[territoryId]
+    if not territory then
+        return { ids = {}, factors = {} }
+    end
+    return resolve.projectionFactors(territory)
+end
+
 function M.getInvasion(invasionId)
     return registry.invasions[invasionId]
 end
@@ -205,6 +237,25 @@ function M.dump()
             faction.displayName, power.getLive(id), held[id] or 0, tags)
     end
     log.info('--------------------------------------------------------')
+end
+
+--- Draw the political map to the log, one character per exterior cell.
+--
+--   dumpMap()                                  every landmass, ownership
+--   dumpMap({ landmass = 'vvardenfell' })      just one
+--   dumpMap({ mode = 'projection' })           who *will* hold each cell
+--   dumpMap({ mode = 'contest' })              where the fronts are
+--
+-- 'projection' is the one to read while tuning influence ranges: where it
+-- disagrees with the ownership map, the front is moving.
+function M.dumpMap(opts)
+    mapdump.dump(opts)
+end
+
+--- The same map as a list of text lines, for a caller that wants to put
+-- it somewhere other than the log.
+function M.renderMap(opts)
+    return mapdump.render(opts)
 end
 
 --- Whether verbose logging is on, for packs that want to match it.

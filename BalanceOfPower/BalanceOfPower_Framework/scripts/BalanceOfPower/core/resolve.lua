@@ -63,56 +63,108 @@ function M.proximityFactor(distance, influenceRange)
     return math.max(0, 1 - distance / influenceRange)
 end
 
---- How strong a faction is at a territory.
+--------------------------------------------------------------------------
+-- Projection cache
+--------------------------------------------------------------------------
+
+-- How far a faction reaches into a territory is fixed: it depends only
+-- on the distance from its power centers and their ranges, none of which
+-- move. Only the faction's *power* changes from day to day, and that's a
+-- single multiplication.
 --
--- The strongest single power center, not the sum (doc 3.2). Summing
--- would let a faction out-project a rival purely by accumulating minor
--- outposts, which isn't the intended story; max says a place is under
--- the influence of whichever foothold is nearest, which is both easier
--- to reason about when tuning and harder to game.
-function M.effectivePower(factionId, territory)
-    local faction = registry.factions[factionId]
-    if not faction or not faction.territorial then
-        return 0
-    end
-    -- An anchor with no authored centroid can't be projected onto. It
-    -- still participates through its frontier, which does have one.
-    local centroid = territory.centroid
-    if not centroid then
-        return 0
+-- So the geometry is computed once and cached as a static factor per
+-- (territory, faction) pair, and the daily pass does no square roots at
+-- all. The cache also yields, for free, the list of factions that can
+-- reach a given territory -- usually one or two out of a dozen, which is
+-- what keeps a large map cheap to resolve.
+--
+-- territoryId -> { ids = {sorted factionIds}, factors = {factionId -> f} }
+local projections = nil
+local projectionGeneration = -1
+
+local EMPTY = { ids = {}, factors = {} }
+
+local function buildProjections()
+    local cache = {}
+
+    for territoryId, territory in pairs(registry.territories) do
+        local factors, ids = {}, {}
+        local centroid = territory.centroid
+
+        if centroid then
+            for factionId, faction in pairs(registry.factions) do
+                -- Power-only factions are skipped outright: they hold no
+                -- ground and project nothing, so they never appear in a
+                -- territory's reach list at all.
+                if faction.territorial then
+                    local best = 0
+                    for _, centre in ipairs(faction.powerCenters) do
+                        -- The strongest single center, never the sum
+                        -- (doc 3.2). Summing would let a faction
+                        -- out-project a rival purely by accumulating
+                        -- minor outposts; max says a place is under the
+                        -- influence of whichever foothold is nearest.
+                        local weighted = centre.weight * M.proximityFactor(
+                            distanceBetween(centroid, centre.coords), centre.influenceRange)
+                        if weighted > best then
+                            best = weighted
+                        end
+                    end
+                    if best > 0 then
+                        factors[factionId] = best
+                        ids[#ids + 1] = factionId
+                    end
+                end
+            end
+        end
+
+        -- Sorted, so a tie between two equal projections resolves the
+        -- same way every session rather than following table order.
+        table.sort(ids)
+        cache[territoryId] = { ids = ids, factors = factors }
     end
 
+    projections = cache
+    projectionGeneration = registry.generation
+end
+
+--- The factions that can reach a territory, and by what fraction of
+-- their power. Rebuilt automatically whenever a pack registers anything.
+function M.projectionFactors(territory)
+    if projections == nil or projectionGeneration ~= registry.generation then
+        buildProjections()
+    end
+    return projections[territory.id] or EMPTY
+end
+
+--- Force a rebuild. Only needed if a pack mutates power center geometry
+-- after registration, which it shouldn't.
+function M.invalidateProjections()
+    projections = nil
+end
+
+--- How strong a faction is at a territory: its power scaled by how far
+-- its nearest foothold reaches there.
+function M.effectivePower(factionId, territory)
+    local factor = M.projectionFactors(territory).factors[factionId]
+    if not factor then
+        return 0
+    end
     -- Batch-aware: during a resolution pass this reads the snapshot
     -- taken at the start of the day, so every territory is evaluated
     -- against the same numbers.
-    local factionPower = power.get(factionId)
-    if factionPower <= 0 then
-        return 0
-    end
-
-    local best = 0
-    for _, centre in ipairs(faction.powerCenters) do
-        local factor = M.proximityFactor(
-            distanceBetween(centroid, centre.coords), centre.influenceRange)
-        if factor > 0 then
-            local projected = factionPower * centre.weight * factor
-            if projected > best then
-                best = projected
-            end
-        end
-    end
-    return best
+    return power.get(factionId) * factor
 end
 
 --- The strongest projector at a territory, plus the incumbent's own
 -- strength there.
--- @param factionIds list, iterated in sorted order so that ties resolve
---        the same way every time rather than following table order
 -- @return strongestId, strongestValue, ownerValue
-local function evaluate(territory, ownerId, factionIds)
+local function evaluate(territory, ownerId)
+    local entry = M.projectionFactors(territory)
     local bestId, bestValue, ownerValue = nil, 0, 0
-    for _, id in ipairs(factionIds) do
-        local value = M.effectivePower(id, territory)
+
+    for _, id in ipairs(entry.ids) do
+        local value = power.get(id) * entry.factors[id]
         if id == ownerId then
             ownerValue = value
         end
@@ -122,6 +174,29 @@ local function evaluate(territory, ownerId, factionIds)
         end
     end
     return bestId, bestValue, ownerValue
+end
+
+--- How settled a territory is, right now.
+--
+--   'empty'        nobody projects hard enough to hold it
+--   'consolidated' exactly one faction is above the claim floor
+--   'contested'    two or more are, so it can change hands
+--
+-- Exposed rather than used internally: the resolution passes already
+-- have the numbers in hand. It's here so a UI, a spawn rule or a future
+-- staggering scheduler can ask the question without recomputing.
+function M.classify(territory)
+    local entry = M.projectionFactors(territory)
+    local above = 0
+    for _, id in ipairs(entry.ids) do
+        if power.get(id) * entry.factors[id] >= config.MIN_CLAIM_POWER then
+            above = above + 1
+            if above > 1 then
+                return 'contested'
+            end
+        end
+    end
+    return above == 1 and 'consolidated' or 'empty'
 end
 
 --- The attacker's share of the two sides' strength.
@@ -187,7 +262,6 @@ end
 -- stamps no cooldown, because stamping one would make the entire map
 -- uncontestable for the first few days of every new game.
 function M.assignInitialControl()
-    local factionIds = registry.sortedFactionIds()
     local claimed = 0
 
     -- Order-independent: each territory is judged only against the
@@ -195,7 +269,7 @@ function M.assignInitialControl()
     -- iteration order can't change the result.
     for id, territory in pairs(registry.territories) do
         if state.getOwner(id) == nil then
-            local bestId, bestValue = evaluate(territory, nil, factionIds)
+            local bestId, bestValue = evaluate(territory, nil)
             if bestId and bestValue >= config.MIN_CLAIM_POWER then
                 assign(territory, bestId)
                 claimed = claimed + 1
@@ -213,9 +287,9 @@ end
 -- Pass 1: frontier
 --------------------------------------------------------------------------
 
-local function resolveFrontier(territory, day, factionIds)
+local function resolveFrontier(territory, day)
     local owner = state.getOwner(territory.id)
-    local bestId, bestValue, ownerValue = evaluate(territory, owner, factionIds)
+    local bestId, bestValue, ownerValue = evaluate(territory, owner)
 
     if not bestId then
         return
@@ -268,9 +342,9 @@ local function isSurrounded(territory, ownerId)
     return (rivalHeld / total) >= config.SURROUND_SHARE
 end
 
-local function resolveAnchor(territory, day, factionIds)
+local function resolveAnchor(territory, day)
     local owner = state.getOwner(territory.id)
-    local bestId, bestValue, ownerValue = evaluate(territory, owner, factionIds)
+    local bestId, bestValue, ownerValue = evaluate(territory, owner)
 
     if owner == nil then
         if bestId and bestValue >= config.MIN_CLAIM_POWER then
@@ -331,8 +405,6 @@ end
 -- given: the frontier is what decides whether an anchor is surrounded,
 -- so evaluating anchors first would judge them on yesterday's map.
 function M.run(day, batch)
-    local factionIds = registry.sortedFactionIds()
-
     local frontier, anchors = {}, {}
     if batch then
         for _, id in ipairs(batch) do
@@ -352,10 +424,10 @@ function M.run(day, batch)
     end
 
     for _, territory in ipairs(frontier) do
-        resolveFrontier(territory, day, factionIds)
+        resolveFrontier(territory, day)
     end
     for _, territory in ipairs(anchors) do
-        resolveAnchor(territory, day, factionIds)
+        resolveAnchor(territory, day)
     end
 end
 
@@ -366,7 +438,7 @@ end
 --- Who projects most onto a territory, and how strongly.
 -- @return factionId|nil, value
 function M.strongestProjector(territory)
-    local bestId, bestValue = evaluate(territory, nil, registry.sortedFactionIds())
+    local bestId, bestValue = evaluate(territory, nil)
     return bestId, bestValue
 end
 

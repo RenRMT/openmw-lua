@@ -23,6 +23,25 @@ M._test = {
 
 function M._test.reset()
     player._events = {}
+    M.cells = {}
+end
+
+--- Populate world.cells with a rectangle of exterior cells, standing in
+-- for the cell records a content file would define. The frontier
+-- generator only creates territory where a cell actually exists, so
+-- tests need something here or they generate nothing.
+function M._test.defineExteriorGrid(minX, maxX, minY, maxY, region)
+    for gridX = minX, maxX do
+        for gridY = minY, maxY do
+            M.cells[#M.cells + 1] = {
+                isExterior = true,
+                gridX = gridX,
+                gridY = gridY,
+                name = '',
+                region = region,
+            }
+        end
+    end
 end
 
 --- Events this player received, of one name, in order.

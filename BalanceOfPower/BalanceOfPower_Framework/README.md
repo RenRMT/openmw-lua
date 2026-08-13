@@ -10,10 +10,14 @@ Load order: this mod must load **before** any pack that registers data against i
 
 ## Status
 
-Phases 1–2 of [the implementation plan](../implementation-plan.md); see
-[next-steps.md](../next-steps.md) for what comes next. To exercise any of this
-in-game, enable [BalanceOfPower_DevSandbox](../BalanceOfPower_DevSandbox/README.md)
-alongside it. The simulation logic has unit tests — see [tests/](../tests/README.md).
+Phases 1–3 of [the implementation plan](../implementation-plan.md); see
+[next-steps.md](../next-steps.md) for what comes next. The simulation logic has
+unit tests — see [tests/](../tests/README.md).
+
+For real content, enable [BalanceOfPower_Morrowind](../BalanceOfPower_Morrowind/README.md).
+For a small synthetic world plus an on-screen debug console, enable
+[BalanceOfPower_DevSandbox](../BalanceOfPower_DevSandbox/README.md) instead —
+**not both**, since they define the same factions.
 
 What exists:
 
@@ -23,6 +27,7 @@ What exists:
 - the in-game day tick driver
 - territory resolution: projection maths, derived initial control, frontier
   rolls, anchor sieges
+- frontier grid generation from registered power centers
 - the event bus
 
 What doesn't exist yet: patrol spawning (phase 4), player hooks (phase 5),
@@ -117,21 +122,21 @@ available as long as your pack loads after the framework.
 
 Anything with a default may be omitted.
 
-**Faction** — `id` (required), `displayName`, `territorial` (default `true`;
-`false` keeps the faction in the registry but out of the power loop),
-`basePower` (default 50), `landmass`, `powerCenters`, `patrolRoster`,
-`reactions` (only for factions with no ESM faction record — see below),
-`extend` (see below).
+**Faction** — `id` (required), `displayName`, `territorial` (default `true`,
+see below), `basePower` (default 50), `landmass`, `powerCenters`,
+`patrolRoster`, `reactions` (only for factions with no ESM faction record —
+see below), `extend` (see below).
 
 **Power center** — `id` (required), `coords` (required, `{x=, y=}`),
-`tier` (`capital` | `regional` | `outpost`, default `regional`), `weight` and
-`influenceRange` (both default per tier). Tier defaults exist so a minor
-holding only needs an id and coordinates.
+`tier` (`capital` | `regional` | `outpost` | `minor`, default `regional`),
+`weight` and `influenceRange` (both default per tier). Tier defaults exist so a
+minor holding only needs an id and coordinates.
 
 **Anchor** (`territories`) — `id` (required), `displayName`, `tier`
-(`town` | `city`, default `town`), `cells`, `adjacentFrontier`, `defaultOwner`
-(omit for unclaimed), `centroid`, `siegeThreshold`, `cooldownDays`,
-`defenseMultiplier` (last three default per tier).
+(`outpost` | `village` | `town` | `city` | `metropolis`, default `town`),
+`cells`, `region`, `adjacentFrontier`, `defaultOwner` (omit for unclaimed),
+`centroid`, `siegeThreshold`, `cooldownDays`, `defenseMultiplier` (last three
+default per tier).
 
 **Frontier cell** (`frontier`) — `id` (required), `centroid` (required),
 `cells`, `adjacentFrontier`, `adjacentAnchors`, `defaultOwner`, `cooldownDays`.
@@ -154,6 +159,45 @@ Power centers and roster entries are merged in; `basePower`, `displayName` and
 extending pack that tries to set them gets a warning. Redefining an id without
 `extend` is an error rather than a silent overwrite.
 
+### Land-holding and power-only factions
+
+`territorial` decides whether a faction appears on the map at all:
+
+- `true` (default) — it owns ground, projects influence from its power centers,
+  and can be recorded as a territory's owner.
+- `false` — a **power-only** faction. It has a power score, it reacts to
+  everyone else through the reaction table, and other systems can read its
+  standing — but it holds no ground and projects nothing.
+
+That's the split between a Great House and a guild. The Fighters Guild is a
+real political force whose fortunes rise and fall with its allies'; it just
+doesn't own Balmora. A faction that shouldn't participate at all is simply not
+registered.
+
+### Deriving the frontier
+
+Wilderness is generated, not authored — a landmass is thousands of cells.
+Register the settlements first, then:
+
+```lua
+I.BalanceOfPower.generateFrontier({ landmass = 'vvardenfell' })
+```
+
+It walks outward from every power center registered on that landmass and
+creates one territory per exterior cell within reach, skipping cells a
+settlement already claims and grid positions the content files don't define
+(which removes most open ocean for free). It also wires each anchor to the ring
+of cells around it, since a pack can't name generated ids itself — without that
+link no settlement could ever be besieged.
+
+**Only ground somebody can reach becomes territory.** That's what keeps the
+daily pass cheap by construction: the Morrowind pack generates ~560 frontier
+cells with an average of 1.2 factions able to reach each one, rather than a
+rectangle full of sea.
+
+Options: `cellsPerUnit` (cells per territory per axis — the main performance
+lever), `cellSize`, `margin`, `idPrefix`, `requireExistingCell`.
+
 ### Factions with no faction record
 
 Power propagation reads reaction values from `core.factions.records` by
@@ -170,8 +214,13 @@ I.BalanceOfPower.awardPower(factionId, baseDelta, playerRankMultiplier)
 
 Also available: `getPower`, `setPower`, `getOwner`, `getTerritory`,
 `getTerritoryForCell`, `getFaction`, `factionIds`, `territoryIds`,
-`getEffectivePower`, `getProjection`, `getInvasion`, `getInvasionStage`,
-`isCorrupted`, `getCurrentDay`, `powerSummary`, `dump`, `isDebug`.
+`getEffectivePower`, `getProjection`, `classify`, `getReach`, `getInvasion`,
+`getInvasionStage`, `isCorrupted`, `getCurrentDay`, `powerSummary`, `dump`, `dumpMap`,
+`renderMap`, `isDebug`.
+
+`classify(territoryId)` returns `'empty'`, `'consolidated'` or `'contested'`.
+`getReach(territoryId)` returns which factions can reach it at all and by what
+fraction of their power — static geometry, so it's cheap and stable.
 
 `getProjection(territoryId)` returns the faction that projects most onto a
 territory and how strongly — i.e. who will end up holding it. If that differs
@@ -207,6 +256,9 @@ scripts/BalanceOfPower/
   core/registry.lua  authored data from packs, validation, merging
   core/power.lua     power, reaction propagation, batching
   core/resolve.lua   projection maths, initial control, flips and sieges
+  core/frontier.lua  derives the wilderness grid from power centers
+  core/cells.lua     exterior cell naming
+  core/mapdump.lua   the text map
   core/driver.lua    the clock: day rollover, catch-up, forced ticks
   core/api.lua       the public interface
 ```
@@ -214,6 +266,40 @@ scripts/BalanceOfPower/
 Content packs should only ever touch `core/api.lua`'s surface through the
 interface. The merged VFS technically lets a pack `require` a core module
 directly; doing so couples it to internals that change between phases.
+
+## The text map
+
+`dumpMap()` draws the political map to `openmw.log`, one character per
+exterior cell, north at the top. Uppercase is a settlement, lowercase the
+wilderness around it. From the in-game console:
+
+```
+luag require('openmw.interfaces').BalanceOfPower.dumpMap()
+luag require('openmw.interfaces').BalanceOfPower.dumpMap({ mode = 'projection' })
+luag require('openmw.interfaces').BalanceOfPower.dumpMap({ mode = 'contest' })
+luag require('openmw.interfaces').BalanceOfPower.dumpMap({ landmass = 'solstheim' })
+```
+
+```
+   16 -------                .----.
+   15 ------.                .-----
+    5    .------###---.        .-------.
+    4    ----#--###-#--         -------.
+    3    ------#####.-.         .---###
+legend: # contested   - consolidated   . nobody reaches
+```
+
+Three modes:
+
+- **`owner`** (default) — who holds each cell now.
+- **`projection`** — who *will* hold it, given time and no change in anyone's
+  power. Where this disagrees with the ownership map, a front is moving. This
+  is the view to read while tuning influence ranges, because it shows the
+  consequence of a range change immediately rather than after days of rolls.
+- **`contest`** — where the fronts are, ignoring who holds what.
+
+`renderMap(opts)` returns the same thing as a list of lines, for a caller that
+wants to put it somewhere other than the log.
 
 ## Tuning
 
