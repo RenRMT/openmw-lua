@@ -1,11 +1,16 @@
 -- Turns the settlement list into what the framework's registration API
 -- wants.
 --
--- Every settlement becomes a power center for its faction -- that's what
--- makes a region belong to somebody. Settlements above the minor tier
--- additionally become anchors: contestable territory that can be
--- besieged and change hands. A farm shapes who the Ascadian Isles
--- belong to without itself being worth a war.
+-- Every holding in the list becomes a power center for its faction --
+-- that's what makes a region belong to somebody. Holdings above the minor
+-- tier additionally become settlements: named, ownable territory. A farm
+-- shapes who the Ascadian Isles belong to without itself being a place on
+-- the map.
+--
+-- Note the vocabulary mismatch, which the source file's name invites: the
+-- list is every *holding*, and only some of them are settlements in the
+-- sense glossary.md uses. Minor locations are power centers and nothing
+-- else.
 --
 -- This transform lives in the content pack, not the framework,
 -- deliberately: "Minor location" and "Small City" are Morrowind's
@@ -44,7 +49,7 @@ local function cellNames(cells)
     return names
 end
 
---- Group the settlement list by landmass, producing anchors and power
+--- Group the settlement list by landmass, producing settlements and power
 -- centers.
 --
 -- @param cellSize world units per exterior cell. Comes from the
@@ -83,11 +88,11 @@ function M.plan(settlements, cellSize)
             }
         end
 
-        if settlement.anchorTier then
+        if settlement.settlementTier then
             entry.territories[#entry.territories + 1] = {
                 id = id,
                 displayName = settlement.name,
-                tier = settlement.anchorTier,
+                tier = settlement.settlementTier,
                 region = settlement.region,
                 cells = cellNames(settlement.cells),
                 centroid = centroid,

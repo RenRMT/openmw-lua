@@ -23,10 +23,10 @@ local M = {}
 -- A territory changed hands: { territory, kind, from, to, day }
 M.TERRITORY_FLIPPED = 'BoP_TerritoryFlipped'
 
--- An anchor's siege streak advanced: { territory, streak, threshold }
+-- A settlement's siege streak advanced: { territory, streak, threshold }
 -- Fires every day the streak grows, well before a flip is possible, so
 -- "the town is under pressure" can be surfaced early.
-M.ANCHOR_SIEGED = 'BoP_AnchorSieged'
+M.SETTLEMENT_SIEGED = 'BoP_SettlementSieged'
 
 -- A faction's power moved: { faction, delta, newTotal }
 M.POWER_CHANGED = 'BoP_PowerChanged'

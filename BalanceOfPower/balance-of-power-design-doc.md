@@ -24,6 +24,7 @@ else still holds.
 | Roughly 18–22 anchors | 36 contestable anchors out of 63 settlements, across Vvardenfell **and Solstheim** | §5.2 |
 | Anchor tiers `town` / `city` | Five: `outpost`, `village`, `town`, `city`, `metropolis`. Power-center tiers gained `minor` | §3.1 |
 | Morag Tong excluded | Registered as a power-only faction, along with the Fighters, Mages and Thieves Guilds, the Imperial Cult and the Camonna Tong | §5.1 |
+| "Anchor" for a territory containing a settlement | Renamed **settlement** throughout. The word never read as the opposite of "frontier", and its justification was internal — see [glossary.md](glossary.md), which is now the authority on every term in this document | everywhere |
 | Frontier cells contestable via adjacency to rival-held ground | Contestable unconditionally. Proximity decay already *is* the adjacency rule — a faction with no foothold nearby projects nothing and cannot win | §3.4 |
 | Commerce as a stretch goal | Dropped. No engine hook exists, and it was judged out of scope for the framework | §3.6, §7 |
 | Homeland "Red Mountain interior + Ghostgate approach" | Dagoth Ur alone, from the settlement list | §5.3 |

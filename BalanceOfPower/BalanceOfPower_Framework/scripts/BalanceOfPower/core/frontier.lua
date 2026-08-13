@@ -207,7 +207,7 @@ function M.generate(def)
         end
 
         if occupied then
-            -- A settlement anchor already holds this ground; the
+            -- A settlement already holds this ground; the
             -- wilderness grid must not fight it for the same cells.
             skipped = skipped + 1
         else
@@ -217,22 +217,22 @@ function M.generate(def)
     end
 
     ----------------------------------------------------------------------
-    -- 3. Work out which anchors each block sits next to.
+    -- 3. Work out which settlements each block sits next to.
     --
-    -- Anchors are registered before the frontier exists, so a pack has no
+    -- Settlements are registered before the frontier exists, so a pack has no
     -- way to name generated cells in its own `adjacentFrontier`. The link
-    -- is made here instead, in both directions -- without it no anchor
+    -- is made here instead, in both directions -- without it no settlement
     -- would ever count as surrounded and no siege could ever begin.
     ----------------------------------------------------------------------
 
-    local anchorsByBlock = {}    -- blockKey -> { anchorId, ... }
-    local frontierByAnchor = {}  -- anchorId -> { blockKey, ... }
+    local settlementsByBlock = {}    -- blockKey -> { settlementId, ... }
+    local frontierBySettlement = {}  -- settlementId -> { blockKey, ... }
 
-    for _, anchorId in ipairs(registry.anchorIds) do
-        local anchor = registry.territories[anchorId]
-        if anchor.landmass == landmassId then
+    for _, settlementId in ipairs(registry.settlementIds) do
+        local settlement = registry.territories[settlementId]
+        if settlement.landmass == landmassId then
             local seen = {}
-            for _, name in ipairs(anchor.cells) do
+            for _, name in ipairs(settlement.cells) do
                 local gridX, gridY = cells.parse(name)
                 if gridX then
                     -- The eight grid neighbours of every cell the
@@ -246,10 +246,10 @@ function M.generate(def)
                                 math.floor((gridY + offsetY) / block))
                             if planned[neighbour] and not seen[neighbour] then
                                 seen[neighbour] = true
-                                anchorsByBlock[neighbour] = anchorsByBlock[neighbour] or {}
-                                table.insert(anchorsByBlock[neighbour], anchorId)
-                                frontierByAnchor[anchorId] = frontierByAnchor[anchorId] or {}
-                                table.insert(frontierByAnchor[anchorId], neighbour)
+                                settlementsByBlock[neighbour] = settlementsByBlock[neighbour] or {}
+                                table.insert(settlementsByBlock[neighbour], settlementId)
+                                frontierBySettlement[settlementId] = frontierBySettlement[settlementId] or {}
+                                table.insert(frontierBySettlement[settlementId], neighbour)
                             end
                         end
                     end
@@ -293,7 +293,7 @@ function M.generate(def)
                 y = (entry.blockY + 0.5) * blockSize,
             },
             adjacentFrontier = neighbours,
-            adjacentAnchors = anchorsByBlock[id] or {},
+            adjacentSettlements = settlementsByBlock[id] or {},
             -- No defaultOwner. Initial control is derived from
             -- projection, which is the entire point of generating this
             -- grid rather than authoring it.
@@ -303,13 +303,13 @@ function M.generate(def)
     registry.registerFrontier(landmassId, definitions)
 
     ----------------------------------------------------------------------
-    -- 5. Wire the anchors back to their ring.
+    -- 5. Wire the settlements back to their ring.
     ----------------------------------------------------------------------
 
     local wired = 0
-    for anchorId, blockKeys in pairs(frontierByAnchor) do
-        local anchor = registry.territories[anchorId]
-        local ring = anchor.adjacentFrontier
+    for settlementId, blockKeys in pairs(frontierBySettlement) do
+        local settlement = registry.territories[settlementId]
+        local ring = settlement.adjacentFrontier
         for _, blockKey in ipairs(blockKeys) do
             ring[#ring + 1] = planned[blockKey]
         end
@@ -318,7 +318,7 @@ function M.generate(def)
     end
 
     log.info('generated %d frontier cells for "%s" from %d power centers '
-        .. '(%d blocks already settled, %d anchors given a ring)',
+        .. '(%d blocks already settled, %d settlements given a ring)',
         #definitions, landmassId, centerCount, skipped, wired)
     return #definitions
 end

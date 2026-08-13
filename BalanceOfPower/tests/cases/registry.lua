@@ -46,7 +46,7 @@ local function minimalLandmass(overrides)
                 id = 'west_gash',
                 centroid = { x = 8192, y = 0 },
                 cells = { '#-4,-2' },
-                adjacentAnchors = { 'balmora' },
+                adjacentSettlements = { 'balmora' },
             },
         },
     }
@@ -64,10 +64,10 @@ function M.registersFactionsAndTerritories()
     registry.registerLandmass(minimalLandmass())
 
     expect.equal(registry.countFactions(), 1, 'faction count')
-    expect.equal(#registry.anchorIds, 1, 'anchor count')
+    expect.equal(#registry.settlementIds, 1, 'settlement count')
     expect.equal(#registry.frontierIds, 1, 'frontier count')
     expect.equal(registry.factions.hlaalu.displayName, 'House Hlaalu', 'display name')
-    expect.equal(registry.territories.balmora.kind, 'anchor', 'anchor kind')
+    expect.equal(registry.territories.balmora.kind, 'settlement', 'settlement kind')
     expect.equal(registry.territories.west_gash.kind, 'frontier', 'frontier kind')
 end
 
@@ -85,14 +85,14 @@ function M.appliesTierDefaults()
     -- A city must be markedly harder to take than a town, or the
     -- invasion subsystem loses the only lever that makes overrunning one
     -- feel different from routine politics.
-    local town = require('scripts.BalanceOfPower.core.config').ANCHOR_DEFAULTS.town
+    local town = require('scripts.BalanceOfPower.core.config').SETTLEMENT_DEFAULTS.town
     expect.greater(city.defenseMultiplier, town.defenseMultiplier, 'city vs town defense')
 end
 
 function M.indexesCellsToTerritories()
     registry.registerLandmass(minimalLandmass())
 
-    expect.equal(registry.territoryForCell('#-3,-2').id, 'balmora', 'anchor cell lookup')
+    expect.equal(registry.territoryForCell('#-3,-2').id, 'balmora', 'settlement cell lookup')
     expect.equal(registry.territoryForCell('#-4,-2').id, 'west_gash', 'frontier cell lookup')
     expect.isNil(registry.territoryForCell('#99,99'), 'unknown cell lookup')
 end
@@ -170,7 +170,7 @@ end
 function M.failedRegistrationCommitsNothing()
     registry.registerLandmass(minimalLandmass())
     local factionsBefore = registry.countFactions()
-    local anchorsBefore = #registry.anchorIds
+    local settlementsBefore = #registry.settlementIds
 
     expect.raises(function()
         registry.registerLandmass({
@@ -179,14 +179,14 @@ function M.failedRegistrationCommitsNothing()
             territories = {
                 { id = 'sadrith_mora', centroid = { x = 0, y = 0 }, defaultOwner = 'telvanni' },
             },
-            -- Fails here, after a valid faction and a valid anchor have
+            -- Fails here, after a valid faction and a valid settlement have
             -- already been staged.
             frontier = { { id = 'azura_coast' } },
         })
     end, 'centroid', 'partially valid landmass')
 
     expect.equal(registry.countFactions(), factionsBefore, 'faction count after failure')
-    expect.equal(#registry.anchorIds, anchorsBefore, 'anchor count after failure')
+    expect.equal(#registry.settlementIds, settlementsBefore, 'settlement count after failure')
     expect.isNil(registry.factions.telvanni, 'faction from failed pack')
     expect.isNil(registry.landmasses.broken, 'landmass from failed pack')
 end

@@ -26,7 +26,7 @@ What exists:
 - persistent state with central default-fill for save compatibility
 - the in-game day tick driver
 - territory resolution: projection maths, derived initial control, frontier
-  rolls, anchor sieges
+  rolls, settlement sieges
 - frontier grid generation from registered power centers
 - the event bus
 
@@ -60,7 +60,7 @@ overrides that, which is how an invasion homeland stays with its invader.
 
 Frontier cells are contestable regardless of what is next to them — proximity
 decay is already the adjacency rule, since a faction with no foothold nearby
-projects nothing and cannot win. Anchors are different: a settlement must be
+projects nothing and cannot win. Settlements are different: a settlement must be
 surrounded (`SURROUND_SHARE` of its `adjacentFrontier` in rival hands) for
 `siegeThreshold` consecutive days before it can be rolled for at all, and then
 the defender's projection is multiplied by `defenseMultiplier`.
@@ -97,7 +97,7 @@ I.BalanceOfPower.registerLandmass({
             },
         },
     },
-    territories = {                            -- anchors: settlements
+    territories = {                            -- settlements: named places
         {
             id = 'balmora',
             displayName = 'Balmora',
@@ -113,7 +113,7 @@ I.BalanceOfPower.registerLandmass({
             centroid = { x = -30000, y = -8000 },
             cells = { '#-4,-1' },
             adjacentFrontier = { 'west_gash_a5' },
-            adjacentAnchors = { 'balmora' },
+            adjacentSettlements = { 'balmora' },
             defaultOwner = 'hlaalu',
         },
     },
@@ -138,14 +138,14 @@ see below), `extend` (see below).
 `weight` and `influenceRange` (both default per tier). Tier defaults exist so a
 minor holding only needs an id and coordinates.
 
-**Anchor** (`territories`) — `id` (required), `displayName`, `tier`
+**Settlement** (`territories`) — `id` (required), `displayName`, `tier`
 (`outpost` | `village` | `town` | `city` | `metropolis`, default `town`),
 `cells`, `region`, `adjacentFrontier`, `defaultOwner` (omit for unclaimed),
 `centroid`, `siegeThreshold`, `cooldownDays`, `defenseMultiplier` (last three
 default per tier).
 
 **Frontier cell** (`frontier`) — `id` (required), `centroid` (required),
-`cells`, `adjacentFrontier`, `adjacentAnchors`, `defaultOwner`, `cooldownDays`.
+`cells`, `adjacentFrontier`, `adjacentSettlements`, `defaultOwner`, `cooldownDays`.
 
 **Invasion** — `registerInvasion({ id = ..., faction = { ... } })`, where the
 faction adds `homeTerritories`, `growthPerDay`, and `escalationThresholds`
@@ -192,7 +192,7 @@ I.BalanceOfPower.generateFrontier({ landmass = 'vvardenfell' })
 It walks outward from every power center registered on that landmass and
 creates one territory per exterior cell within reach, skipping cells a
 settlement already claims and grid positions the content files don't define
-(which removes most open ocean for free). It also wires each anchor to the ring
+(which removes most open ocean for free). It also wires each settlement to the ring
 of cells around it, since a pack can't name generated ids itself — without that
 link no settlement could ever be besieged.
 
@@ -287,7 +287,7 @@ them in whichever context it runs in. Names are on `I.BalanceOfPower.events`.
 | Event | Payload |
 |---|---|
 | `BoP_TerritoryFlipped` | `territory`, `kind`, `from`, `to`, `day` |
-| `BoP_AnchorSieged` | `territory`, `streak`, `threshold` |
+| `BoP_SettlementSieged` | `territory`, `streak`, `threshold` |
 | `BoP_PowerChanged` | `faction`, `delta`, `newTotal` |
 | `BoP_InvasionEscalated` | `invasion`, `oldStage`, `newStage` |
 | `BoP_TerritoryCorrupted` / `BoP_TerritoryLiberated` | `territory`, `invasion` |

@@ -30,8 +30,8 @@ local M = {}
 
 M.factions = {}      -- factionId   -> normalized faction
 M.landmasses = {}    -- landmassId  -> { id, displayName, factionIds, territoryIds }
-M.territories = {}   -- territoryId -> normalized territory (anchors and frontier both)
-M.anchorIds = {}     -- registration-ordered list of anchor ids
+M.territories = {}   -- territoryId -> normalized territory (settlements and frontier both)
+M.settlementIds = {}     -- registration-ordered list of settlement ids
 M.frontierIds = {}   -- registration-ordered list of frontier cell ids
 M.invasions = {}     -- invasionId  -> normalized invasion
 M.cellIndex = {}     -- cell name (interior name or "#x,y") -> territoryId
@@ -319,9 +319,9 @@ local function prepareTerritory(def, context, kind, landmassId, staged)
         adjacentFrontier = copyStrings(def.adjacentFrontier, ctx, 'adjacentFrontier'),
     }
 
-    if kind == 'anchor' then
-        local tier = def.tier or config.DEFAULT_ANCHOR_TIER
-        local tierDefaults = config.ANCHOR_DEFAULTS[tier]
+    if kind == 'settlement' then
+        local tier = def.tier or config.DEFAULT_SETTLEMENT_TIER
+        local tierDefaults = config.SETTLEMENT_DEFAULTS[tier]
         if not tierDefaults then
             fail(ctx, 'unknown tier "' .. tostring(tier) .. '"')
         end
@@ -332,8 +332,8 @@ local function prepareTerritory(def, context, kind, landmassId, staged)
             tierDefaults.cooldownDays)
         territory.defenseMultiplier = checkPositive(def.defenseMultiplier, ctx, 'defenseMultiplier',
             tierDefaults.defenseMultiplier)
-        -- Optional on anchors: a settlement is identified by its cells,
-        -- but distance math still needs a point. An anchor without one
+        -- Optional on settlements: a settlement is identified by its cells,
+        -- but distance math still needs a point. A settlement without one
         -- projects nothing and is evaluated only through its frontier
         -- (phase 2).
         if def.centroid ~= nil then
@@ -343,7 +343,7 @@ local function prepareTerritory(def, context, kind, landmassId, staged)
         territory.centroid = checkCoords(def.centroid, ctx, 'centroid')
         territory.cooldownDays = checkNumber(def.cooldownDays, ctx, 'cooldownDays',
             config.FRONTIER_COOLDOWN_DAYS)
-        territory.adjacentAnchors = copyStrings(def.adjacentAnchors, ctx, 'adjacentAnchors')
+        territory.adjacentSettlements = copyStrings(def.adjacentSettlements, ctx, 'adjacentSettlements')
     end
 
     return territory
@@ -368,7 +368,7 @@ end
 -- Public registration
 --------------------------------------------------------------------------
 
---- Register a landmass: its factions, its settlement anchors and its
+--- Register a landmass: its factions, its settlements and its
 -- frontier grid. Called once per content pack at world init.
 function M.registerLandmass(def)
     checkTable(def, 'registerLandmass', 'definition')
@@ -386,8 +386,8 @@ function M.registerLandmass(def)
     for _, factionDef in ipairs(def.factions or {}) do
         factionOps[#factionOps + 1] = prepareFaction(factionDef, context, id, stagedFactions)
     end
-    for _, anchorDef in ipairs(def.territories or {}) do
-        territories[#territories + 1] = prepareTerritory(anchorDef, context, 'anchor', id,
+    for _, settlementDef in ipairs(def.territories or {}) do
+        territories[#territories + 1] = prepareTerritory(settlementDef, context, 'settlement', id,
             stagedTerritories)
     end
     for _, frontierDef in ipairs(def.frontier or {}) do
@@ -412,12 +412,12 @@ function M.registerLandmass(def)
         landmass.factionIds[#landmass.factionIds + 1] = op.id
     end
 
-    local anchorCount = 0
+    local settlementCount = 0
     for _, territory in ipairs(territories) do
         M.territories[territory.id] = territory
-        if territory.kind == 'anchor' then
-            M.anchorIds[#M.anchorIds + 1] = territory.id
-            anchorCount = anchorCount + 1
+        if territory.kind == 'settlement' then
+            M.settlementIds[#M.settlementIds + 1] = territory.id
+            settlementCount = settlementCount + 1
         else
             M.frontierIds[#M.frontierIds + 1] = territory.id
         end
@@ -428,8 +428,8 @@ function M.registerLandmass(def)
     M.landmasses[id] = landmass
     M.generation = M.generation + 1
 
-    log.info('registered landmass "%s": %d factions, %d anchors, %d frontier cells',
-        id, #landmass.factionIds, anchorCount, #territories - anchorCount)
+    log.info('registered landmass "%s": %d factions, %d settlements, %d frontier cells',
+        id, #landmass.factionIds, settlementCount, #territories - settlementCount)
     return landmass
 end
 
@@ -604,8 +604,8 @@ function M.validateReferences()
             report('territory "%s" defaults to unknown faction "%s"', id, territory.defaultOwner)
         end
         checkTerritoryRefs(id, 'adjacentFrontier', territory.adjacentFrontier)
-        if territory.adjacentAnchors then
-            checkTerritoryRefs(id, 'adjacentAnchors', territory.adjacentAnchors)
+        if territory.adjacentSettlements then
+            checkTerritoryRefs(id, 'adjacentSettlements', territory.adjacentSettlements)
         end
     end
 
@@ -617,8 +617,8 @@ function M.validateReferences()
         log.warn('... and %d more reference problems', problems - config.MAX_REPORTED_PROBLEMS)
     end
     if problems == 0 then
-        log.debug('reference check passed: %d factions, %d anchors, %d frontier cells',
-            M.countFactions(), #M.anchorIds, #M.frontierIds)
+        log.debug('reference check passed: %d factions, %d settlements, %d frontier cells',
+            M.countFactions(), #M.settlementIds, #M.frontierIds)
     end
     return problems
 end

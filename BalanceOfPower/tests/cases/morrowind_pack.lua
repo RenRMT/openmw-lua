@@ -40,10 +40,10 @@ function M.loadsWithoutError()
     expect.truthy(registry.invasions.sixth_house, 'sixth house registered')
 end
 
-function M.registersEverySettlementAsAnAnchorOrPowerCentre()
+function M.registersEveryHoldingAsASettlementOrPowerCentre()
     loadPack()
     -- 36 contestable settlements out of 63, per the build script.
-    expect.equal(#registry.anchorIds, 36, 'anchors')
+    expect.equal(#registry.settlementIds, 36, 'settlements')
 end
 
 function M.hasNoReferenceProblems()
@@ -88,7 +88,7 @@ end
 function M.everySettlementFactionIsDefined()
     loadPack()
 
-    for _, territoryId in ipairs(registry.anchorIds) do
+    for _, territoryId in ipairs(registry.settlementIds) do
         local territory = registry.territories[territoryId]
         if territory.defaultOwner then
             expect.truthy(registry.factions[territory.defaultOwner],
@@ -107,11 +107,11 @@ function M.takesTheCellSizeFromTheFramework()
     local size = api.CELL_SIZE
     expect.equal(size, 8192, 'the ESM3 grid the engine works in')
 
-    -- Every anchor's centroid must be the mean of its cells' middles,
+    -- Every settlement's centroid must be the mean of its cells' middles,
     -- measured in the framework's cell size. Checked across all of them,
     -- since a wrong constant shows up as a proportional error that a
     -- single-cell settlement near the origin could hide.
-    for _, id in ipairs(registry.anchorIds) do
+    for _, id in ipairs(registry.settlementIds) do
         local territory = registry.territories[id]
         local sumX, sumY = 0, 0
         for _, name in ipairs(territory.cells) do
@@ -204,7 +204,7 @@ function M.placesKnownSettlementsInTheRightCells()
     expect.equal(registry.territoryForCell('#-17,25').id, 'raven_rock', 'Raven Rock')
 end
 
---- Vivec covers fifteen cells and must be a single anchor over all of
+--- Vivec covers fifteen cells and must be a single settlement over all of
 -- them, not fifteen adjacent ones fighting each other.
 function M.keepsMultiCellSettlementsWhole()
     loadPack()
@@ -238,7 +238,7 @@ function M.derivesAStartingMapFromSettlementsAlone()
     resolve.assignInitialControl()
 
     local owned = {}
-    for _, id in ipairs(registry.anchorIds) do
+    for _, id in ipairs(registry.settlementIds) do
         local owner = state.getOwner(id)
         if owner then
             owned[owner] = (owned[owner] or 0) + 1
@@ -268,19 +268,19 @@ function M.leavesTheInvaderHomelandWithTheInvader()
     expect.equal(state.getOwner('dagoth_ur'), 'sixth house', 'Red Mountain')
 end
 
---- Sieges only work if anchors know their surrounding cells, and packs
+--- Sieges only work if settlements know their surrounding cells, and packs
 -- can't name generated cells themselves. If this regresses, settlements
 -- silently become untakeable.
 function M.givesSettlementsARing()
     loadPack()
 
     local ringless = {}
-    for _, id in ipairs(registry.anchorIds) do
+    for _, id in ipairs(registry.settlementIds) do
         if #registry.territories[id].adjacentFrontier == 0 then
             ringless[#ringless + 1] = id
         end
     end
-    expect.count(ringless, 0, 'anchors with no surrounding frontier: '
+    expect.count(ringless, 0, 'settlements with no surrounding frontier: '
         .. table.concat(ringless, ', '))
 end
 
@@ -296,7 +296,7 @@ end
 function M.staysWithinAWorkableNumberOfTerritories()
     loadPack()
 
-    local total = #registry.anchorIds + #registry.frontierIds
+    local total = #registry.settlementIds + #registry.frontierIds
     expect.greater(total, 100, 'a real map was generated')
     expect.greater(4000, total, 'territory count stays workable, got ' .. total)
 end

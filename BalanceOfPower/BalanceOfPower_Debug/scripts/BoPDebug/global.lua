@@ -148,7 +148,7 @@ local handlers = {}
 function handlers.BoPDebug_Dump()
     heading('STANDINGS -- %s', dayLabel())
 
-    local anchors = BoP.territoryIds('anchor')
+    local settlements = BoP.territoryIds('settlement')
     local frontier = BoP.territoryIds('frontier')
     local contested = 0
     for _, territoryId in ipairs(BoP.territoryIds()) do
@@ -157,7 +157,7 @@ function handlers.BoPDebug_Dump()
         end
     end
 
-    out('  %d anchors, %d frontier cells, %d contested', #anchors, #frontier, contested)
+    out('  %d settlements, %d frontier cells, %d contested', #settlements, #frontier, contested)
     blank()
     printStandings()
 end
@@ -267,7 +267,7 @@ function handlers.BoPDebug_Here(data)
 
     heading('HERE -- %s', territory.displayName)
     out('  cell      %s', data.cell)
-    out('  kind      %s', territory.kind == 'anchor' and territory.tier or 'frontier')
+    out('  kind      %s', territory.kind == 'settlement' and territory.tier or 'frontier')
     out('  region    %s', territory.region or '-')
     out('  owner     %s%s', owner and nameOf(owner) or 'unclaimed',
         BoP.isCorrupted(territory.id) and '  [CORRUPTED]' or '')
@@ -317,7 +317,7 @@ function handlers.BoP_PowerChanged(data)
     end
 end
 
-function handlers.BoP_AnchorSieged(data)
+function handlers.BoP_SettlementSieged(data)
     if watching then
         out('  siege   %-26s %d/%d', data.territory, data.streak, data.threshold)
     end

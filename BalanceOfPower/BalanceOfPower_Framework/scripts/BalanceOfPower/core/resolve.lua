@@ -21,7 +21,7 @@
 -- Frontier cells are contestable regardless of what's next to them. They
 -- don't need an adjacency gate because proximity decay already is one:
 -- a faction with no foothold nearby projects nothing there and cannot
--- win. Anchors are different -- a settlement has to be surrounded on the
+-- win. Settlements are different -- a settlement has to be surrounded on the
 -- frontier for several days running before it can even be rolled for.
 --
 -- GLOBAL context only.
@@ -224,7 +224,7 @@ end
 -- bare assignment, used directly only for setting up the starting map.
 local function assign(territory, factionId)
     state.setOwner(territory.id, factionId)
-    if territory.kind == 'anchor' then
+    if territory.kind == 'settlement' then
         state.get().siegeStreak[territory.id] = 0
     end
 end
@@ -318,15 +318,15 @@ local function resolveFrontier(territory, day)
 end
 
 --------------------------------------------------------------------------
--- Pass 2: anchors
+-- Pass 2: settlements
 --------------------------------------------------------------------------
 
---- Whether enough of an anchor's surrounding frontier is in rival hands.
+--- Whether enough of a settlement's surrounding frontier is in rival hands.
 local function isSurrounded(territory, ownerId)
     local adjacent = territory.adjacentFrontier
     local total = #adjacent
     if total == 0 then
-        -- An anchor with no frontier authored around it can't be
+        -- A settlement with no frontier authored around it can't be
         -- besieged. That's a data gap, not a fortress, but treating it
         -- as untakeable is the safe reading.
         return false
@@ -342,7 +342,7 @@ local function isSurrounded(territory, ownerId)
     return (rivalHeld / total) >= config.SURROUND_SHARE
 end
 
-local function resolveAnchor(territory, day)
+local function resolveSettlement(territory, day)
     local owner = state.getOwner(territory.id)
     local bestId, bestValue, ownerValue = evaluate(territory, owner)
 
@@ -361,12 +361,12 @@ local function resolveAnchor(territory, day)
     end
 
     -- The streak counts consecutive days of encirclement, and stops at
-    -- the threshold: past that the anchor is already rolled for every
+    -- the threshold: past that the settlement is already rolled for every
     -- day it stays surrounded, so a higher number changes nothing.
     --
     -- Letting it climb would be a number growing without bound in every
     -- save, and -- because a rival can hold the ring indefinitely while
-    -- the incumbent still out-projects it -- an ANCHOR_SIEGED every day
+    -- the incumbent still out-projects it -- a SETTLEMENT_SIEGED every day
     -- forever for a siege nobody can win. Emitting only while the count
     -- actually moves also matches what the event is documented to mean:
     -- the pressure went up a notch.
@@ -375,7 +375,7 @@ local function resolveAnchor(territory, day)
 
     if streak > previous then
         data.siegeStreak[territory.id] = streak
-        events.emit(events.ANCHOR_SIEGED, {
+        events.emit(events.SETTLEMENT_SIEGED, {
             territory = territory.id,
             streak = streak,
             threshold = territory.siegeThreshold,
@@ -415,16 +415,16 @@ end
 -- the graph is large. Keeping the parameter means that becomes a change
 -- to the scheduler alone.
 --
--- Frontier always resolves before anchors, within whatever batch is
--- given: the frontier is what decides whether an anchor is surrounded,
--- so evaluating anchors first would judge them on yesterday's map.
+-- Frontier always resolves before settlements, within whatever batch is
+-- given: the frontier is what decides whether a settlement is surrounded,
+-- so evaluating settlements first would judge them on yesterday's map.
 function M.run(day, batch)
-    local frontier, anchors = {}, {}
+    local frontier, settlements = {}, {}
     if batch then
         for _, id in ipairs(batch) do
             local territory = registry.territories[id]
             if territory then
-                local bucket = territory.kind == 'anchor' and anchors or frontier
+                local bucket = territory.kind == 'settlement' and settlements or frontier
                 bucket[#bucket + 1] = territory
             end
         end
@@ -432,16 +432,16 @@ function M.run(day, batch)
         for _, id in ipairs(registry.frontierIds) do
             frontier[#frontier + 1] = registry.territories[id]
         end
-        for _, id in ipairs(registry.anchorIds) do
-            anchors[#anchors + 1] = registry.territories[id]
+        for _, id in ipairs(registry.settlementIds) do
+            settlements[#settlements + 1] = registry.territories[id]
         end
     end
 
     for _, territory in ipairs(frontier) do
         resolveFrontier(territory, day)
     end
-    for _, territory in ipairs(anchors) do
-        resolveAnchor(territory, day)
+    for _, territory in ipairs(settlements) do
+        resolveSettlement(territory, day)
     end
 end
 

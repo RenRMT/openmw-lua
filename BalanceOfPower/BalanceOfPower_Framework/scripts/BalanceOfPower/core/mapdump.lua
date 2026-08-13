@@ -113,7 +113,7 @@ local function symbolFor(territory, factionId, symbols)
     end
     local letter = symbols[factionId] or '?'
     -- Settlements shout, wilderness whispers.
-    if territory.kind ~= 'anchor' then
+    if territory.kind ~= 'settlement' then
         letter = string.lower(letter)
     end
     return letter, factionId

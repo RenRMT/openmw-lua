@@ -61,7 +61,7 @@ end
 -- Deliberately a poll rather than a 24-hour repeating timer: game time
 -- jumps whenever the player sleeps, waits or fast travels, and a period
 -- timer either drifts against midnight or swallows the jump entirely.
--- Comparing day indices instead anchors the tick to the game calendar,
+-- Comparing day indices instead settlements the tick to the game calendar,
 -- and a jump is caught as however many days it actually was.
 function M.poll()
     -- Cheap and idempotent, so it runs every tick rather than requiring

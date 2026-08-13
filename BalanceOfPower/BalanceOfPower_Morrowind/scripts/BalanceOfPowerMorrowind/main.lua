@@ -10,7 +10,7 @@
 --   2. Solstheim extends the ones it shares (the Empire garrisons Fort
 --      Frostmoth as well as half of Vvardenfell) and defines its own.
 --   3. The Sixth House is registered as an invasion, which also creates
---      it as a faction -- so its anchor, declared in step 1 with an
+--      it as a faction -- so its settlement, declared in step 1 with an
 --      authored owner, only resolves now. That forward reference is
 --      expected; the framework checks references after everything loads.
 --   4. Frontier generation runs last, because it works outward from the

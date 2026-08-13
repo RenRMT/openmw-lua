@@ -56,10 +56,10 @@ moves a faction and everyone with an opinion about it.
 - Pass 1: frontier cells, contestable regardless of adjacency, gated by
   cooldown. The attacker is whoever projects most; the roll decides how long
   the takeover takes, not who wins it.
-- Pass 2: anchors accumulate a siege streak while surrounded, and only become
+- Pass 2: settlements accumulate a siege streak while surrounded, and only become
   contestable once the streak and cooldown both clear, with the defender's
   projection multiplied by `defenseMultiplier`.
-- `BoP_TerritoryFlipped` and `BoP_AnchorSieged`.
+- `BoP_TerritoryFlipped` and `BoP_SettlementSieged`.
 - `resolve.run(day, batch)` takes an explicit batch from the start, so
   staggering resolution later is a scheduling change, not a rewrite.
 
@@ -91,7 +91,7 @@ been contested. Tier defaults are now sized in cells.
 framework.
 
 - 63 settlements across Vvardenfell and Solstheim, 36 of them contestable
-  anchors, built from a CSV by a script rather than hand-written.
+  settlements, built from a CSV by a script rather than hand-written.
 - Eight land-holding factions and six power-only ones.
 - Frontier grid derived at load from the registered power centers: ~560 cells,
   averaging 1.2 factions able to reach each.
@@ -113,7 +113,7 @@ never learns what a "Small City" is; that vocabulary stays in the pack's own
   `FRONTIER_CELLS_PER_UNIT`.
 - Generation runs at load, not offline, so it can never go stale.
 - Only ground within reach of a power center becomes territory.
-- Minor holdings (farms, shacks, mines) are power centers but not anchors.
+- Minor holdings (farms, shacks, mines) are power centers but not settlements.
 - Solstheim is a separate landmass registered by the same pack, at its
   **Anthology / Tamriel Rebuilt** position rather than vanilla Bloodmoon's.
 
@@ -138,7 +138,7 @@ territory stays invisible in-world until it lands.
 
 - Player cell entry looks up the territory, its owner, and spawns 1–3 roster
   actors with a `Wander` package, friendly to the player.
-- Lighter spawn density on frontier cells than on anchors.
+- Lighter spawn density on frontier cells than on settlements.
 - A `Combat` package instead of ambient wandering where a rival is already
   present in contested ground.
 

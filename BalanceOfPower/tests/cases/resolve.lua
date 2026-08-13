@@ -1,5 +1,5 @@
 -- Territory resolution: projection maths, initial control, frontier
--- rolls and anchor sieges.
+-- rolls and settlement sieges.
 
 local expect = require('support.expect')
 
@@ -307,12 +307,12 @@ function M.claimsUnownedGroundDuringNormalResolution()
 end
 
 --------------------------------------------------------------------------
--- Anchor sieges
+-- Settlement sieges
 --------------------------------------------------------------------------
 
--- An anchor ringed by four frontier cells, at the midpoint between two
+-- A settlement ringed by four frontier cells, at the midpoint between two
 -- factions so both project onto it equally.
-local function anchorUnderSiege()
+local function settlementUnderSiege()
     registry.registerLandmass({
         id = 'testland',
         factions = {
@@ -359,8 +359,8 @@ local function encircle(count)
     end
 end
 
-function M.anchorIgnoredWhileNotSurrounded()
-    anchorUnderSiege()
+function M.settlementIgnoredWhileNotSurrounded()
+    settlementUnderSiege()
     encircle(2)   -- 2 of 4 = 0.5, under the 0.6 share
 
     resolve.setRandom(always(0))
@@ -373,7 +373,7 @@ function M.anchorIgnoredWhileNotSurrounded()
 end
 
 function M.siegeStreakClimbsWhileSurrounded()
-    anchorUnderSiege()
+    settlementUnderSiege()
     encircle(3)   -- 3 of 4 = 0.75
 
     resolve.setRandom(always(0.999))   -- never actually takes it
@@ -384,13 +384,13 @@ function M.siegeStreakClimbsWhileSurrounded()
 end
 
 --- The streak stops at the threshold. Past that point it changes
--- nothing -- the anchor is rolled for every day it stays surrounded --
+-- nothing -- the settlement is rolled for every day it stays surrounded --
 -- and this fixture is the case that makes an unbounded count real: the
 -- town sits exactly midway between the two seats, so the incumbent wins
 -- the projection tie and can never actually be taken. Left to climb,
 -- that is a number growing forever in every save.
 function M.siegeStreakStopsAtTheThreshold()
-    anchorUnderSiege()
+    settlementUnderSiege()
     encircle(3)
     resolve.setRandom(always(0.999))
 
@@ -402,12 +402,12 @@ function M.siegeStreakStopsAtTheThreshold()
     expect.equal(state.get().siegeStreak.town, threshold, 'streak is capped')
 end
 
---- ANCHOR_SIEGED is documented as firing when the streak grows, so once
+--- SETTLEMENT_SIEGED is documented as firing when the streak grows, so once
 -- the streak is capped it has nothing left to report. Without this, a
 -- permanently encircled town emits an event every day for the life of
 -- the save.
 function M.stopsReportingSiegesOnceTheStreakIsCapped()
-    anchorUnderSiege()
+    settlementUnderSiege()
     encircle(3)
     resolve.setRandom(always(0.999))
 
@@ -415,17 +415,17 @@ function M.stopsReportingSiegesOnceTheStreakIsCapped()
     for day = 1, threshold do
         resolve.run(day, { 'town' })
     end
-    expect.count(core._test.eventsNamed('BoP_AnchorSieged'), threshold, 'one per notch')
+    expect.count(core._test.eventsNamed('BoP_SettlementSieged'), threshold, 'one per notch')
 
     core._test.reset()
     for day = threshold + 1, threshold + 10 do
         resolve.run(day, { 'town' })
     end
-    expect.count(core._test.eventsNamed('BoP_AnchorSieged'), 0, 'silent once capped')
+    expect.count(core._test.eventsNamed('BoP_SettlementSieged'), 0, 'silent once capped')
 end
 
 function M.siegeStreakResetsWhenReliefArrives()
-    anchorUnderSiege()
+    settlementUnderSiege()
     encircle(3)
     resolve.setRandom(always(0.999))
     resolve.run(1, { 'town' })
@@ -437,11 +437,11 @@ function M.siegeStreakResetsWhenReliefArrives()
     expect.equal(state.get().siegeStreak.town, 0, 'streak reset')
 end
 
---- An anchor can't be rolled for until the streak clears its threshold,
+--- A settlement can't be rolled for until the streak clears its threshold,
 -- however strong the besieger is. This is what stops settlements
 -- changing hands the moment the frontier tips.
-function M.anchorSurvivesUntilThresholdIsReached()
-    anchorUnderSiege()
+function M.settlementSurvivesUntilThresholdIsReached()
+    settlementUnderSiege()
     encircle(3)
     power.set('beta', 400)             -- overwhelming
     resolve.setRandom(always(0))       -- every roll would succeed
@@ -464,7 +464,7 @@ end
 -- hardcoded, so retuning the tier defaults can't silently turn this into
 -- a test of nothing.
 function M.defenseMultiplierProtectsTheIncumbent()
-    anchorUnderSiege()
+    settlementUnderSiege()
     encircle(3)
     power.set('beta', 100)
 
@@ -491,11 +491,11 @@ end
 -- Ordering
 --------------------------------------------------------------------------
 
---- The frontier decides whether an anchor is surrounded, so resolving
--- anchors first would judge them against yesterday's map.
-function M.frontierResolvesBeforeAnchors()
-    anchorUnderSiege()
-    -- Beta will take the ring cells this pass; the anchor must see the
+--- The frontier decides whether a settlement is surrounded, so resolving
+-- settlements first would judge them against yesterday's map.
+function M.frontierResolvesBeforeSettlements()
+    settlementUnderSiege()
+    -- Beta will take the ring cells this pass; the settlement must see the
     -- new ownership in the same pass, not the next one.
     power.set('beta', 400)
     resolve.setRandom(always(0))

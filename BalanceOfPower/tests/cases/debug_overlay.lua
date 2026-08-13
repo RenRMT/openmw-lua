@@ -58,14 +58,14 @@ function M.registersNothing()
     state.fillDefaults(registry)
 
     local factions = registry.countFactions()
-    local anchors = #registry.anchorIds
+    local settlements = #registry.settlementIds
     local frontier = #registry.frontierIds
     local generation = registry.generation
 
     require('scripts.BoPDebug.global')
 
     expect.equal(registry.countFactions(), factions, 'faction count unchanged')
-    expect.equal(#registry.anchorIds, anchors, 'anchor count unchanged')
+    expect.equal(#registry.settlementIds, settlements, 'settlement count unchanged')
     expect.equal(#registry.frontierIds, frontier, 'frontier count unchanged')
     expect.equal(registry.generation, generation, 'nothing was registered at all')
 end

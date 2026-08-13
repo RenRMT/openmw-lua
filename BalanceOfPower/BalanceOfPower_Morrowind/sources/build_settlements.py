@@ -6,10 +6,15 @@ generated and should not be hand-edited. Run after changing the CSV:
 
     python BalanceOfPower/BalanceOfPower_Morrowind/sources/build_settlements.py
 
-One row per cell, so a settlement occupying several cells appears several
-times. Rows are grouped by (settlement, landmass) into a single entry with a
-cell list, which is what lets Vivec be one fourteen-cell anchor rather than
-fourteen separate ones.
+One row per cell, so a holding occupying several cells appears several times.
+Rows are grouped by (name, landmass) into a single entry with a cell list,
+which is what lets Vivec be one fifteen-cell settlement rather than fifteen
+separate ones.
+
+Note the vocabulary, since the file names invite the wrong reading: the CSV
+lists every *holding*, and only those above the minor tier become settlements
+in the sense glossary.md uses. Farms, shacks and mines are power centers and
+nothing else.
 """
 
 from __future__ import annotations
@@ -48,7 +53,7 @@ FACTION_IDS = {
     "Velothi/Unaffiliated": None,
 }
 
-# CSV tier -> (anchor tier, power center tier). A nil anchor tier means the
+# CSV tier -> (settlement tier, power center tier). A nil settlement tier means the
 # location projects influence but is not itself contestable territory --
 # farms, shacks and mines shape who a region belongs to without any single
 # one of them being worth a war.
@@ -148,20 +153,20 @@ def main() -> int:
         "-- Edit the CSV and re-run that script instead.",
         "--",
         "-- One entry per settlement. `cells` lists the exterior grid cells it",
-        "-- occupies, so a multi-cell city is a single anchor covering all of",
+        "-- occupies, so a multi-cell city is a single settlement covering all of",
         "-- them rather than several adjacent ones.",
         "",
         "return {",
     ]
 
     for entry in grouped.values():
-        anchor_tier, centre_tier = TIERS[entry["tier"]]
+        settlement_tier, centre_tier = TIERS[entry["tier"]]
         lines.append("    {")
         lines.append(f"        name = {lua_string(entry['name'])},")
         lines.append(f"        landmass = {lua_string(entry['landmass'])},")
         lines.append(f"        region = {lua_string(entry['region'])},")
         lines.append(
-            f"        anchorTier = {lua_string(anchor_tier) if anchor_tier else 'nil'},"
+            f"        settlementTier = {lua_string(settlement_tier) if settlement_tier else 'nil'},"
         )
         lines.append(f"        centerTier = {lua_string(centre_tier)},")
         lines.append(
@@ -185,10 +190,10 @@ def main() -> int:
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text("\n".join(lines), encoding="utf-8")
 
-    anchors = sum(1 for e in grouped.values() if TIERS[e["tier"]][0])
+    settlements = sum(1 for e in grouped.values() if TIERS[e["tier"]][0])
     centres = len(grouped)
     print(f"wrote {OUT_PATH.relative_to(PACK.parent)}")
-    print(f"  {centres} settlements, {anchors} of them contestable anchors")
+    print(f"  {centres} holdings, {settlements} of them settlements")
     for landmass in LANDMASS_IDS.values():
         count = sum(1 for e in grouped.values() if e["landmass"] == landmass)
         print(f"  {landmass}: {count}")

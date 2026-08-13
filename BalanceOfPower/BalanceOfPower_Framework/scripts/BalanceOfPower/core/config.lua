@@ -103,7 +103,7 @@ M.POWER_EVENT_EPSILON = 0.01
 -- across -- 8192 -- so the design document's illustrative 6000 would not
 -- reach even the neighbouring cell -- a capital would project onto
 -- nothing but itself, and no frontier cell would ever be contested. The
--- doc's figure predates the anchor/frontier split; these are sized in
+-- doc's figure predates the settlement/frontier split; these are sized in
 -- cells instead: roughly 5, 3 and 1.5 cells of reach.
 M.POWER_CENTER_DEFAULTS = {
     capital  = { weight = 1.00, influenceRange = 40000 },
@@ -123,9 +123,9 @@ M.DEFAULT_POWER_CENTER_TIER = 'regional'
 -- Territory
 --------------------------------------------------------------------------
 
-M.DEFAULT_ANCHOR_TIER = 'town'
+M.DEFAULT_SETTLEMENT_TIER = 'town'
 
--- Per-tier fallbacks for anchors. defenseMultiplier scales the current
+-- Per-tier fallbacks for settlements. defenseMultiplier scales the current
 -- owner's effective power during a siege roll; the top tiers are
 -- deliberately steep enough that ordinary faction politics can't take
 -- them, leaving real city flips to the invasion subsystem (doc 3.4).
@@ -133,7 +133,7 @@ M.DEFAULT_ANCHOR_TIER = 'town'
 -- The ladder runs from an isolated fort or Ashlander camp, which should
 -- change hands when the surrounding country does, up to Vivec, which
 -- should not change hands short of catastrophe.
-M.ANCHOR_DEFAULTS = {
+M.SETTLEMENT_DEFAULTS = {
     outpost    = { siegeThreshold = 2,  cooldownDays = 10, defenseMultiplier = 1.5 },
     village    = { siegeThreshold = 3,  cooldownDays = 15, defenseMultiplier = 2.0 },
     town       = { siegeThreshold = 4,  cooldownDays = 25, defenseMultiplier = 3.0 },
@@ -205,8 +205,8 @@ M.FRONTIER_REQUIRE_EXISTING_CELL = true
 -- cell away.
 M.MIN_CLAIM_POWER = 5
 
--- What share of an anchor's adjacent frontier a rival must hold before
--- the anchor counts as surrounded and its siege streak starts climbing.
+-- What share of a settlement's adjacent frontier a rival must hold before
+-- the settlement counts as surrounded and its siege streak starts climbing.
 M.SURROUND_SHARE = 0.6
 
 --------------------------------------------------------------------------

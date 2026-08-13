@@ -12,11 +12,12 @@ point `data=` at in `openmw.cfg`) or a project containing several.
 
 ## Where the truth lives
 
-For BalanceOfPower specifically, four documents, in the order to read them:
+For BalanceOfPower specifically, five documents, in the order to read them:
 
 | Document | What it is |
 |---|---|
-| [next-steps.md](BalanceOfPower/next-steps.md) | **Start here.** Current state, what to do next, open questions |
+| [glossary.md](BalanceOfPower/glossary.md) | **Read this first.** Shared vocabulary. Several terms are near-synonyms in English and mean different things here — *cell* vs *territory* above all |
+| [next-steps.md](BalanceOfPower/next-steps.md) | Current state, what to do next, open questions |
 | [implementation-plan.md](BalanceOfPower/implementation-plan.md) | Phase-by-phase build order, with decisions recorded per phase |
 | [balance-of-power-design-doc.md](BalanceOfPower/balance-of-power-design-doc.md) | Original intent. **Historical** — parts have been superseded; it says so at the top |
 | [openmw-lua-api-notes.md](BalanceOfPower/openmw-lua-api-notes.md) | Engine API facts, split into verified and unverified |

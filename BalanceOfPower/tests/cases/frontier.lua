@@ -44,7 +44,7 @@ local function oneSettlement(overrides)
                 },
             },
         },
-        territories = overrides.anchors,
+        territories = overrides.settlements,
     })
     state.fillDefaults(registry)
 end
@@ -176,7 +176,7 @@ end
 -- register a second territory over the top of them.
 function M.doesNotOverlapSettlementCells()
     oneSettlement({
-        anchors = {
+        settlements = {
             {
                 id = 'town',
                 tier = 'town',
@@ -189,16 +189,16 @@ function M.doesNotOverlapSettlementCells()
 
     expect.equal(registry.territoryForCell('#0,0').id, 'town', 'settlement keeps its cell')
     expect.equal(registry.territoryForCell('#1,0').id, 'town', 'and its second cell')
-    expect.equal(registry.territories.town.kind, 'anchor', 'still an anchor')
+    expect.equal(registry.territories.town.kind, 'settlement', 'still a settlement')
 end
 
---- Anchors are registered before the frontier exists, so a pack cannot
+--- Settlements are registered before the frontier exists, so a pack cannot
 -- name generated cells in its own adjacentFrontier. The generator has to
--- make that link itself -- without it no anchor is ever surrounded and
+-- make that link itself -- without it no settlement is ever surrounded and
 -- no siege can begin, which would quietly disable half the simulation.
-function M.wiresAnchorsToTheirSurroundingCells()
+function M.wiresSettlementsToTheirSurroundingCells()
     oneSettlement({
-        anchors = {
+        settlements = {
             {
                 id = 'town',
                 tier = 'town',
@@ -210,16 +210,16 @@ function M.wiresAnchorsToTheirSurroundingCells()
     generate()
 
     local ring = registry.territories.town.adjacentFrontier
-    expect.greater(#ring, 0, 'the anchor was given a ring')
+    expect.greater(#ring, 0, 'the settlement was given a ring')
     for _, id in ipairs(ring) do
         expect.truthy(registry.territories[id], 'ring member ' .. id .. ' exists')
         expect.equal(registry.territories[id].kind, 'frontier', 'ring members are frontier')
     end
 end
 
-function M.wiresFrontierCellsBackToAnchors()
+function M.wiresFrontierCellsBackToSettlements()
     oneSettlement({
-        anchors = {
+        settlements = {
             {
                 id = 'town',
                 tier = 'town',
@@ -232,7 +232,7 @@ function M.wiresFrontierCellsBackToAnchors()
 
     local neighbour = registry.territoryForCell('#1,0')
     expect.truthy(neighbour, 'neighbouring cell generated')
-    expect.equal(neighbour.adjacentAnchors[1], 'town', 'knows which settlement it rings')
+    expect.equal(neighbour.adjacentSettlements[1], 'town', 'knows which settlement it rings')
 end
 
 --------------------------------------------------------------------------
@@ -244,7 +244,7 @@ end
 -- dangling references for the reference check to complain about.
 function M.producesNoDanglingReferences()
     oneSettlement({
-        anchors = {
+        settlements = {
             {
                 id = 'town',
                 tier = 'town',

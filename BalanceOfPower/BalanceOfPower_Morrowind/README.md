@@ -22,8 +22,8 @@ load **before** this mod.
 
 | | Vvardenfell | Solstheim |
 |---|---|---|
-| Settlements | 59 | 4 |
-| Contestable anchors | 33 | 3 |
+| Holdings | 59 | 4 |
+| Of those, settlements | 33 | 3 |
 | Generated frontier cells | ~540 | ~20 |
 
 63 settlements in total, 36 of them contestable. Everything else — farms,
@@ -115,7 +115,7 @@ than producing data that misbehaves at load.
 `settlement, cell_x, cell_y, region, landmass, tier, faction, is_capital`
 
 One row per cell, so a multi-cell settlement appears several times and is
-grouped into a single anchor. Vivec is one fifteen-cell metropolis, not fifteen
+grouped into a single settlement. Vivec is one fifteen-cell metropolis, not fifteen
 adjacent districts fighting each other.
 
 `is_capital` is currently `No` throughout — the Great Houses' capitals are on
@@ -123,7 +123,7 @@ the mainland, which arrives with a Tamriel Rebuilt pack.
 
 ### Tier mapping
 
-| CSV tier | Anchor | Power center |
+| CSV tier | Settlement | Power center |
 |---|---|---|
 | Metropolis | `metropolis` | `capital` |
 | Small City | `city` | `capital` |
@@ -182,6 +182,6 @@ scripts/BalanceOfPowerMorrowind/
   main.lua                 GLOBAL: registration + frontier generation
   data/settlements.lua     GENERATED -- do not edit
   data/factions.lua        faction list and authored reactions
-  data/build.lua           settlements -> anchors and power centers
+  data/build.lua           holdings -> settlements and power centers
   data/invasions/sixth_house.lua
 ```

@@ -124,16 +124,16 @@ function M.factionIds()
     return registry.sortedFactionIds()
 end
 
---- Registered territory ids. `kind` is 'anchor', 'frontier', or nil for
+--- Registered territory ids. `kind` is 'settlement', 'frontier', or nil for
 -- both. Registration order, copied.
 function M.territoryIds(kind)
     local out = {}
     if kind ~= 'frontier' then
-        for _, id in ipairs(registry.anchorIds) do
+        for _, id in ipairs(registry.settlementIds) do
             out[#out + 1] = id
         end
     end
-    if kind ~= 'anchor' then
+    if kind ~= 'settlement' then
         for _, id in ipairs(registry.frontierIds) do
             out[#out + 1] = id
         end
@@ -256,9 +256,9 @@ function M.dump()
     end
 
     log.info('--- Balance of Power -----------------------------------')
-    log.info('interface v%d | day %s | %d landmass(es) | %d anchors | %d frontier cells',
+    log.info('interface v%d | day %s | %d landmass(es) | %d settlements | %d frontier cells',
         M.version, tostring(data.lastResolvedDay), landmassCount,
-        #registry.anchorIds, #registry.frontierIds)
+        #registry.settlementIds, #registry.frontierIds)
 
     for _, id in ipairs(registry.sortedFactionIds()) do
         local faction = registry.factions[id]

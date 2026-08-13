@@ -64,7 +64,7 @@ framework's own output (`[BalanceOfPower]`) and everything else:
 [BoP] ----------------------------------------------------------------
 [BoP] STANDINGS -- day 42
 [BoP] ----------------------------------------------------------------
-[BoP]   36 anchors, 562 frontier cells, 47 contested
+[BoP]   36 settlements, 562 frontier cells, 47 contested
 [BoP]
 [BoP]   faction                       power    held
 [BoP]   Tribunal Temple                65.0      53

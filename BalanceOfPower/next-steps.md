@@ -48,8 +48,8 @@ its own, so it composes with the pack rather than colliding with it.
 At load you should see roughly:
 
 ```
-[BalanceOfPower] registered landmass "vvardenfell": 14 factions, 33 anchors, 0 frontier cells
-[BalanceOfPower] registered landmass "solstheim": 3 factions, 3 anchors, 0 frontier cells
+[BalanceOfPower] registered landmass "vvardenfell": 14 factions, 33 settlements, 0 frontier cells
+[BalanceOfPower] registered landmass "solstheim": 3 factions, 3 settlements, 0 frontier cells
 [BalanceOfPower] registered invasion "sixth_house" (faction "sixth house"): 1 home territories, 4 stages
 [BalanceOfPower] generated ~540 frontier cells for "vvardenfell" from ... power centers
 [BalanceOfPower] initial control assigned by projection: ~500 territories claimed
@@ -162,7 +162,7 @@ data entry for a mechanism that's already proven (`awardPower` works).
 - **`FRONTIER_GENERATION_MARGIN` is 0 for a reason.** Influence decays to
   exactly zero at `influenceRange`, so ground beyond it can never be held by
   anyone. Only raise it for a pack where power centers can appear at runtime.
-- **`adjacentFrontier` on frontier cells is tracked but unread.** Only anchors
+- **`adjacentFrontier` on frontier cells is tracked but unread.** Only settlements
   use theirs. Kept deliberately, exposed through the API, available when a
   later phase wants real adjacency.
 - **Turn off `DEBUG` and `DEBUG_DAILY_SUMMARY`** in `config.lua` before any

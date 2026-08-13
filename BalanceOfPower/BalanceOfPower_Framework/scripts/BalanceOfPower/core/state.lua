@@ -32,7 +32,7 @@ local STATE_VERSION = 1
 local SECTIONS = {
     'power',          -- factionId   -> number
     'ownership',      -- territoryId -> factionId
-    'siegeStreak',    -- anchorId    -> consecutive surrounded-day count
+    'siegeStreak',    -- settlementId    -> consecutive surrounded-day count
     'lastFlipped',    -- territoryId -> game-day index of the last flip
     'corrupted',      -- territoryId -> invasionId (nil = not overrun)
     'invasionStage',  -- invasionId  -> stage name
@@ -120,7 +120,7 @@ function M.fillDefaults(registry)
             data.ownership[id] = territory.defaultOwner or false
             seeded = seeded + 1
         end
-        if territory.kind == 'anchor' and data.siegeStreak[id] == nil then
+        if territory.kind == 'settlement' and data.siegeStreak[id] == nil then
             data.siegeStreak[id] = 0
             seeded = seeded + 1
         end
