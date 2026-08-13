@@ -23,7 +23,11 @@ local M = {
     -- Packs should check it rather than assuming a function exists.
     --
     -- v2 added CELL_SIZE, reactionAudit and dumpReactions.
-    version = 2,
+    -- v3 removed registerInvasion, getInvasion, getInvasionStage and
+    --    isCorrupted, and added isSurrounded, surroundedSince and the
+    --    BoP_DayResolved event. Invasion, corruption and sieges are
+    --    extension territory now; see ../../README.md.
+    version = 3,
 
     -- Event name constants, so listeners don't hardcode the strings.
     events = events,
@@ -47,12 +51,6 @@ function M.registerLandmass(def)
     local landmass = registry.registerLandmass(def)
     state.fillDefaults(registry)
     return landmass
-end
-
-function M.registerInvasion(def)
-    local invasion = registry.registerInvasion(def)
-    state.fillDefaults(registry)
-    return invasion
 end
 
 --- Derive a landmass's frontier grid from the power centers registered
@@ -180,16 +178,26 @@ function M.getReach(territoryId)
     return resolve.projectionFactors(territory)
 end
 
-function M.getInvasion(invasionId)
-    return registry.invasions[invasionId]
+--- Whether rivals hold `SURROUND_SHARE` of a settlement's adjacent
+-- frontier. Always false for a frontier cell, which has no ring.
+--
+-- The framework observes this and does nothing about it. It is here
+-- because answering it needs the frontier ownership map, and because
+-- every extension that cares would otherwise derive the same fact from
+-- the same data.
+function M.isSurrounded(territoryId)
+    local territory = registry.territories[territoryId]
+    if not territory or territory.kind ~= 'settlement' then
+        return false
+    end
+    return resolve.isSurrounded(territory)
 end
 
-function M.getInvasionStage(invasionId)
-    return state.get().invasionStage[invasionId]
-end
-
-function M.isCorrupted(territoryId)
-    return state.get().corrupted[territoryId] ~= nil
+--- The day a settlement most recently became surrounded, or nil.
+-- Subtract from getCurrentDay() for a duration; the framework
+-- deliberately keeps no streak of its own.
+function M.surroundedSince(territoryId)
+    return state.get().surroundedSince[territoryId]
 end
 
 --------------------------------------------------------------------------
@@ -262,13 +270,7 @@ function M.dump()
 
     for _, id in ipairs(registry.sortedFactionIds()) do
         local faction = registry.factions[id]
-        local tags = ''
-        if not faction.territorial then
-            tags = tags .. ' [non-territorial]'
-        end
-        if faction.invading then
-            tags = tags .. ' [invader ' .. tostring(data.invasionStage[faction.invasionId]) .. ']'
-        end
+        local tags = faction.territorial and '' or ' [non-territorial]'
         log.info('  %-20s power %7.2f  territories %4d%s',
             faction.displayName, power.getLive(id), held[id] or 0, tags)
     end

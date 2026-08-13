@@ -9,12 +9,11 @@
 --   1. Vvardenfell defines every faction that appears on it.
 --   2. Solstheim extends the ones it shares (the Empire garrisons Fort
 --      Frostmoth as well as half of Vvardenfell) and defines its own.
---   3. The Sixth House is registered as an invasion, which also creates
---      it as a faction -- so its settlement, declared in step 1 with an
---      authored owner, only resolves now. That forward reference is
---      expected; the framework checks references after everything loads.
---   4. Frontier generation runs last, because it works outward from the
+--   3. Frontier generation runs last, because it works outward from the
 --      power centers registered in the steps above.
+--
+-- There is no authored ownership anywhere in this pack. The whole map,
+-- including Red Mountain, falls out of where the seats of power are.
 
 local I = require('openmw.interfaces')
 
@@ -27,7 +26,6 @@ end
 local build = require('scripts.BalanceOfPowerMorrowind.data.build')
 local factionDefs = require('scripts.BalanceOfPowerMorrowind.data.factions')
 local settlements = require('scripts.BalanceOfPowerMorrowind.data.settlements')
-local sixthHouse = require('scripts.BalanceOfPowerMorrowind.data.invasions.sixth_house')
 
 -- The cell size comes from the framework rather than from a constant
 -- here. It is an engine fact, not a Morrowind one, and the settlement
@@ -35,41 +33,6 @@ local sixthHouse = require('scripts.BalanceOfPowerMorrowind.data.invasions.sixth
 -- generator lays down.
 local plan = build.plan(settlements, BoP.CELL_SIZE)
 local defined = {}
-
---------------------------------------------------------------------------
--- The invader's holdings
---------------------------------------------------------------------------
-
--- Dagoth Ur comes out of the settlement list like any other holding, but
--- its faction is created by registerInvasion rather than by a landmass,
--- so its power centers are lifted out here and handed to the invasion
--- instead. Leaving them in would define the faction twice.
-local INVADER = sixthHouse.faction.id
-
-local function claimInvaderCenters(landmassId)
-    local centers = plan[landmassId] and plan[landmassId].centers
-    if centers and centers[INVADER] then
-        sixthHouse.faction.powerCenters = sixthHouse.faction.powerCenters or {}
-        for _, centre in ipairs(centers[INVADER]) do
-            table.insert(sixthHouse.faction.powerCenters, centre)
-        end
-        centers[INVADER] = nil
-    end
-end
-
-claimInvaderCenters('vvardenfell')
-claimInvaderCenters('solstheim')
-
--- The homeland is the one place on the map with an authored owner. An
--- authored owner overrides derived control, which is what keeps Red
--- Mountain in Sixth House hands regardless of who out-projects them.
-for _, territory in ipairs(plan.vvardenfell.territories) do
-    for _, homeId in ipairs(sixthHouse.faction.homeTerritories) do
-        if territory.id == homeId then
-            territory.defaultOwner = INVADER
-        end
-    end
-end
 
 --------------------------------------------------------------------------
 -- Registration
@@ -88,8 +51,6 @@ BoP.registerLandmass({
     factions = build.factionsFor(factionDefs, plan.solstheim.centers, defined, 'solstheim'),
     territories = plan.solstheim.territories,
 })
-
-BoP.registerInvasion(sixthHouse)
 
 --------------------------------------------------------------------------
 -- Derived frontier

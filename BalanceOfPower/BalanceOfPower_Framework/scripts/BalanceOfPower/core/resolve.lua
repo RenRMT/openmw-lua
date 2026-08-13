@@ -21,8 +21,14 @@
 -- Frontier cells are contestable regardless of what's next to them. They
 -- don't need an adjacency gate because proximity decay already is one:
 -- a faction with no foothold nearby projects nothing there and cannot
--- win. Settlements are different -- a settlement has to be surrounded on the
--- frontier for several days running before it can even be rolled for.
+-- win.
+--
+-- Settlements are not contestable at all. The competition this framework
+-- models is non-violent -- influence shifting, borders breathing -- and
+-- Morrowind has nowhere to put the consequences of a city changing
+-- hands. A settlement is claimed once and then held. Anything that wants
+-- to take one owns that mechanic itself, reading ownership, projection
+-- and isSurrounded() through the interface.
 --
 -- GLOBAL context only.
 
@@ -224,9 +230,6 @@ end
 -- bare assignment, used directly only for setting up the starting map.
 local function assign(territory, factionId)
     state.setOwner(territory.id, factionId)
-    if territory.kind == 'settlement' then
-        state.get().siegeStreak[territory.id] = 0
-    end
 end
 
 --- Take a territory during play: assignment, plus the cooldown stamp
@@ -321,17 +324,18 @@ end
 -- Pass 2: settlements
 --------------------------------------------------------------------------
 
---- Whether enough of a settlement's surrounding frontier is in rival hands.
-local function isSurrounded(territory, ownerId)
+--- Whether enough of a settlement's surrounding frontier is in rival
+-- hands. Observed and published; nothing in the framework acts on it.
+function M.isSurrounded(territory)
     local adjacent = territory.adjacentFrontier
-    local total = #adjacent
+    local total = adjacent and #adjacent or 0
     if total == 0 then
-        -- A settlement with no frontier authored around it can't be
-        -- besieged. That's a data gap, not a fortress, but treating it
-        -- as untakeable is the safe reading.
+        -- Nothing authored or generated around it. A data gap rather
+        -- than a fortress, but "not surrounded" is the safe reading.
         return false
     end
 
+    local ownerId = state.getOwner(territory.id)
     local rivalHeld = 0
     for _, id in ipairs(adjacent) do
         local holder = state.getOwner(id)
@@ -342,62 +346,46 @@ local function isSurrounded(territory, ownerId)
     return (rivalHeld / total) >= config.SURROUND_SHARE
 end
 
-local function resolveSettlement(territory, day)
-    local owner = state.getOwner(territory.id)
-    local bestId, bestValue, ownerValue = evaluate(territory, owner)
-
-    if owner == nil then
-        if bestId and bestValue >= config.MIN_CLAIM_POWER then
-            capture(territory, nil, bestId, day)
-        end
-        return
-    end
-
+--- Record whether a settlement is surrounded, and announce the change.
+local function updateSurrounded(territory, day)
     local data = state.get()
+    local was = data.surroundedSince[territory.id] ~= nil
+    local now = M.isSurrounded(territory)
 
-    if not isSurrounded(territory, owner) then
-        data.siegeStreak[territory.id] = 0
+    if now == was then
         return
     end
 
-    -- The streak counts consecutive days of encirclement, and stops at
-    -- the threshold: past that the settlement is already rolled for every
-    -- day it stays surrounded, so a higher number changes nothing.
-    --
-    -- Letting it climb would be a number growing without bound in every
-    -- save, and -- because a rival can hold the ring indefinitely while
-    -- the incumbent still out-projects it -- a SETTLEMENT_SIEGED every day
-    -- forever for a siege nobody can win. Emitting only while the count
-    -- actually moves also matches what the event is documented to mean:
-    -- the pressure went up a notch.
-    local previous = data.siegeStreak[territory.id] or 0
-    local streak = math.min(previous + 1, territory.siegeThreshold)
+    if now then
+        data.surroundedSince[territory.id] = day
+        events.emit(events.SETTLEMENT_SURROUNDED, { territory = territory.id, day = day })
+    else
+        data.surroundedSince[territory.id] = nil
+        events.emit(events.SETTLEMENT_RELIEVED, { territory = territory.id, day = day })
+    end
+end
 
-    if streak > previous then
-        data.siegeStreak[territory.id] = streak
-        events.emit(events.SETTLEMENT_SIEGED, {
-            territory = territory.id,
-            streak = streak,
-            threshold = territory.siegeThreshold,
-        })
-    end
+--- A settlement is claimed once and then held.
+--
+-- Morrowind was not built for cities changing hands, and a mechanic for
+-- taking them would be bolted onto a game that has nowhere to put the
+-- consequences. So the framework's competition is non-violent: borders
+-- move, seats do not.
+--
+-- The one thing that still happens here is the first claim, for a
+-- settlement nobody reached at world creation. After that its owner is
+-- fixed as far as this framework is concerned. An extension that wants
+-- conquest owns both the mechanic and the consequences.
+local function resolveSettlement(territory, day)
+    updateSurrounded(territory, day)
 
-    if streak < territory.siegeThreshold then
-        return
-    end
-    if onCooldown(territory, day) then
-        return
-    end
-    if not bestId or bestId == owner then
+    if state.getOwner(territory.id) ~= nil then
         return
     end
 
-    -- Garrison and walls. This multiplier is the whole reason a city
-    -- doesn't change hands over a trade dispute -- it's set high enough
-    -- that ordinary faction politics effectively can't take one, leaving
-    -- real city flips to the invasion subsystem.
-    if powerRoll(bestValue, ownerValue * territory.defenseMultiplier) then
-        capture(territory, owner, bestId, day)
+    local bestId, bestValue = evaluate(territory, nil)
+    if bestId and bestValue >= config.MIN_CLAIM_POWER then
+        capture(territory, nil, bestId, day)
     end
 end
 

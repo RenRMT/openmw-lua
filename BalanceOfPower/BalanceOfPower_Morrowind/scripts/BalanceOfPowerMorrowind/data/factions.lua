@@ -175,6 +175,56 @@ return {
         },
     },
     {
+        -- An ordinary faction, holding Red Mountain and reaching barely
+        -- past it. Nothing here grows it and nothing here acts on it --
+        -- the invasion is an extension, and this is only the standing
+        -- and the geography it will read and push.
+        --
+        -- The reaction table is what will make that invasion cost
+        -- everybody something without a line of special-casing: every
+        -- faction hates the Sixth House, so its growth is automatically
+        -- their loss and its setbacks automatically their relief. The
+        -- other half of the relationship is on every faction above,
+        -- which carries a `sixth house` entry of its own.
+        --
+        -- Authored rather than left to the game's data, because "the
+        -- Sixth House" is not reliably a faction record across content
+        -- files, and the consequence of guessing wrong is silent.
+        -- Authored values merge over the record where one exists, so
+        -- this costs nothing if it turns out to be there.
+        id = 'sixth house',
+        displayName = 'Sixth House',
+        basePower = 30,
+        landmass = 'vvardenfell',
+        reactions = {
+            hlaalu = -3,
+            redoran = -3,
+            telvanni = -3,
+            temple = -3,
+            ['imperial legion'] = -3,
+            ['imperial cult'] = -3,
+            -- Mildest only because the Ashlanders were never part of
+            -- what Dagoth Ur wants back.
+            ashlanders = -2,
+            ['east empire company'] = -3,
+            skaal = -3,
+            ['fighters guild'] = -3,
+            ['mages guild'] = -3,
+            ['thieves guild'] = -2,
+            ['camonna tong'] = -2,
+            ['morag tong'] = -2,
+        },
+        -- Vanilla record ids, reused as-is. Nothing here needs the
+        -- Construction Set. Carried for a spawn system to read; the
+        -- framework only stores it.
+        patrolRoster = {
+            'ash zombie',
+            'ash ghoul',
+            'ash slave',
+            'corprus stalker',
+        },
+    },
+    {
         id = 'skaal',
         displayName = 'Skaal',
         basePower = 25,

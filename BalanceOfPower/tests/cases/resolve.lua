@@ -307,12 +307,12 @@ function M.claimsUnownedGroundDuringNormalResolution()
 end
 
 --------------------------------------------------------------------------
--- Settlement sieges
+-- Settlements
 --------------------------------------------------------------------------
 
 -- A settlement ringed by four frontier cells, at the midpoint between two
 -- factions so both project onto it equally.
-local function settlementUnderSiege()
+local function settlementRinged()
     registry.registerLandmass({
         id = 'testland',
         factions = {
@@ -359,132 +359,63 @@ local function encircle(count)
     end
 end
 
-function M.settlementIgnoredWhileNotSurrounded()
-    settlementUnderSiege()
-    encircle(2)   -- 2 of 4 = 0.5, under the 0.6 share
+--- The decision this framework is built around: influence competes,
+-- armies don't. Morrowind has nowhere to put the consequences of a city
+-- changing hands, so seats don't move however the map around them goes.
+function M.settlementsNeverChangeHands()
+    settlementRinged()
+    encircle(4)                     -- completely cut off
+    power.set('beta', 100000)       -- and outrageously out-projected
+    resolve.setRandom(always(0))    -- with every roll going against it
 
-    resolve.setRandom(always(0))
-    for day = 1, 10 do
+    for day = 1, 500 do
         resolve.run(day, { 'town' })
     end
 
-    expect.equal(state.getOwner('town'), 'alpha', 'not besieged')
-    expect.equal(state.get().siegeStreak.town, 0, 'streak stays at zero')
+    expect.equal(state.getOwner('town'), 'alpha', 'the seat held')
+    expect.count(core._test.eventsNamed('BoP_TerritoryFlipped'), 0, 'and never flipped')
 end
 
-function M.siegeStreakClimbsWhileSurrounded()
-    settlementUnderSiege()
-    encircle(3)   -- 3 of 4 = 0.75
+--- The one thing that still happens to a settlement: a first claim, for
+-- one nobody reached when the world was made.
+function M.unownedSettlementsAreStillClaimed()
+    settlementRinged()
+    state.setOwner('town', nil)
 
-    resolve.setRandom(always(0.999))   -- never actually takes it
     resolve.run(1, { 'town' })
-    resolve.run(2, { 'town' })
 
-    expect.equal(state.get().siegeStreak.town, 2, 'streak after two days')
+    expect.equal(state.getOwner('town'), 'alpha', 'claimed by its strongest projector')
 end
 
---- The streak stops at the threshold. Past that point it changes
--- nothing -- the settlement is rolled for every day it stays surrounded --
--- and this fixture is the case that makes an unbounded count real: the
--- town sits exactly midway between the two seats, so the incumbent wins
--- the projection tie and can never actually be taken. Left to climb,
--- that is a number growing forever in every save.
-function M.siegeStreakStopsAtTheThreshold()
-    settlementUnderSiege()
-    encircle(3)
-    resolve.setRandom(always(0.999))
-
-    local threshold = registry.territories.town.siegeThreshold
-    for day = 1, threshold + 20 do
-        resolve.run(day, { 'town' })
-    end
-
-    expect.equal(state.get().siegeStreak.town, threshold, 'streak is capped')
-end
-
---- SETTLEMENT_SIEGED is documented as firing when the streak grows, so once
--- the streak is capped it has nothing left to report. Without this, a
--- permanently encircled town emits an event every day for the life of
--- the save.
-function M.stopsReportingSiegesOnceTheStreakIsCapped()
-    settlementUnderSiege()
-    encircle(3)
-    resolve.setRandom(always(0.999))
-
-    local threshold = registry.territories.town.siegeThreshold
-    for day = 1, threshold do
-        resolve.run(day, { 'town' })
-    end
-    expect.count(core._test.eventsNamed('BoP_SettlementSieged'), threshold, 'one per notch')
-
+--- Surrounded is a fact the framework publishes and does not act on.
+function M.reportsSurroundedAndRelieved()
+    settlementRinged()
     core._test.reset()
-    for day = threshold + 1, threshold + 10 do
-        resolve.run(day, { 'town' })
-    end
-    expect.count(core._test.eventsNamed('BoP_SettlementSieged'), 0, 'silent once capped')
-end
 
-function M.siegeStreakResetsWhenReliefArrives()
-    settlementUnderSiege()
-    encircle(3)
-    resolve.setRandom(always(0.999))
+    encircle(3)                     -- 3 of 4 clears the 0.6 share
     resolve.run(1, { 'town' })
+    expect.equal(state.get().surroundedSince.town, 1, 'records the day it started')
+    expect.count(core._test.eventsNamed('BoP_SettlementSurrounded'), 1, 'announced once')
+
+    -- Still surrounded: a fact that has not changed is not news.
     resolve.run(2, { 'town' })
+    expect.count(core._test.eventsNamed('BoP_SettlementSurrounded'), 1, 'not repeated daily')
+    expect.equal(state.get().surroundedSince.town, 1, 'and the day does not drift')
 
     state.setOwner('ring_1', 'alpha')   -- broken: 2 of 4
     resolve.run(3, { 'town' })
-
-    expect.equal(state.get().siegeStreak.town, 0, 'streak reset')
+    expect.isNil(state.get().surroundedSince.town, 'cleared on relief')
+    expect.count(core._test.eventsNamed('BoP_SettlementRelieved'), 1, 'and announced')
 end
 
---- A settlement can't be rolled for until the streak clears its threshold,
--- however strong the besieger is. This is what stops settlements
--- changing hands the moment the frontier tips.
-function M.settlementSurvivesUntilThresholdIsReached()
-    settlementUnderSiege()
-    encircle(3)
-    power.set('beta', 400)             -- overwhelming
-    resolve.setRandom(always(0))       -- every roll would succeed
+function M.notSurroundedBelowTheShare()
+    settlementRinged()
+    encircle(2)   -- 2 of 4 = 0.5, under the 0.6 share
 
-    local threshold = registry.territories.town.siegeThreshold
-    for day = 1, threshold - 1 do
-        resolve.run(day, { 'town' })
-    end
-    expect.equal(state.getOwner('town'), 'alpha', 'held below threshold')
+    resolve.run(1, { 'town' })
 
-    resolve.run(threshold, { 'town' })
-    expect.equal(state.getOwner('town'), 'beta', 'falls once the threshold is met')
-end
-
---- The defence multiplier is the only thing separating "a town changed
--- hands" from "a city changed hands", so it has to actually apply.
---
--- The town sits at the midpoint, so both project half their power: alpha
--- 25, beta 50. The two shares are derived from config rather than
--- hardcoded, so retuning the tier defaults can't silently turn this into
--- a test of nothing.
-function M.defenseMultiplierProtectsTheIncumbent()
-    settlementUnderSiege()
-    encircle(3)
-    power.set('beta', 100)
-
-    local town = registry.territories.town
-    local undefended = 50 / (50 + 25)
-    local defended = 50 / (50 + 25 * town.defenseMultiplier)
-    expect.greater(undefended - defended, 0.05, 'the multiplier must move the odds meaningfully')
-
-    -- Between the two shares: this roll wins without the multiplier and
-    -- must lose with it. That's what makes this a test of the multiplier
-    -- rather than of the siege gate.
-    resolve.setRandom(always((defended + undefended) / 2))
-    for day = 1, town.siegeThreshold + 2 do
-        resolve.run(day, { 'town' })
-    end
-    expect.equal(state.getOwner('town'), 'alpha', 'a roll the multiplier should stop')
-
-    resolve.setRandom(always(defended / 2))
-    resolve.run(town.siegeThreshold + 3, { 'town' })
-    expect.equal(state.getOwner('town'), 'beta', 'a roll it should not stop')
+    expect.falsy(resolve.isSurrounded(registry.territories.town), 'not surrounded')
+    expect.isNil(state.get().surroundedSince.town, 'nothing recorded')
 end
 
 --------------------------------------------------------------------------
@@ -494,7 +425,7 @@ end
 --- The frontier decides whether a settlement is surrounded, so resolving
 -- settlements first would judge them against yesterday's map.
 function M.frontierResolvesBeforeSettlements()
-    settlementUnderSiege()
+    settlementRinged()
     -- Beta will take the ring cells this pass; the settlement must see the
     -- new ownership in the same pass, not the next one.
     power.set('beta', 400)
@@ -502,7 +433,7 @@ function M.frontierResolvesBeforeSettlements()
     resolve.run(1)
 
     expect.equal(state.getOwner('ring_1'), 'beta', 'ring taken')
-    expect.equal(state.get().siegeStreak.town, 1, 'siege registered the same day')
+    expect.equal(state.get().surroundedSince.town, 1, 'surrounded the same day')
 end
 
 return M

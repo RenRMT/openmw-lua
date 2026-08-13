@@ -15,6 +15,7 @@ local core = require('openmw.core')
 local time = require('openmw_aux.time')
 
 local config = require('scripts.BalanceOfPower.core.config')
+local events = require('scripts.BalanceOfPower.core.events')
 local log = require('scripts.BalanceOfPower.core.log')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
@@ -41,15 +42,19 @@ end
 function M.runDay(day)
     power.beginBatch()
 
-    -- Phase 6 hooks in here: invasion.grow(day) -- ambient growth and
-    -- escalation stage transitions, before any territory is contested.
-
     -- The whole world in one pass, which is what the MVP wants. Passing
     -- an explicit batch here instead is how staggering across smaller
     -- timers happens later, without resolve itself changing.
     resolve.run(day)
 
     power.commitBatch()
+
+    -- After the commit, so a listener that reads power back sees settled
+    -- numbers. This is the scheduling hook every extension runs from --
+    -- an invasion growing, a spawn system ageing its own state -- and it
+    -- is the only thing the framework offers in place of the mechanics
+    -- that used to live inside this function.
+    events.emit(events.DAY_RESOLVED, { day = day })
 
     if config.DEBUG_DAILY_SUMMARY and registry.countFactions() > 0 then
         log.info('day %d | %s', day, power.summary())

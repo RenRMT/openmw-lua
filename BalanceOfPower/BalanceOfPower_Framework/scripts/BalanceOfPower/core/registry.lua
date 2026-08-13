@@ -33,7 +33,6 @@ M.landmasses = {}    -- landmassId  -> { id, displayName, factionIds, territoryI
 M.territories = {}   -- territoryId -> normalized territory (settlements and frontier both)
 M.settlementIds = {}     -- registration-ordered list of settlement ids
 M.frontierIds = {}   -- registration-ordered list of frontier cell ids
-M.invasions = {}     -- invasionId  -> normalized invasion
 M.cellIndex = {}     -- cell name (interior name or "#x,y") -> territoryId
 
 -- Bumped on every successful registration. Consumers that cache derived
@@ -200,7 +199,6 @@ local function defineFaction(def, context, fallbackLandmass)
         -- record to read reactions from. nil means "look the faction up
         -- in the game data instead" -- see power.reactionsFor.
         reactions = def.reactions and checkTable(def.reactions, ctx, 'reactions') or nil,
-        invading = def.invading or false,
     }
 end
 
@@ -326,16 +324,11 @@ local function prepareTerritory(def, context, kind, landmassId, staged)
             fail(ctx, 'unknown tier "' .. tostring(tier) .. '"')
         end
         territory.tier = tier
-        territory.siegeThreshold = checkPositive(def.siegeThreshold, ctx, 'siegeThreshold',
-            tierDefaults.siegeThreshold)
         territory.cooldownDays = checkNumber(def.cooldownDays, ctx, 'cooldownDays',
             tierDefaults.cooldownDays)
-        territory.defenseMultiplier = checkPositive(def.defenseMultiplier, ctx, 'defenseMultiplier',
-            tierDefaults.defenseMultiplier)
         -- Optional on settlements: a settlement is identified by its cells,
         -- but distance math still needs a point. A settlement without one
-        -- projects nothing and is evaluated only through its frontier
-        -- (phase 2).
+        -- projects nothing.
         if def.centroid ~= nil then
             territory.centroid = checkCoords(def.centroid, ctx, 'centroid')
         end
@@ -466,81 +459,6 @@ function M.registerFrontier(landmassId, definitions)
     return #territories
 end
 
---- Register an invading faction (design doc 4.2).
--- The invader is registered as an ordinary faction as well, so power
--- tracking, reaction propagation and (later) territory rolls treat it
--- like any other participant. Only its growth source and what happens
--- when it wins a territory differ.
-function M.registerInvasion(def)
-    checkTable(def, 'registerInvasion', 'definition')
-    local id = checkString(def.id, 'registerInvasion', 'id')
-    local context = string.format('invasion "%s"', id)
-
-    if M.invasions[id] then
-        fail(context, 'this invasion is already registered')
-    end
-
-    local factionDef = checkTable(def.faction, context, 'faction')
-    local op = prepareFaction({
-        id = factionDef.id or id,
-        displayName = factionDef.displayName,
-        territorial = true,
-        basePower = factionDef.basePower,
-        landmass = factionDef.landmass,
-        powerCenters = factionDef.powerCenters,
-        patrolRoster = factionDef.patrolRoster,
-        reactions = factionDef.reactions,
-        invading = true,
-    }, context, factionDef.landmass, {})
-
-    if not op.faction then
-        fail(context, 'an invading faction cannot use extend = true')
-    end
-
-    local stages = {}
-    for i, stage in ipairs(factionDef.escalationThresholds or {}) do
-        local what = string.format('escalationThresholds[%d]', i)
-        checkTable(stage, context, what)
-        local entry = {
-            stage = checkString(stage.stage, context, what .. '.stage'),
-            power = checkNumber(stage.power, context, what .. '.power'),
-        }
-        if entry.power == nil then
-            fail(context, what .. '.power is required')
-        end
-        -- Ascending order is a correctness requirement, not a style
-        -- preference: the stage lookup walks the list and takes the last
-        -- threshold the invader's current power clears.
-        local previous = stages[i - 1]
-        if previous and entry.power <= previous.power then
-            fail(context, string.format(
-                'escalationThresholds must ascend by power ("%s" at %g does not exceed "%s" at %g)',
-                entry.stage, entry.power, previous.stage, previous.power))
-        end
-        stages[i] = entry
-    end
-
-    local invasion = {
-        id = id,
-        factionId = op.id,
-        homeTerritories = copyStrings(factionDef.homeTerritories, context, 'homeTerritories'),
-        growthPerDay = checkNumber(factionDef.growthPerDay, context, 'growthPerDay', 0),
-        stages = stages,
-    }
-
-    -- Commit.
-    M.factions[op.id] = op.faction
-    -- Back-reference, so code holding a faction can find its escalation
-    -- config and current stage without scanning M.invasions.
-    op.faction.invasionId = id
-    M.invasions[id] = invasion
-    M.generation = M.generation + 1
-
-    log.info('registered invasion "%s" (faction "%s"): %d home territories, %d stages',
-        id, op.id, #invasion.homeTerritories, #stages)
-    return invasion
-end
-
 --------------------------------------------------------------------------
 -- Queries
 --------------------------------------------------------------------------
@@ -607,10 +525,6 @@ function M.validateReferences()
         if territory.adjacentSettlements then
             checkTerritoryRefs(id, 'adjacentSettlements', territory.adjacentSettlements)
         end
-    end
-
-    for id, invasion in pairs(M.invasions) do
-        checkTerritoryRefs(id, 'homeTerritories', invasion.homeTerritories)
     end
 
     if problems > config.MAX_REPORTED_PROBLEMS then

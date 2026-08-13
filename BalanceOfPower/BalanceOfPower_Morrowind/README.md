@@ -1,7 +1,7 @@
 # Balance of Power — Morrowind
 
 The Vvardenfell and Solstheim content pack: factions, settlements, and the
-Sixth House invasion. Pure data plus the four API calls that hand it to the
+Sixth House. Pure data plus the four API calls that hand it to the
 framework — all behaviour lives in
 [BalanceOfPower_Framework](../BalanceOfPower_Framework/README.md), which must
 load **before** this mod.
@@ -26,9 +26,9 @@ load **before** this mod.
 | Of those, settlements | 33 | 3 |
 | Generated frontier cells | ~540 | ~20 |
 
-63 settlements in total, 36 of them contestable. Everything else — farms,
-shacks, mines, minor manors — is a power center only: it shapes who a region
-belongs to without itself being worth a war.
+63 holdings in total, 36 of them settlements. Everything else — farms, shacks,
+mines, minor manors — is a power center only: it shapes who a region belongs to
+without being a place on the map.
 
 ### Factions
 
@@ -70,10 +70,12 @@ Two notes on ids:
 
 ## The starting map is derived, not authored
 
-There is exactly one authored owner in this pack: Red Mountain, which belongs
-to the Sixth House unconditionally. Everything else falls out of where the
-settlements are. Registering Balmora as a Hlaalu seat is what makes the West
-Gash Hlaalu ground; nobody writes down that the West Gash is Hlaalu.
+There is no authored ownership anywhere in this pack. The whole map falls out
+of where the settlements are. Registering Balmora as a Hlaalu seat is what
+makes the West Gash Hlaalu ground; nobody writes down that the West Gash is
+Hlaalu, and nobody writes down that Red Mountain is the Sixth House's — it
+holds its own seat because it has a power centre there and nobody else reaches
+it.
 
 That's what makes the ~560 generated frontier cells viable — there is no second
 list of ownership to keep in step with the first.
@@ -130,7 +132,7 @@ the mainland, which arrives with a Tamriel Rebuilt pack.
 | Town | `town` | `regional` |
 | Village | `village` | `regional` |
 | Outpost/Fortress/Camp | `outpost` | `outpost` |
-| Minor location | — *(not contestable)* | `minor` |
+| Minor location | — *(power center only)* | `minor` |
 
 `Velothi/Unaffiliated` is not a faction — it marks a holding with no political
 owner, which projects nothing and starts unclaimed.
@@ -169,8 +171,8 @@ The numbers most worth touching, in order of effect:
    ~1.5 cells of reach.
 2. **`basePower` per faction**, in `data/factions.lua`. Pure guesswork until
    played.
-3. **`growthPerDay`** in `data/invasions/sixth_house.lua`, which paces the whole
-   invasion.
+3. **The Sixth House's `basePower`**, which is where an invasion extension
+   would start pushing from.
 
 ## Layout
 
@@ -183,5 +185,4 @@ scripts/BalanceOfPowerMorrowind/
   data/settlements.lua     GENERATED -- do not edit
   data/factions.lua        faction list and authored reactions
   data/build.lua           holdings -> settlements and power centers
-  data/invasions/sixth_house.lua
 ```

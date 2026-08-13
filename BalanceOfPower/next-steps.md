@@ -13,7 +13,7 @@ Near-term and actionable. The full phase breakdown is in
 | 3 — Morrowind pack + frontier generator | Done, tested, **never run in-game** |
 | 4 — Spawns | Parked by request |
 | 5 — Player hooks | Not started; commerce dropped |
-| 6 — Invasion subsystem | Not started — **recommended next** |
+| 6 — Invasion | Not started — **recommended next**, as a separate mod |
 | 7 — Tuning and UX | Not started |
 
 **97 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
@@ -50,7 +50,6 @@ At load you should see roughly:
 ```
 [BalanceOfPower] registered landmass "vvardenfell": 14 factions, 33 settlements, 0 frontier cells
 [BalanceOfPower] registered landmass "solstheim": 3 factions, 3 settlements, 0 frontier cells
-[BalanceOfPower] registered invasion "sixth_house" (faction "sixth house"): 1 home territories, 4 stages
 [BalanceOfPower] generated ~540 frontier cells for "vvardenfell" from ... power centers
 [BalanceOfPower] initial control assigned by projection: ~500 territories claimed
 ```
@@ -90,7 +89,7 @@ Then check, in the log or via `luag`:
    count roughly fourfold.
 
 Then let a week of game time pass and see whether anything moves. With no
-player influence and no invasion growth yet, the answer *should* be "almost
+player influence and nothing growing the Sixth House, the answer *should* be "almost
 nothing" — power is static, so the projection ordering never changes. Territory
 moving on its own at this stage would be a bug.
 
@@ -135,18 +134,44 @@ Phase 4 is parked, so there are two candidates. They're independent.
 
 ### Phase 6 — the invasion subsystem *(recommended)*
 
-`core/invasion.lua`. The Sixth House is already registered, holds Red Mountain,
-and has thresholds defined; nothing yet grows it or acts on the stages.
+**A separate mod**, not `core/invasion.lua`. The framework no longer knows what
+an invasion is, and shouldn't: escalation, corruption and taking settlements
+are mechanics, and the framework's remit is influence and ownership.
 
-- Ambient growth per day, and stage transitions firing `BoP_InvasionEscalated`.
-- Corruption: a flag distinct from ownership, with `BoP_TerritoryCorrupted` /
-  `BoP_TerritoryLiberated`.
-- Stage gating on how far the invader will roll from its homeland.
+The Sixth House is already an ordinary faction in the Morrowind pack, holding
+Red Mountain and reaching barely past it. What the invasion mod adds is
+everything that acts on that.
+
+It reads through the interface — `getOwner`, `getEffectivePower`, `getReach`,
+`classify`, `isSurrounded`, `surroundedSince` — writes through `awardPower`,
+and runs off `BoP_DayResolved`. It keeps its own state in its own global
+script's `onSave`/`onLoad`.
+
+The data that used to live in `data/invasions/sixth_house.lua`, kept here
+because it's the only place it now exists:
+
+```lua
+growthPerDay = 1.5,                     -- ~3 weeks to raiding, ~4 months to overrunning
+homeTerritories = { 'dagoth_ur' },
+escalationThresholds = {
+    { stage = 'stirring',    power = 30 },
+    { stage = 'raiding',     power = 60 },
+    { stage = 'encroaching', power = 100 },
+    { stage = 'overrunning', power = 150 },
+},
+```
+
+The patrol roster moved onto the faction in `data/factions.lua` and is still
+carried by the framework.
 
 **Why this one:** it's the first thing that makes the map move on its own, so
 it's the first time the simulation is worth watching without a debug key. It's
-also the design's central claim — that an invader needs no new engine — and
-that claim is now cheap to test.
+also the sharpest test of the boundary — if an invasion can be built entirely
+on top of the interface, the split is real.
+
+**The first thing to check when building it:** whether `BoP_DayResolved` is
+delivered soon enough to be useful, and whether the one-day lag from queued
+event delivery matters. If it does, poll `getCurrentDay()` instead.
 
 ### Phase 5 — player influence hooks
 

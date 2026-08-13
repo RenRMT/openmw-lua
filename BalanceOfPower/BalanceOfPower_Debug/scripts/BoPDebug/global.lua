@@ -1,6 +1,6 @@
 -- Balance of Power -- debug overlay, global half.
 --
--- Registers nothing. No factions, no territory, no invasion: it reads
+-- Registers nothing. No factions, no territory, no simulation: it reads
 -- whatever content is loaded and drives it. That means it can sit on top
 -- of the Morrowind pack, or any other content pack, or a pack somebody
 -- else wrote, without competing with it for faction ids.
@@ -269,11 +269,13 @@ function handlers.BoPDebug_Here(data)
     out('  cell      %s', data.cell)
     out('  kind      %s', territory.kind == 'settlement' and territory.tier or 'frontier')
     out('  region    %s', territory.region or '-')
-    out('  owner     %s%s', owner and nameOf(owner) or 'unclaimed',
-        BoP.isCorrupted(territory.id) and '  [CORRUPTED]' or '')
+    out('  owner     %s', owner and nameOf(owner) or 'unclaimed')
     out('  state     %s', BoP.classify(territory.id))
     if claimant and claimant ~= owner then
         out('  closing   %s', nameOf(claimant))
+    end
+    if BoP.isSurrounded(territory.id) then
+        out('  surrounded since day %s', tostring(BoP.surroundedSince(territory.id)))
     end
 
     -- Every faction that reaches here, strongest first. This is the
@@ -317,9 +319,9 @@ function handlers.BoP_PowerChanged(data)
     end
 end
 
-function handlers.BoP_SettlementSieged(data)
+function handlers.BoP_DayResolved(data)
     if watching then
-        out('  siege   %-26s %d/%d', data.territory, data.streak, data.threshold)
+        out('  day     %s resolved', tostring(data.day))
     end
 end
 
@@ -328,16 +330,12 @@ function handlers.BoP_TerritoryFlipped(data)
     out('FLIP    %s: %s -> %s', data.territory, tostring(data.from), tostring(data.to))
 end
 
-function handlers.BoP_InvasionEscalated(data)
-    out('ESCALATE %s: %s -> %s', data.invasion, tostring(data.oldStage), data.newStage)
+function handlers.BoP_SettlementSurrounded(data)
+    out('RINGED  %s (day %s)', data.territory, tostring(data.day))
 end
 
-function handlers.BoP_TerritoryCorrupted(data)
-    out('OVERRUN %s', data.territory)
-end
-
-function handlers.BoP_TerritoryLiberated(data)
-    out('RETAKEN %s', data.territory)
+function handlers.BoP_SettlementRelieved(data)
+    out('RELIEF  %s (day %s)', data.territory, tostring(data.day))
 end
 
 --------------------------------------------------------------------------

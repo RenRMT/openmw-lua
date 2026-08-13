@@ -23,21 +23,30 @@ local M = {}
 -- A territory changed hands: { territory, kind, from, to, day }
 M.TERRITORY_FLIPPED = 'BoP_TerritoryFlipped'
 
--- A settlement's siege streak advanced: { territory, streak, threshold }
--- Fires every day the streak grows, well before a flip is possible, so
--- "the town is under pressure" can be surfaced early.
-M.SETTLEMENT_SIEGED = 'BoP_SettlementSieged'
+-- A settlement's surrounding frontier passed into, or back out of, rival
+-- hands: { territory, day }. Fires on the change, not every day it holds.
+--
+-- The framework reports this and does nothing about it. What being
+-- surrounded *means* -- a siege, a blockade, nothing at all -- is a
+-- question for whatever extension cares.
+M.SETTLEMENT_SURROUNDED = 'BoP_SettlementSurrounded'
+M.SETTLEMENT_RELIEVED = 'BoP_SettlementRelieved'
 
 -- A faction's power moved: { faction, delta, newTotal }
 M.POWER_CHANGED = 'BoP_PowerChanged'
 
--- An invasion crossed a stage boundary: { invasion, oldStage, newStage }
-M.INVASION_ESCALATED = 'BoP_InvasionEscalated'
-
--- An invader overran a territory / it was taken back:
--- { territory, invasion } and { territory, invasion, to }
-M.TERRITORY_CORRUPTED = 'BoP_TerritoryCorrupted'
-M.TERRITORY_LIBERATED = 'BoP_TerritoryLiberated'
+-- One in-game day finished resolving: { day }.
+--
+-- The scheduling hook for everything built on top. An extension that has
+-- to act once a day -- growing an invader, ageing its own state -- runs
+-- from this rather than keeping a timer that drifts against the
+-- framework's own pass.
+--
+-- Delivery is queued rather than synchronous, so a listener acts on the
+-- day *after* the one it hears about. That is invisible in play, but an
+-- extension needing strict ordering should poll getCurrentDay() instead,
+-- which is the pattern the driver itself uses.
+M.DAY_RESOLVED = 'BoP_DayResolved'
 
 --- Broadcast an event to global scripts and to every player script.
 -- @param name string one of the constants above

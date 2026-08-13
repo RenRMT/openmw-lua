@@ -91,6 +91,11 @@ hands again, so a contested border creeps rather than oscillating.
 past a configured share. The framework tracks and exposes this; it does not act
 on it. Anything that happens as a result belongs to an extension.
 
+A settlement's owner does not change. It is claimed once — at world creation,
+or the first day somebody projects hard enough onto ground nobody reached — and
+held from then on. The competition modelled here is non-violent: **borders
+move, seats do not.**
+
 ---
 
 ## What the framework does not define

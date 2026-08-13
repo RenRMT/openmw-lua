@@ -26,14 +26,17 @@ What exists:
 - persistent state with central default-fill for save compatibility
 - the in-game day tick driver
 - territory resolution: projection maths, derived initial control, frontier
-  rolls, settlement sieges
+  rolls
 - frontier grid generation from registered power centers
-- the event bus
+- the event bus, including the `BoP_DayResolved` scheduling hook
 
-What doesn't exist yet: patrol spawning (phase 4), player hooks (phase 5),
-invasion escalation and corruption (phase 6). `registerInvasion` accepts and
-validates an invading faction, and its power and territory are simulated like
-anyone else's, but nothing escalates or corrupts yet.
+What doesn't exist yet: patrol spawning (phase 4) and player hooks (phase 5).
+
+**What will never exist here:** sieges, invasion, corruption, spawning. Those
+are mechanics, and this framework's remit is influence and ownership. They
+belong to extensions, which read ownership, projection and `isSurrounded`
+through the interface, write through `awardPower`, run off `BoP_DayResolved`,
+and keep their own state. See [glossary.md](../glossary.md).
 
 ## How territory works
 
@@ -56,14 +59,21 @@ changes — which happens when faction power moves.
 The starting map is derived the same way. A pack that authors no `defaultOwner`
 gets ownership assigned from its power centers on the first tick, which is what
 makes a procedurally generated frontier grid viable. An authored `defaultOwner`
-overrides that, which is how an invasion homeland stays with its invader.
+overrides that, for a pack that wants a specific starting owner somewhere.
 
 Frontier cells are contestable regardless of what is next to them — proximity
 decay is already the adjacency rule, since a faction with no foothold nearby
-projects nothing and cannot win. Settlements are different: a settlement must be
-surrounded (`SURROUND_SHARE` of its `adjacentFrontier` in rival hands) for
-`siegeThreshold` consecutive days before it can be rolled for at all, and then
-the defender's projection is multiplied by `defenseMultiplier`.
+projects nothing and cannot win.
+
+**Settlements are not contestable at all.** A settlement is claimed once and
+then held. The competition modelled here is non-violent: borders move, seats do
+not. Morrowind was not built for cities changing hands, and a mechanic for
+taking them would be bolted onto a game with nowhere to put the consequences.
+
+What the framework does offer is the fact an extension needs:
+`isSurrounded(territoryId)` reports whether rivals hold `SURROUND_SHARE` of a
+settlement's ring, and `surroundedSince(territoryId)` gives the day it started.
+Both are observed and published; nothing here acts on them.
 
 ### Scale
 
@@ -141,15 +151,10 @@ minor holding only needs an id and coordinates.
 **Settlement** (`territories`) — `id` (required), `displayName`, `tier`
 (`outpost` | `village` | `town` | `city` | `metropolis`, default `town`),
 `cells`, `region`, `adjacentFrontier`, `defaultOwner` (omit for unclaimed),
-`centroid`, `siegeThreshold`, `cooldownDays`, `defenseMultiplier` (last three
-default per tier).
+`centroid`, `cooldownDays` (defaults per tier).
 
 **Frontier cell** (`frontier`) — `id` (required), `centroid` (required),
 `cells`, `adjacentFrontier`, `adjacentSettlements`, `defaultOwner`, `cooldownDays`.
-
-**Invasion** — `registerInvasion({ id = ..., faction = { ... } })`, where the
-faction adds `homeTerritories`, `growthPerDay`, and `escalationThresholds`
-(a list of `{ stage = ..., power = ... }`, which must ascend by power).
 
 ### Factions that span packs
 
@@ -194,7 +199,7 @@ creates one territory per exterior cell within reach, skipping cells a
 settlement already claims and grid positions the content files don't define
 (which removes most open ocean for free). It also wires each settlement to the ring
 of cells around it, since a pack can't name generated ids itself — without that
-link no settlement could ever be besieged.
+link no settlement could ever be reported as surrounded.
 
 **Only ground somebody can reach becomes territory.** That's what keeps the
 daily pass cheap by construction: the Morrowind pack generates ~560 frontier
@@ -262,9 +267,10 @@ I.BalanceOfPower.awardPower(factionId, baseDelta, playerRankMultiplier)
 
 Also available: `getPower`, `setPower`, `getOwner`, `getTerritory`,
 `getTerritoryForCell`, `getFaction`, `factionIds`, `territoryIds`,
-`getEffectivePower`, `getProjection`, `classify`, `getReach`, `getInvasion`,
-`getInvasionStage`, `isCorrupted`, `getCurrentDay`, `powerSummary`, `dump`, `dumpMap`,
-`renderMap`, `isDebug`.
+`getEffectivePower`, `getProjection`, `classify`, `getReach`, `isSurrounded`,
+`surroundedSince`, `getCurrentDay`, `powerSummary`, `reactionAudit`,
+`dumpReactions`, `dump`, `dumpMap`, `renderMap`, `isDebug`, and the `CELL_SIZE`
+constant.
 
 `classify(territoryId)` returns `'empty'`, `'consolidated'` or `'contested'`.
 `getReach(territoryId)` returns which factions can reach it at all and by what
@@ -287,10 +293,18 @@ them in whichever context it runs in. Names are on `I.BalanceOfPower.events`.
 | Event | Payload |
 |---|---|
 | `BoP_TerritoryFlipped` | `territory`, `kind`, `from`, `to`, `day` |
-| `BoP_SettlementSieged` | `territory`, `streak`, `threshold` |
+| `BoP_SettlementSurrounded` / `BoP_SettlementRelieved` | `territory`, `day` |
 | `BoP_PowerChanged` | `faction`, `delta`, `newTotal` |
-| `BoP_InvasionEscalated` | `invasion`, `oldStage`, `newStage` |
-| `BoP_TerritoryCorrupted` / `BoP_TerritoryLiberated` | `territory`, `invasion` |
+| `BoP_DayResolved` | `day` |
+
+`BoP_DayResolved` is the scheduling hook for anything built on top. An
+extension that acts once a day runs from this rather than keeping a timer that
+drifts against the framework's own pass.
+
+Delivery is queued rather than synchronous, so a listener acts on the day
+*after* the one it hears about. That is invisible in play, but an extension
+needing strict ordering should poll `getCurrentDay()` instead — the pattern the
+driver itself uses.
 
 ## Layout
 
@@ -303,7 +317,7 @@ scripts/BalanceOfPower/
   core/state.lua     per-save state, serialization, default-fill
   core/registry.lua  authored data from packs, validation, merging
   core/power.lua     power, reaction propagation, batching
-  core/resolve.lua   projection maths, initial control, flips and sieges
+  core/resolve.lua   projection maths, initial control, frontier flips
   core/frontier.lua  derives the wilderness grid from power centers
   core/cells.lua     exterior cell naming
   core/mapdump.lua   the text map

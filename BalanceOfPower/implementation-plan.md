@@ -22,8 +22,10 @@ on-screen debug console. (It shipped as a self-contained toy world, and was
 rewritten during phase 3 into a content-agnostic overlay that registers nothing
 and composes with any content pack.)
 
-- Registration API (`registerLandmass`, `registerInvasion`) with validation and
-  cross-pack faction merging via `extend = true`.
+- Registration API (`registerLandmass`, later `generateFrontier`) with
+  validation and cross-pack faction merging via `extend = true`.
+  `registerInvasion` also shipped here, and was removed in the phase-3
+  follow-up that moved invasion out of the framework entirely.
 - Faction power: get/set/apply, reaction-driven propagation with the
   vanilla-record-or-authored-table indirection.
 - Atomic per-pass batching, so no roll can be influenced by another roll that
@@ -56,10 +58,11 @@ moves a faction and everyone with an opinion about it.
 - Pass 1: frontier cells, contestable regardless of adjacency, gated by
   cooldown. The attacker is whoever projects most; the roll decides how long
   the takeover takes, not who wins it.
-- Pass 2: settlements accumulate a siege streak while surrounded, and only become
-  contestable once the streak and cooldown both clear, with the defender's
-  projection multiplied by `defenseMultiplier`.
-- `BoP_TerritoryFlipped` and `BoP_SettlementSieged`.
+- Pass 2: settlements. Shipped as a siege system — streak while surrounded,
+  then a roll against `defenseMultiplier` — and **later removed**. Settlements
+  are now claimed once and held; being surrounded is observed and published,
+  and nothing in the framework acts on it. See the decision below.
+- `BoP_TerritoryFlipped`, `BoP_SettlementSurrounded`, `BoP_SettlementRelieved`.
 - `resolve.run(day, batch)` takes an explicit batch from the start, so
   staggering resolution later is a scheduling change, not a rewrite.
 
@@ -129,6 +132,42 @@ matter how strong a faction becomes, so the cells were permanently unownable.
 
 ---
 
+## Phase 3a — Narrowing the framework's remit
+
+Not originally a phase. It came out of a code review that asked whether the
+framework/pack split still held, and the answer was that the framework had
+quietly acquired mechanics.
+
+**The decision:** the framework models **influence and ownership, and nothing
+else.** The competition it simulates is non-violent — borders move, seats do
+not. Everything that acts on the result is an extension.
+
+Removed outright: `registerInvasion`, invasion stages, corruption, and the
+whole settlement siege system (`siegeThreshold`, `defenseMultiplier`,
+`siegeStreak`, and the roll that could take a city).
+
+**Why settlements stopped changing hands.** Morrowind was not built for cities
+changing owner, and a mechanic for taking them would be bolted onto a game with
+nowhere to put the consequences. A settlement is now claimed once and then
+held.
+
+**What replaced the mechanics:**
+
+- `isSurrounded(territoryId)` and `surroundedSince(territoryId)` — the fact,
+  published, with nothing acting on it. It stays in the framework because
+  answering it needs the frontier ownership map, and every extension that cares
+  would otherwise derive the same thing from the same data.
+- `BoP_DayResolved` — the scheduling hook. Removing the mechanics from
+  `runDay()` left extensions with no way to run in step with the daily pass,
+  and a private timer would drift. This is the one thing the split *required*
+  the framework to gain.
+
+**Also settled here:** the vocabulary. `anchor` became `settlement`, and
+[glossary.md](glossary.md) became the authority — with *cell* and *territory*
+pinned as different things, which they had been used as if they were not.
+
+---
+
 ## Phase 4 — Spawn subsystem *(deferred by request)*
 
 Explicitly parked. Everything below it can proceed without it; the cost is that
@@ -167,14 +206,20 @@ faction map). That makes it lower value per hour than phase 6.
 
 ## Phase 6 — Invasion subsystem
 
-**Ships:** `core/invasion.lua` plus the Sixth House config in the Morrowind pack.
+**Ships:** a separate mod. Not `core/invasion.lua` — the framework no longer
+knows what an invasion is. The Sixth House exists in the Morrowind pack as an
+ordinary faction; everything that acts on it lives here.
 
 - Ambient power growth on a curve, independent of player action.
 - Escalation stages gating spawn radius, roll frequency and roster tier.
-- Corruption on a won territory — a flag distinct from plain ownership — with
-  `BoP_TerritoryCorrupted` / `BoP_TerritoryLiberated`.
+- Corruption on a won territory — a flag distinct from plain ownership — held
+  in the extension's own state, not the framework's.
+- Taking settlements, if it wants to. The framework will not do it.
 - Amplified counter-play: player kills and quest completions against the
   invader push its power back at a higher rate than ordinary awards.
+
+It reads ownership, projection and `isSurrounded` through the interface, writes
+through `awardPower`, and runs off `BoP_DayResolved`.
 
 **Why last:** it's a specialization of phases 1–5, and building it last is what
 proves the claim. If it needs new engine code rather than new configuration,

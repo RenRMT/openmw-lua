@@ -7,7 +7,7 @@
 --
 -- This mod ships no factions and no territories. On its own it will
 -- register nothing and report an empty world -- that's correct. Content
--- comes from separate packs calling registerLandmass/registerInvasion
+-- comes from separate packs calling registerLandmass and generateFrontier
 -- through the interface.
 
 local api = require('scripts.BalanceOfPower.core.api')

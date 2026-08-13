@@ -25,6 +25,8 @@ else still holds.
 | Anchor tiers `town` / `city` | Five: `outpost`, `village`, `town`, `city`, `metropolis`. Power-center tiers gained `minor` | §3.1 |
 | Morag Tong excluded | Registered as a power-only faction, along with the Fighters, Mages and Thieves Guilds, the Imperial Cult and the Camonna Tong | §5.1 |
 | "Anchor" for a territory containing a settlement | Renamed **settlement** throughout. The word never read as the opposite of "frontier", and its justification was internal — see [glossary.md](glossary.md), which is now the authority on every term in this document | everywhere |
+| Settlements are besieged and can change hands | **They cannot.** Morrowind has nowhere to put the consequences of a city changing owner, so the framework's competition is non-violent: a settlement is claimed once and held. The siege system was built and then removed | §3.4 |
+| The invasion subsystem is `core/invasion.lua` inside the framework | **A separate mod.** The framework models influence and ownership and nothing else. Invasion, corruption, sieges and spawning are extensions, reading through the interface and keeping their own state. `registerInvasion`, invasion stages and corruption were removed from the framework | §4 |
 | Frontier cells contestable via adjacency to rival-held ground | Contestable unconditionally. Proximity decay already *is* the adjacency rule — a faction with no foothold nearby projects nothing and cannot win | §3.4 |
 | Commerce as a stretch goal | Dropped. No engine hook exists, and it was judged out of scope for the framework | §3.6, §7 |
 | Homeland "Red Mountain interior + Ghostgate approach" | Dagoth Ur alone, from the settlement list | §5.3 |

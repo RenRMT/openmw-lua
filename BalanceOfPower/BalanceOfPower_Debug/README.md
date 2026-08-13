@@ -1,7 +1,7 @@
 # Balance of Power — Debug Overlay
 
 Hotkeys and on-screen readouts for whatever Balance of Power content you have
-loaded. It **registers nothing** — no factions, no territory, no invasion — so
+loaded. It **registers nothing** — no factions, no territory, no simulation — so
 it sits on top of the [Morrowind pack](../BalanceOfPower_Morrowind/README.md),
 or any other content pack, rather than competing with it for faction ids.
 

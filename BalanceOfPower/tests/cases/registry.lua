@@ -79,14 +79,11 @@ function M.appliesTierDefaults()
     expect.equal(centre.weight, 1.0, 'capital weight default')
 
     local city = registry.territories.balmora
-    expect.greater(city.defenseMultiplier, 1, 'city defenseMultiplier default')
-    expect.greater(city.siegeThreshold, 0, 'city siegeThreshold default')
+    expect.greater(city.cooldownDays, 0, 'city cooldownDays default')
 
-    -- A city must be markedly harder to take than a town, or the
-    -- invasion subsystem loses the only lever that makes overrunning one
-    -- feel different from routine politics.
-    local town = require('scripts.BalanceOfPower.core.config').SETTLEMENT_DEFAULTS.town
-    expect.greater(city.defenseMultiplier, town.defenseMultiplier, 'city vs town defense')
+    -- Tier is otherwise metadata, and has to survive registration: an
+    -- extension needs to know Balmora is a city without counting cells.
+    expect.equal(city.tier, 'city', 'tier is carried')
 end
 
 function M.indexesCellsToTerritories()
@@ -146,21 +143,6 @@ function M.rejectsFrontierCellWithoutCentroid()
             frontier = { { id = 'nowhere' } },
         }))
     end, 'centroid', 'frontier without centroid')
-end
-
-function M.rejectsNonAscendingEscalationThresholds()
-    expect.raises(function()
-        registry.registerInvasion({
-            id = 'sixth_house',
-            faction = {
-                id = 'sixth house',
-                escalationThresholds = {
-                    { stage = 'stirring', power = 60 },
-                    { stage = 'raiding', power = 30 },
-                },
-            },
-        })
-    end, 'must ascend', 'descending thresholds')
 end
 
 --- The two-phase property: a definition that fails validation partway
@@ -256,10 +238,10 @@ end
 --------------------------------------------------------------------------
 
 --- A pack may legitimately name a faction or territory that a later pack
--- registers -- that's what lets an invasion homeland be declared before
--- registerInvasion creates the faction that owns it. So the check has to
--- run after everything has loaded, and must be silent about references
--- that resolved in the meantime.
+-- registers -- that's the mechanism that lets a mainland frontier cell
+-- sit next to a Vvardenfell one. So the check has to run after
+-- everything has loaded, and must be silent about references that
+-- resolved in the meantime.
 function M.toleratesForwardReferences()
     registry.registerLandmass(minimalLandmass({
         territories = {
@@ -271,14 +253,9 @@ function M.toleratesForwardReferences()
         },
         frontier = {},
     }))
-    registry.registerInvasion({
-        id = 'sixth_house',
-        faction = {
-            id = 'sixth house',
-            basePower = 30,
-            homeTerritories = { 'red_mountain' },
-            escalationThresholds = { { stage = 'stirring', power = 30 } },
-        },
+    registry.registerLandmass({
+        id = 'ashlands',
+        factions = { { id = 'sixth house', basePower = 30 } },
     })
 
     expect.equal(registry.validateReferences(), 0, 'reference problems')

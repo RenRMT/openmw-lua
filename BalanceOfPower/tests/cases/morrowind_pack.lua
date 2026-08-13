@@ -37,7 +37,7 @@ function M.loadsWithoutError()
     loadPack()
     expect.truthy(registry.landmasses.vvardenfell, 'vvardenfell registered')
     expect.truthy(registry.landmasses.solstheim, 'solstheim registered')
-    expect.truthy(registry.invasions.sixth_house, 'sixth house registered')
+    expect.truthy(registry.factions['sixth house'], 'the Sixth House is an ordinary faction')
 end
 
 function M.registersEveryHoldingAsASettlementOrPowerCentre()
@@ -258,19 +258,25 @@ function M.derivesAStartingMapFromSettlementsAlone()
     expect.greater(owned.telvanni or 0, 0, 'Telvanni hold something')
 end
 
---- An authored owner overrides projection. Without that, Red Mountain
--- would fall to whichever Great House happened to out-project a faction
--- starting at 30 power, which is the opposite of the intended story.
-function M.leavesTheInvaderHomelandWithTheInvader()
+--- Red Mountain, derived rather than authored. There is no `defaultOwner`
+-- anywhere in this pack now: the Sixth House holds its seat because it
+-- has a power centre there and nobody else reaches it, which is the same
+-- reason Hlaalu hold Balmora.
+function M.leavesRedMountainWithTheSixthHouse()
     loadPack()
     resolve.assignInitialControl()
 
     expect.equal(state.getOwner('dagoth_ur'), 'sixth house', 'Red Mountain')
+
+    for _, id in ipairs(registry.settlementIds) do
+        expect.isNil(registry.territories[id].defaultOwner,
+            id .. ' has no authored owner')
+    end
 end
 
---- Sieges only work if settlements know their surrounding cells, and packs
--- can't name generated cells themselves. If this regresses, settlements
--- silently become untakeable.
+--- A settlement's ring is what `isSurrounded` reads, and packs can't name
+-- generated cells themselves. If this regresses, no settlement can ever
+-- be reported as surrounded and an extension built on that goes quiet.
 function M.givesSettlementsARing()
     loadPack()
 

@@ -30,12 +30,13 @@ local STATE_VERSION = 1
 -- Every top-level map in the state, keyed by id. Adding one here is all
 -- that's needed for it to be created, saved and restored.
 local SECTIONS = {
-    'power',          -- factionId   -> number
-    'ownership',      -- territoryId -> factionId
-    'siegeStreak',    -- settlementId    -> consecutive surrounded-day count
-    'lastFlipped',    -- territoryId -> game-day index of the last flip
-    'corrupted',      -- territoryId -> invasionId (nil = not overrun)
-    'invasionStage',  -- invasionId  -> stage name
+    'power',            -- factionId    -> number
+    'ownership',        -- territoryId  -> factionId
+    'lastFlipped',      -- territoryId  -> game-day index of the last flip
+    -- settlementId -> the day it most recently became surrounded, absent
+    -- while it isn't. A fact the framework observes and publishes; what
+    -- anything does about it belongs to an extension.
+    'surroundedSince',
 }
 
 local M = {}
@@ -120,23 +121,10 @@ function M.fillDefaults(registry)
             data.ownership[id] = territory.defaultOwner or false
             seeded = seeded + 1
         end
-        if territory.kind == 'settlement' and data.siegeStreak[id] == nil then
-            data.siegeStreak[id] = 0
-            seeded = seeded + 1
-        end
     end
 
-    -- Every invasion starts dormant regardless of its basePower; the
-    -- escalation check (phase 6) promotes it on the first tick if its
-    -- power already clears a threshold, which also fires the
-    -- BoP_InvasionEscalated event that jumping straight to a stage here
-    -- would swallow.
-    for id in pairs(registry.invasions) do
-        if data.invasionStage[id] == nil then
-            data.invasionStage[id] = 'dormant'
-            seeded = seeded + 1
-        end
-    end
+    -- surroundedSince needs no seeding: absent means not surrounded, and
+    -- the daily pass writes it the first time one is.
 
     if seeded > 0 then
         log.debug('seeded %d state entries from static definitions', seeded)

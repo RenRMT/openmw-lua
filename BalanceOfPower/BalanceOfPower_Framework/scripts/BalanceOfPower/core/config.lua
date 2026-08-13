@@ -125,20 +125,15 @@ M.DEFAULT_POWER_CENTER_TIER = 'regional'
 
 M.DEFAULT_SETTLEMENT_TIER = 'town'
 
--- Per-tier fallbacks for settlements. defenseMultiplier scales the current
--- owner's effective power during a siege roll; the top tiers are
--- deliberately steep enough that ordinary faction politics can't take
--- them, leaving real city flips to the invasion subsystem (doc 3.4).
---
--- The ladder runs from an isolated fort or Ashlander camp, which should
--- change hands when the surrounding country does, up to Vivec, which
--- should not change hands short of catastrophe.
+-- Per-tier fallbacks for settlements. The tier is otherwise metadata:
+-- an extension needs to know Vivec is a metropolis and Gnaar Mok is a
+-- village, and it should not have to work that out from cell counts.
 M.SETTLEMENT_DEFAULTS = {
-    outpost    = { siegeThreshold = 2,  cooldownDays = 10, defenseMultiplier = 1.5 },
-    village    = { siegeThreshold = 3,  cooldownDays = 15, defenseMultiplier = 2.0 },
-    town       = { siegeThreshold = 4,  cooldownDays = 25, defenseMultiplier = 3.0 },
-    city       = { siegeThreshold = 8,  cooldownDays = 60, defenseMultiplier = 8.0 },
-    metropolis = { siegeThreshold = 12, cooldownDays = 90, defenseMultiplier = 15.0 },
+    outpost    = { cooldownDays = 10 },
+    village    = { cooldownDays = 15 },
+    town       = { cooldownDays = 25 },
+    city       = { cooldownDays = 60 },
+    metropolis = { cooldownDays = 90 },
 }
 
 -- Frontier cells are the layer that's meant to visibly creep, so they
@@ -205,8 +200,14 @@ M.FRONTIER_REQUIRE_EXISTING_CELL = true
 -- cell away.
 M.MIN_CLAIM_POWER = 5
 
--- What share of a settlement's adjacent frontier a rival must hold before
--- the settlement counts as surrounded and its siege streak starts climbing.
+-- What share of a settlement's adjacent frontier rivals must hold before
+-- it counts as surrounded.
+--
+-- Being surrounded has no consequence inside the framework -- it is
+-- observed, recorded and published, and nothing acts on it. It is here
+-- because working it out requires the frontier ownership map, which only
+-- the framework has, and because every extension that cares would
+-- otherwise compute the same thing from the same data.
 M.SURROUND_SHARE = 0.6
 
 --------------------------------------------------------------------------
