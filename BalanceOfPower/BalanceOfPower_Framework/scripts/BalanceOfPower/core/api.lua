@@ -11,6 +11,7 @@ local config = require('scripts.BalanceOfPower.core.config')
 local driver = require('scripts.BalanceOfPower.core.driver')
 local events = require('scripts.BalanceOfPower.core.events')
 local frontier = require('scripts.BalanceOfPower.core.frontier')
+local hostility = require('scripts.BalanceOfPower.core.hostility')
 local log = require('scripts.BalanceOfPower.core.log')
 local mapdump = require('scripts.BalanceOfPower.core.mapdump')
 local power = require('scripts.BalanceOfPower.core.power')
@@ -32,7 +33,10 @@ local M = {
     --    getSettlement, settlementIds, getSettlementOwner. classify()
     --    returns a four-way partition and isSurrounded takes a
     --    settlement id.
-    version = 4,
+    -- v5 added ambient growth (growthPerDay on a faction definition) and
+    --    hostility (hostile on a faction definition; isHostile,
+    --    willFight, isHostileToPlayer, enemiesOf, regardOf).
+    version = 5,
 
     -- Event name constants, so listeners don't hardcode the strings.
     events = events,
@@ -96,6 +100,17 @@ end
 
 function M.setPower(factionId, value)
     return power.set(factionId, value)
+end
+
+--- How `factionId` feels about `towardId`, in roughly [-3, 3]; 0 if it
+-- has no opinion. Merged from the game's records and authored tables.
+--
+-- Note the direction: this is the *outbound* question, "what does this
+-- faction think of that one". It is a function rather than a table
+-- because the underlying storage is inbound, and reading it directly
+-- gets the answer backwards without ever erroring.
+function M.regardOf(factionId, towardId)
+    return power.regardOf(factionId, towardId)
 end
 
 --------------------------------------------------------------------------
@@ -235,6 +250,40 @@ function M.surroundedSince(settlementId)
 end
 
 --------------------------------------------------------------------------
+-- Hostility
+--------------------------------------------------------------------------
+--
+-- One rule, at three settings: a faction fights nobody unless its pack
+-- flagged it hostile, and a flagged faction fights whoever it regards at
+-- or below HOSTILITY_REACTION_THRESHOLD. The framework starts no fights
+-- of its own -- it answers the question so that everything spawning
+-- actors answers it the same way.
+
+--- Whether `factionId` attacks `towardId` on sight. Asymmetric: a
+-- peaceful faction does not go looking for the fight it ends up in.
+function M.isHostile(factionId, towardId)
+    return hostility.isHostile(factionId, towardId)
+end
+
+--- Whether these two come to blows, from either side's initiative.
+function M.willFight(factionId, otherId)
+    return hostility.willFight(factionId, otherId)
+end
+
+--- Whether `factionId` attacks the player on sight. The player has no
+-- reaction row, so this is the flag itself rather than a lookup.
+function M.isHostileToPlayer(factionId)
+    return hostility.isHostileToPlayer(factionId)
+end
+
+--- Every registered faction `factionId` attacks on sight, sorted. Empty
+-- for a peaceful faction, and empty for a hostile one with nobody it
+-- hates enough -- which is worth checking after flagging one.
+function M.enemiesOf(factionId)
+    return hostility.enemiesOf(factionId)
+end
+
+--------------------------------------------------------------------------
 -- Diagnostics
 --------------------------------------------------------------------------
 
@@ -306,6 +355,17 @@ function M.dump()
     for _, id in ipairs(registry.sortedFactionIds()) do
         local faction = registry.factions[id]
         local tags = faction.territorial and '' or ' [non-territorial]'
+        if (faction.growthPerDay or 0) ~= 0 then
+            tags = tags .. string.format(' [%+.2f/day]', faction.growthPerDay)
+        end
+        if hostility.isBelligerent(id) then
+            -- The enemy list, not just the flag: a hostile faction with
+            -- nobody it hates enough is indistinguishable from a working
+            -- one until you watch it walk past a rival patrol.
+            local enemies = hostility.enemiesOf(id)
+            tags = tags .. ' [hostile: '
+                .. (#enemies > 0 and table.concat(enemies, ', ') or 'player only') .. ']'
+        end
         log.info('  %-20s power %7.2f  territories %4d%s',
             faction.displayName, power.getLive(id), held[id] or 0, tags)
     end

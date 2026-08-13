@@ -160,15 +160,23 @@ function M.factionsFor(definitions, centers, defined, landmassId)
                     powerCenters = powerCenters,
                 }
             else
-                out[#out + 1] = {
-                    id = id,
-                    displayName = definition.displayName,
-                    territorial = definition.territorial,
-                    basePower = definition.basePower,
-                    reactions = definition.reactions,
-                    landmass = landmassId,
-                    powerCenters = powerCenters,
-                }
+                -- Everything the author wrote, with only the two fields
+                -- this file is responsible for laid over the top.
+                --
+                -- Deliberately a copy rather than a hand-listed set of
+                -- fields. The list version silently dropped patrolRoster
+                -- for as long as the field has existed: it validated, it
+                -- was documented, and it never arrived. Any field the
+                -- framework grows would have gone the same way, and
+                -- nothing would have said so.
+                local faction = {}
+                for key, value in pairs(definition) do
+                    faction[key] = value
+                end
+                faction.landmass = landmassId
+                faction.powerCenters = powerCenters
+
+                out[#out + 1] = faction
                 defined[id] = true
             end
         end

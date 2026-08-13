@@ -179,6 +179,23 @@ function M.reactionsFor(factionId)
     return propagation[factionId] or EMPTY
 end
 
+--- How `factionId` feels about `towardId`, in roughly [-3, 3]. 0 if it
+-- has no opinion, or for a faction's regard for itself.
+--
+-- The inverse question to reactionsFor(), and worth a named function
+-- rather than an index because the storage is inbound and this is an
+-- outbound question: the value lives on *towardId's* row. Reading it the
+-- wrong way round is silent -- most pairs are near-symmetric -- and this
+-- framework has already shipped that bug once.
+function M.regardOf(factionId, towardId)
+    if factionId == towardId then
+        return 0
+    end
+    ensurePropagation()
+    local row = propagation[towardId]
+    return row and row[factionId] or 0
+end
+
 --- How the reaction wiring actually resolved, per faction: `moves` is
 -- how many factions it can push, `movedBy` how many can push it. A zero
 -- in either column is a faction sitting outside the politics in one
@@ -294,6 +311,30 @@ function M.apply(factionId, delta, opts)
             M.set(id, M.getLive(id) + amount)
         end
     end
+end
+
+--- Apply every faction's ambient daily growth.
+--
+-- Called once per resolved day, deliberately *outside* the batch: growth
+-- is an input to the day rather than a result of it, the same category
+-- as an award arriving from a quest, so the day's rolls should see the
+-- new number rather than a number one day stale.
+--
+-- Growth does not propagate by default, and GROWTH_PROPAGATES carries
+-- the long version of why. The short one: a daily drip through the
+-- reaction table compounds until every faction that dislikes the growing
+-- one is at MIN_POWER, and it empties the map without logging anything.
+-- @return number of factions that grew
+function M.applyDailyGrowth()
+    local grown = 0
+    for _, id in ipairs(registry.sortedFactionIds()) do
+        local rate = registry.factions[id].growthPerDay or 0
+        if rate ~= 0 then
+            M.apply(id, rate, { noPropagate = not config.GROWTH_PROPAGATES })
+            grown = grown + 1
+        end
+    end
+    return grown
 end
 
 --------------------------------------------------------------------------

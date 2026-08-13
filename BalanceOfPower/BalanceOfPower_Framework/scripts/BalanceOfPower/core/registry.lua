@@ -216,6 +216,18 @@ local function defineFaction(def, context, fallbackLandmass)
         -- registered.
         territorial = def.territorial ~= false,
         basePower = basePower,
+        -- Power gained per resolved day with nobody doing anything. A
+        -- knob on an ordinary faction rather than a mode: the faction
+        -- that grows on its own is the same shape as every other one,
+        -- and differs by a number.
+        growthPerDay = checkNumber(def.growthPerDay, ctx, 'growthPerDay',
+            config.DEFAULT_GROWTH_PER_DAY),
+        -- Opt in to fighting. A hostile faction attacks the player, and
+        -- attacks any faction it regards at or below
+        -- HOSTILITY_REACTION_THRESHOLD. Nothing in the framework acts on
+        -- this -- see core/hostility.lua for what it means and
+        -- core/patrol.lua for who reads it.
+        hostile = def.hostile == true,
         landmass = landmass,
         powerCenters = normalizePowerCenters(def.powerCenters, ctx, nil, landmass),
         patrolRoster = copyStrings(def.patrolRoster, ctx, 'patrolRoster'),
@@ -237,7 +249,8 @@ local function prepareExtension(faction, def, context)
     -- Whichever pack registered first owns the base config. Redefining
     -- it from an extending pack is a load-order-dependent bug, so say so
     -- rather than silently picking a winner.
-    for _, field in ipairs({ 'basePower', 'displayName', 'territorial' }) do
+    for _, field in ipairs({ 'basePower', 'displayName', 'territorial',
+                             'growthPerDay', 'hostile' }) do
         if def[field] ~= nil then
             log.warn('%s: ignoring %s -- it belongs to the pack that registered this faction first',
                 ctx, field)

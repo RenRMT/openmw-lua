@@ -81,6 +81,74 @@ M.RECORD_REACTIONS_ARE_INBOUND = false
 M.POWER_EVENT_EPSILON = 0.01
 
 --------------------------------------------------------------------------
+-- Ambient growth
+--------------------------------------------------------------------------
+
+-- Power a faction gains every resolved day with no player involvement,
+-- when its definition doesn't say otherwise.
+--
+-- Zero for everyone is the right default: a faction that grows on its
+-- own is making a claim about the world that only its own content pack
+-- can justify. What it exists for is the faction whose whole story is
+-- that it is getting stronger whether or not anyone is paying attention
+-- -- the Sixth House being the obvious one -- and that is a number in a
+-- pack's faction table, not a subsystem.
+M.DEFAULT_GROWTH_PER_DAY = 0
+
+-- Whether ambient growth drags other factions along the reaction table
+-- the way an awarded change does.
+--
+-- **No, and this is not a small default.** Propagation models other
+-- factions reacting to something that happened; a daily internal
+-- build-up is not an event anyone witnesses. More practically, it
+-- compounds in a way one-off awards never do. Every faction in Morrowind
+-- sits at -3 toward the Sixth House, so at growthPerDay = 1.5 and
+-- INFLUENCE_STRENGTH = 0.15 each of them bleeds 0.225 power per day
+-- against starting standings of 25 to 50: the entire political map is at
+-- MIN_POWER inside four to seven in-game months, every projection falls
+-- under MIN_CLAIM_POWER, and the world empties.
+--
+-- The invader gains nothing from that, either, because its reach is
+-- bounded by influenceRange rather than by power. The end state is an
+-- empty map with one small red patch, reached quietly, with nothing in
+-- the log to say what went wrong.
+--
+-- The Sixth House still costs everyone something -- that comes from
+-- awardPower when the player or the world acts on its behalf, which is
+-- an event, and where it belonged all along.
+M.GROWTH_PROPAGATES = false
+
+--------------------------------------------------------------------------
+-- Hostility
+--------------------------------------------------------------------------
+
+-- Whether factions fight each other on sight, and whom.
+--
+-- Hostility is opt-in per faction (`hostile = true` in a pack's faction
+-- definition) and defaults to nobody, because vanilla Morrowind's Great
+-- Houses do not brawl in the street and a framework that made them do so
+-- would be wrong about the game it is modelling.
+--
+-- A flagged faction is hostile to the player, and fights any faction it
+-- regards at or below this threshold. -3 is vanilla's "sworn enemies"
+-- value, so the rule reads as: a hostile faction attacks the people it
+-- genuinely hates, and tolerates everyone else.
+--
+-- Note the direction. This asks how the *hostile* faction feels about
+-- the other one, which is an outbound question against inbound storage
+-- -- use power.regardOf rather than indexing a reaction row directly.
+M.HOSTILITY_REACTION_THRESHOLD = -3
+
+-- Treat every faction as though it carried `hostile = true`.
+--
+-- Off by default. Switching it on is less dramatic than it sounds: -3 is
+-- rare between vanilla factions, so what emerges is the Camonna Tong and
+-- the Thieves Guild going at each other rather than a general war. That
+-- is the point -- the setting produces the fights that make sense, not
+-- all of them.
+M.ALL_FACTIONS_HOSTILE = false
+
+--------------------------------------------------------------------------
 -- Power centers
 --------------------------------------------------------------------------
 

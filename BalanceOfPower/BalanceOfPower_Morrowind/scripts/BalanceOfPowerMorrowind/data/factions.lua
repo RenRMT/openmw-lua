@@ -176,9 +176,20 @@ return {
     },
     {
         -- An ordinary faction, holding Red Mountain and reaching barely
-        -- past it. Nothing here grows it and nothing here acts on it --
-        -- the invasion is an extension, and this is only the standing
-        -- and the geography it will read and push.
+        -- past it. What makes it an invasion is two fields, not a
+        -- subsystem: it grows on its own, and it fights.
+        --
+        -- Its escalation comes free from that. Projection is power scaled
+        -- by distance decay, so at low standing the Sixth House reaches
+        -- barely past Red Mountain and its patrols appear around
+        -- Ghostgate; as power accrues the same radius pushes outward on
+        -- its own. Dormant, stirring, encroaching -- the stages the
+        -- design document enumerated, with no stage table to maintain.
+        --
+        -- What it cannot do is take Vvardenfell. Influence decays to
+        -- exactly zero at influenceRange no matter how strong a faction
+        -- becomes, so Balmora is not far away, it is unreachable. The
+        -- Sixth House saturates its own country and stops.
         --
         -- The reaction table is what will make that invasion cost
         -- everybody something without a line of special-casing: every
@@ -196,6 +207,20 @@ return {
         displayName = 'Sixth House',
         basePower = 30,
         landmass = 'vvardenfell',
+        -- The one faction on Vvardenfell that gets stronger whether or
+        -- not anyone is paying attention. ~3 weeks to double its
+        -- standing, ~4 months to the point where it holds every cell it
+        -- can reach; after that it is capped by geography rather than by
+        -- this number.
+        --
+        -- Nothing pushes back yet. Player counter-play arrives with the
+        -- quest hooks in phase 5, and until then this only ever climbs.
+        growthPerDay = 1.5,
+        -- Attacks the player, and attacks any faction it regards at or
+        -- below -3 -- which, given the rows below, is everyone except
+        -- the Ashlanders. No other faction on Vvardenfell is flagged, so
+        -- the Great Houses go on tolerating each other.
+        hostile = true,
         reactions = {
             hlaalu = -3,
             redoran = -3,

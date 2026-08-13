@@ -40,6 +40,12 @@ end
 -- and queues its changes, so no roll can be influenced by another roll
 -- that happened to resolve earlier in the same day.
 function M.runDay(day)
+    -- Before the batch opens, so today's rolls resolve against today's
+    -- power rather than yesterday's. Growth is an input to the day, not
+    -- a result of it -- the same category as an award arriving from a
+    -- quest, and the opposite of everything inside the batch.
+    power.applyDailyGrowth()
+
     power.beginBatch()
 
     -- The whole world in one pass, which is what the MVP wants. Passing

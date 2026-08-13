@@ -12,6 +12,7 @@ local world = require('openmw.world')
 
 local api = require('scripts.BalanceOfPower.core.api')
 local cells = require('scripts.BalanceOfPower.core.cells')
+local hostility = require('scripts.BalanceOfPower.core.hostility')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -184,6 +185,73 @@ function M.makesTheSixthHouseEveryonesProblem()
     for _, id in ipairs(others) do
         expect.greater(before[id], power.getLive(id),
             id .. ' loses standing when the Sixth House grows')
+    end
+end
+
+--- Authored faction fields have to survive the trip through build.lua,
+-- which assembles the registration call. They did not: it copied a
+-- hand-listed set of fields and dropped patrolRoster on the floor, so
+-- the roster validated at registration, appeared in the data file, and
+-- never reached the registry. Nothing anywhere reported it.
+--
+-- The general assertion rather than one about rosters, because the next
+-- field to be added would have gone exactly the same way.
+function M.carriesAuthoredFactionFieldsThroughToTheRegistry()
+    loadPack()
+
+    local sixth = registry.factions['sixth house']
+    expect.greater(#sixth.patrolRoster, 0, 'the roster arrived')
+    expect.truthy(sixth.hostile, 'and so did the hostility flag')
+    expect.greater(sixth.growthPerDay, 0, 'and the growth rate')
+end
+
+--- The Sixth House is the pack's only hostile faction, and it is the
+-- one whose failure mode is invisible: a hostile faction with nobody it
+-- hates enough looks exactly like a working one until you watch its
+-- patrols stroll past a rival's. So the enemy list is pinned to the real
+-- data rather than assumed from the flag.
+--
+-- Hostility reads outbound -- how the Sixth House feels about each
+-- faction -- which under the inbound authoring convention lives on
+-- *their* rows, not its own. Reading the wrong row here would produce a
+-- list of the same length made of nearly the same factions, which is why
+-- the two -2 entries below are worth having in the fixture at all.
+function M.theSixthHouseFightsEveryoneItHates()
+    loadPack()
+
+    expect.truthy(hostility.isHostileToPlayer('sixth house'), 'hostile to the player')
+
+    local enemies = {}
+    for _, id in ipairs(hostility.enemiesOf('sixth house')) do
+        enemies[id] = true
+    end
+
+    expect.truthy(enemies.hlaalu, 'the houses')
+    expect.truthy(enemies.redoran, 'the houses')
+    expect.truthy(enemies.telvanni, 'the houses')
+    expect.truthy(enemies.temple, 'and the Temple')
+    expect.truthy(enemies['imperial legion'], 'and the Empire')
+
+    -- Authored at -2: disliked, not hated. Dagoth Ur wants back a
+    -- Morrowind the Ashlanders were never part of, and has no quarrel
+    -- with a smuggling ring.
+    expect.falsy(enemies.ashlanders, 'the Ashlanders are spared')
+    expect.falsy(enemies['camonna tong'], 'and so is the Camonna Tong')
+end
+
+--- Nobody else is flagged, so the Great Houses go on tolerating each
+-- other exactly as they do in vanilla. This is the assertion that would
+-- catch a well-meaning future edit flagging a house as hostile because
+-- its reaction row looked angry enough.
+function M.noVanillaFactionFightsAnother()
+    loadPack()
+
+    for _, a in ipairs(registry.sortedFactionIds()) do
+        for _, b in ipairs(registry.sortedFactionIds()) do
+            if a ~= 'sixth house' and b ~= 'sixth house' then
+                expect.falsy(hostility.willFight(a, b), a .. ' vs ' .. b)
+            end
+        end
     end
 end
 
