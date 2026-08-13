@@ -16,6 +16,7 @@
 -- GLOBAL context only.
 
 local cells = require('scripts.BalanceOfPower.core.cells')
+local config = require('scripts.BalanceOfPower.core.config')
 local log = require('scripts.BalanceOfPower.core.log')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -145,8 +146,19 @@ end
 -- Rendering
 --------------------------------------------------------------------------
 
---- Render one landmass as a list of text lines.
--- @param opts table { landmass = ..., mode = 'owner'|'projection'|'contest' }
+--- Render as a list of text lines.
+--
+-- @param opts table
+--   landmass    restrict to one landmass
+--   mode        'owner' | 'projection' | 'contest'
+--   centreCell  "#x,y" to centre a window on, instead of drawing everything
+--   radius      half-width of that window in cells (default 6)
+--
+-- The windowed form exists because the full map is forty columns by fifty
+-- rows -- fine in a log, useless in a message box. Centred on where the
+-- player is standing, a small window fits on screen and answers the
+-- question actually being asked, which is what the ground around *here*
+-- looks like.
 function M.render(opts)
     opts = opts or {}
     local mode = opts.mode or 'owner'
@@ -165,13 +177,39 @@ function M.render(opts)
         return lines
     end
 
+    local centreX, centreY
+    if opts.centreCell then
+        centreX, centreY = cells.parse(opts.centreCell)
+        if not centreX then
+            lines[1] = string.format('%s is not an exterior cell, so there is '
+                .. 'nothing to centre on', tostring(opts.centreCell))
+            return lines
+        end
+        -- Clamp to the drawn region: a window hanging off the edge of the
+        -- world is just blank rows.
+        local radius = opts.radius or config.MAP_WINDOW_RADIUS
+        minX = math.max(minX, centreX - radius)
+        maxX = math.min(maxX, centreX + radius)
+        minY = math.max(minY, centreY - radius)
+        maxY = math.min(maxY, centreY + radius)
+        if minX > maxX or minY > maxY then
+            lines[1] = string.format('%s is outside the simulated region',
+                opts.centreCell)
+            return lines
+        end
+    end
+
     local symbols = assignSymbols()
 
     local day = state.get().lastResolvedDay
     lines[#lines + 1] = string.format('=== %s -- %s -- %s ===',
         landmassId or 'world', mode,
         day and ('day ' .. day) or 'not yet ticked')
-    lines[#lines + 1] = string.format('x %d..%d, y %d..%d', minX, maxX, minY, maxY)
+    if centreX then
+        lines[#lines + 1] = string.format('around %s', opts.centreCell)
+    else
+        lines[#lines + 1] = string.format('x %d..%d, y %d..%d', minX, maxX, minY, maxY)
+    end
 
     -- A ruler of last digits, so a column can be counted back to its
     -- real x without labelling every one of forty columns.

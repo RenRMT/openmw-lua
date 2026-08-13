@@ -25,6 +25,11 @@ M.DEBUG_DAILY_SUMMARY = true
 -- thousand log lines.
 M.MAX_REPORTED_PROBLEMS = 20
 
+-- Half-width, in cells, of the windowed map drawn around a position.
+-- Sized to fit an in-game message box: 6 gives a 13x13 grid, which is
+-- readable on screen where the full forty-by-fifty map is not.
+M.MAP_WINDOW_RADIUS = 6
+
 --------------------------------------------------------------------------
 -- Power
 --------------------------------------------------------------------------

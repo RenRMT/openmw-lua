@@ -298,6 +298,11 @@ Three modes:
   consequence of a range change immediately rather than after days of rolls.
 - **`contest`** — where the fronts are, ignoring who holds what.
 
+Pass `centreCell = '#x,y'` (with an optional `radius`, default 6) to draw a
+window around a position instead of everything. The full map is forty columns by
+fifty rows — fine in a log, useless in a message box — so anything rendering to
+the screen wants the windowed form.
+
 `renderMap(opts)` returns the same thing as a list of lines, for a caller that
 wants to put it somewhere other than the log.
 

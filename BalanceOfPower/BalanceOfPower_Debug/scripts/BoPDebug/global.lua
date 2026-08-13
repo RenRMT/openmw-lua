@@ -87,8 +87,14 @@ function handlers.BoPDebug_Dump()
         tostring(BoP.getCurrentDay()), standings()))
 end
 
---- The text map goes to the log, since it's far too wide for a message
--- box. On screen, just enough to know it worked and what it was drawn as.
+--- Both halves of the map, in one keypress.
+--
+-- On screen: a window of the cells around the player. The full map is
+-- forty columns by fifty rows, which is fine in a log and useless in a
+-- message box -- and standing somewhere specific, the ground around
+-- *here* is usually the question anyway.
+--
+-- In the log: the whole thing, for when it isn't.
 function handlers.BoPDebug_Map(data)
     local mode = data.mode or 'owner'
     BoP.dumpMap({ mode = mode })
@@ -99,9 +105,17 @@ function handlers.BoPDebug_Map(data)
         counts[class] = (counts[class] or 0) + 1
     end
 
-    report(string.format('Map drawn to openmw.log (mode: %s)\n%d contested, '
-        .. '%d consolidated, %d unreachable',
-        mode, counts.contested, counts.consolidated, counts.empty))
+    local summary = string.format('%d contested, %d consolidated, %d unreachable'
+        .. '  --  full map in openmw.log',
+        counts.contested, counts.consolidated, counts.empty)
+
+    if not data.cell then
+        report(string.format('Map drawn (mode: %s)\n%s', mode, summary))
+        return
+    end
+
+    local window = BoP.renderMap({ mode = mode, centreCell = data.cell })
+    report(table.concat(window, '\n') .. '\n' .. summary)
 end
 
 function handlers.BoPDebug_ForceDay(data)

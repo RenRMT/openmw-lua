@@ -34,7 +34,7 @@ the game, which makes the edit/test loop fast.
 
 | Key | Does |
 |---|---|
-| `Ctrl+1` | Draw the map to `openmw.log` (`Ctrl+Shift+1` cycles owner → projection → contest) |
+| `Ctrl+1` | Map of the cells around you, on screen — and the full map to `openmw.log` (`Ctrl+Shift+1` cycles owner → projection → contest) |
 | `Ctrl+2` | Standings: power and territory count per faction |
 | `Ctrl+3` | Resolve one in-game day now (`Ctrl+Shift+3` for seven) |
 | `Ctrl+4` | Push whoever **holds** the ground you're standing on, +50 (`Shift` for −50) |
@@ -48,6 +48,33 @@ whether or not a modifier is held.
 
 Walking between cells also reports the territory you've entered, who holds it,
 how contested it is, and every faction's projection onto it.
+
+### Reading the map
+
+`Ctrl+1` gives you both halves at once. On screen, a 13×13 window centred on
+where you're standing — uppercase is a settlement, lowercase its wilderness:
+
+```
+      8765432101234
+    5 hhrrrrRrrrm.
+    4 hhhrrrrrrrMm
+    3 Hhhrriiir.m.
+    2 hhh.iiIii
+    1 hhhhhhiii
+legend: H/h House Hlaalu   I/i The Empire   M/m Tribunal Temple   R/r House Redoran
+```
+
+The full map of every landmass goes to `openmw.log` on the same keypress, for
+when the window isn't enough. **There is no way to read the log from inside the
+game** — it's a file next to your saves, usually
+`Documents\My Games\OpenMW\openmw.log` on Windows. Tail it in a second window:
+
+```powershell
+Get-Content -Wait -Tail 60 "$env:USERPROFILE\Documents\My Games\OpenMW\openmw.log"
+```
+
+The column header is the last digit of each cell's x coordinate, so you can
+count back to a real grid reference.
 
 ## The loop that shows the simulation working
 

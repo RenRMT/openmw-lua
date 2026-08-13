@@ -24,7 +24,8 @@ local ui = require('openmw.ui')
 -- Grouped by what they do: look at things, advance time, change power,
 -- then the toggles and self-tests.
 local KEYS = {
-    map         = input.KEY._1,   -- draw the map (Shift: next mode)
+    map         = input.KEY._1,   -- map around you, full map to the log
+                                  --   (Shift: next mode)
     dump        = input.KEY._2,   -- standings and territory counts
     forceDay    = input.KEY._3,   -- run a day now (Shift: seven)
     boostOwner  = input.KEY._4,   -- push whoever holds this ground
@@ -102,7 +103,13 @@ local function onKeyPress(key)
         if key.withShift then
             mapMode = mapMode % #MAP_MODES + 1
         end
-        core.sendGlobalEvent('BoPDebug_Map', { mode = MAP_MODES[mapMode] })
+        -- The cell is what lets the on-screen half be a window around
+        -- the player rather than the whole unreadable island.
+        lastCellKey = cellKey(self.cell) or lastCellKey
+        core.sendGlobalEvent('BoPDebug_Map', {
+            mode = MAP_MODES[mapMode],
+            cell = lastCellKey,
+        })
 
     elseif key.code == KEYS.dump then
         core.sendGlobalEvent('BoPDebug_Dump', {})

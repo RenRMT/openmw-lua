@@ -180,4 +180,44 @@ function M.handlesAnEmptyWorld()
     expect.truthy(string.find(lines[1], 'no territory', 1, true), 'says so plainly')
 end
 
+--------------------------------------------------------------------------
+-- Windowed rendering
+--------------------------------------------------------------------------
+
+--- The full map is far too wide for a message box, so the overlay draws a
+-- window around the player instead. If this regresses there is no
+-- in-game way to see the map at all.
+function M.windowsAroundACell()
+    twoRealms()
+
+    local full = mapdump.render({ landmass = 'testland' })
+    local window = mapdump.render({ landmass = 'testland', centreCell = '#0,0', radius = 1 })
+
+    expect.greater(#full, #window, 'the window is smaller than the whole map')
+    expect.truthy(string.find(joined(window), 'around #0,0', 1, true), 'says what it centred on')
+
+    -- radius 1 spans y-1..y+1, so at most three drawn rows.
+    local rows = 0
+    for _, line in ipairs(window) do
+        if string.match(line, '^%s*%-?%d+ ') then
+            rows = rows + 1
+        end
+    end
+    expect.greater(4, rows, 'at most three rows for radius 1')
+end
+
+function M.windowClampsToTheDrawnRegion()
+    twoRealms()
+    -- Far outside anything generated.
+    local lines = mapdump.render({ landmass = 'testland', centreCell = '#500,500' })
+    expect.truthy(string.find(joined(lines), 'outside the simulated region', 1, true),
+        'says so rather than drawing blank rows')
+end
+
+function M.windowRejectsInteriorCellNames()
+    twoRealms()
+    local lines = mapdump.render({ landmass = 'testland', centreCell = 'Balmora, Eight Plates' })
+    expect.truthy(string.find(joined(lines), 'not an exterior cell', 1, true), 'says so')
+end
+
 return M
