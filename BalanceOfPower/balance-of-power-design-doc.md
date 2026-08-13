@@ -1,8 +1,44 @@
 # Balance of Power & Foreign Invasion — Design Document
 
-**Status:** Planning draft
+**Status:** Original planning draft — **historical**. Kept because the reasoning
+behind the design is worth having, but it is no longer a description of what
+exists. For what was actually built and why, read
+[implementation-plan.md](implementation-plan.md); for the current state,
+[next-steps.md](next-steps.md).
+
 **Target engine:** OpenMW Lua (0.51+)
 **Scope of this document:** two coupled systems — (1) a faction Balance of Power framework, (2) a generalized foreign-invasion subsystem built on top of it. MVP target: base Morrowind factions + a single invading faction (Sixth House, origin Red Mountain).
+
+---
+
+## 0. What has been superseded
+
+Decisions taken during phases 1–3 that contradict the text below. Everything
+else still holds.
+
+| This document says | What was actually built | Where |
+|---|---|---|
+| `influenceRange = 6000` | 40000 / 24000 / 12000 / 10000 by tier. 6000 is smaller than one exterior cell (8192), so a capital would have projected onto nothing but its own cell | §3.1, §3.2 |
+| `territorial = false` excludes a faction from the territory *and* power loop | It means **power-only**: the faction has standing and propagates through the reaction table, but holds no ground and projects nothing. That's the guild / Great House split. A faction that should not participate at all is simply not registered | §5.1 |
+| Frontier `defaultOwner` bulk-assigned from the nearest anchor | Ownership is **derived from projection**, for anchors and frontier alike. An authored `defaultOwner` is an override, used only for the invasion homeland | §3.2 |
+| Roughly 18–22 anchors | 36 contestable anchors out of 63 settlements, across Vvardenfell **and Solstheim** | §5.2 |
+| Anchor tiers `town` / `city` | Five: `outpost`, `village`, `town`, `city`, `metropolis`. Power-center tiers gained `minor` | §3.1 |
+| Morag Tong excluded | Registered as a power-only faction, along with the Fighters, Mages and Thieves Guilds, the Imperial Cult and the Camonna Tong | §5.1 |
+| Frontier cells contestable via adjacency to rival-held ground | Contestable unconditionally. Proximity decay already *is* the adjacency rule — a faction with no foothold nearby projects nothing and cannot win | §3.4 |
+| Commerce as a stretch goal | Dropped. No engine hook exists, and it was judged out of scope for the framework | §3.6, §7 |
+| Homeland "Red Mountain interior + Ghostgate approach" | Dagoth Ur alone, from the settlement list | §5.3 |
+
+Two further decisions the document leaves open, since resolved:
+
+- **Who attacks a territory** — whichever faction projects the most power onto
+  it. Deterministic; no random selection among rivals.
+- **Cooldown vs. temporary defence bonus** after a flip (§3.4 floats both) — a
+  hard cooldown.
+
+One clarification worth stating, because it is the least obvious consequence of
+the design and is easy to mistake for a bug: **while a territory's owner is also
+its strongest projector, no rival roll happens at all.** The roll decides how
+long a takeover takes, not who wins it.
 
 ---
 

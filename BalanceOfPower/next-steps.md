@@ -1,12 +1,43 @@
 # Balance of Power — Next Steps
 
-Near-term, actionable. The full phase breakdown is in
-[implementation-plan.md](implementation-plan.md).
+Near-term and actionable. The full phase breakdown is in
+[implementation-plan.md](implementation-plan.md); repo-wide conventions are in
+[CLAUDE.md](../CLAUDE.md).
 
-**Where things stand:** phases 1–3 are written. Phase 1 has been confirmed
-working in-game. Phases 2 and 3 have 78 passing unit tests, including one suite
-that loads the real Morrowind pack headlessly, but have **not** been seen
-running in Morrowind. Phase 4 (spawns) is parked by request.
+## State of play
+
+| Phase | Status |
+|---|---|
+| 1 — Framework skeleton | Done, **confirmed working in-game** |
+| 2 — Resolution loop | Done, tested, **never run in-game** |
+| 3 — Morrowind pack + frontier generator | Done, tested, **never run in-game** |
+| 4 — Spawns | Parked by request |
+| 5 — Player hooks | Not started; commerce dropped |
+| 6 — Invasion subsystem | Not started — **recommended next** |
+| 7 — Tuning and UX | Not started |
+
+**86 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
+that loads the real Morrowind pack through its own `main.lua` headlessly. What
+tests cannot cover: whether the faction ids match real ESM records, whether the
+derived map looks right against the actual game world, and first-tick timing
+across ~600 territories.
+
+Three mods, all on branch `feat/balance-of-power-framework`:
+
+- `BalanceOfPower_Framework` — content-free engine
+- `BalanceOfPower_Morrowind` — Vvardenfell and Solstheim
+- `BalanceOfPower_DevSandbox` — small synthetic world with a debug console
+
+The Morrowind pack and the dev sandbox are **mutually exclusive** — both define
+`hlaalu` and the Sixth House, and redefinition is an error by design.
+
+### The one thing most likely to confuse a newcomer
+
+While a territory's owner is also its strongest projector, **no rival roll
+happens at all**. Rolls decide how long a takeover takes, not who wins it.
+Territory only moves when the projection ordering changes, which happens when
+faction power moves. A static map is the correct behaviour right now, because
+nothing yet moves power on its own — that arrives with phase 6.
 
 ---
 

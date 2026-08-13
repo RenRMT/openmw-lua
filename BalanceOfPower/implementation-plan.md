@@ -152,8 +152,15 @@ lever against the performance risk in doc 7.
 
 - Quest completion watcher against an authored quest → faction map.
 - Faction rank as the `awardPower` multiplier, via `NPC.getFactionRank`.
-- Commerce: prototype the trade-mode UI diff. Explicitly a stretch goal — there
-  is no engine hook for a completed sale (doc 7), so it must not block the MVP.
+
+**Commerce is dropped**, not deferred. There is no engine hook for a completed
+sale, the UI-mode-diff workaround is fragile, and it was judged out of scope for
+the framework. `awardPower` remains available to any mod that wants to build it
+externally.
+
+**Note:** the mechanism this phase feeds already works and is tested — this
+phase is the *sources* that call it, which is mostly data entry (the quest →
+faction map). That makes it lower value per hour than phase 6.
 
 ---
 
@@ -176,10 +183,21 @@ the abstraction has a gap.
 
 ## Phase 7 — Tuning and UX
 
-- Player-facing notifications for flips, sieges and liberations.
+- Player-facing notifications for flips, sieges and liberations. **How much the
+  player sees should be configurable**, and the underlying detail exposed
+  through the log and the API rather than only as notifications.
+- A snapshot call so a player script can ask for current state. Events fire on
+  change only, and the API is global-context, so any UI mod currently needs a
+  request/response bridge of its own. Needed before any UI work.
 - Settings page for the tuning constants worth exposing to players.
-- Debug console commands.
 - l10n for everything player-visible.
+
+Debug tooling is already done: `dump`, `dumpMap` (owner / projection / contest
+views), `forceDay`, and the dev sandbox's hotkeys.
+
+A graphical map overlay was investigated and deferred — there is no map API in
+Lua, so a true overlay on the vanilla map is impossible without an engine
+change. Findings are recorded in [next-steps.md](next-steps.md).
 
 **Why last:** there's nothing to tune until the numbers exist, and every string
 written before phase 6 is a string rewritten after it.

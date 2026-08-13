@@ -1,7 +1,12 @@
 # Balance of Power — Dev Sandbox
 
-A throwaway content pack plus an on-screen debug console, so the framework can
-be exercised in-game before the real Morrowind data pack exists (phase 3).
+A throwaway content pack plus an on-screen debug console: a world small enough
+to hold in your head, where every mechanic can be triggered on a keypress and
+the consequences fit in one message box.
+
+The [Morrowind pack](../BalanceOfPower_Morrowind/README.md) is what you want for
+real content. This is what you want when something is behaving oddly and you
+need to isolate it.
 
 > **Don't enable this in a playthrough you care about.** It registers fictional
 > territory and writes simulation state into your save.
