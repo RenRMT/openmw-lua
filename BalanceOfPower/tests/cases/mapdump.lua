@@ -157,14 +157,29 @@ function M.projectionModeShowsWhoWillHoldGround()
     expect.truthy(owner ~= after, 'ownership lags projection')
 end
 
-function M.contestModeMarksFronts()
+--- A freshly derived map has nothing contested on it, and that is not a
+-- gap in the fixture: initial control hands every cell to its strongest
+-- projector, so by construction no owner is being out-projected. A cell
+-- only becomes contested once power has moved under it.
+function M.contestModeShowsASettledMapAsSettled()
     twoRealms()
+    local grid = gridOnly(mapdump.render({ landmass = 'testland', mode = 'contest' }))
+
+    expect.falsy(string.find(grid, '#', 1, true), 'nothing contested yet')
+    expect.truthy(string.find(grid, '-', 1, true), 'consolidated ground')
+end
+
+function M.contestModeMarksFrontsOncePowerMoves()
+    twoRealms()
+    -- Alpha surges past beta without a single roll having happened, so
+    -- the band beta holds is now ground alpha out-projects.
+    power.set('alpha', 500)
+
     local lines = mapdump.render({ landmass = 'testland', mode = 'contest' })
 
     expect.truthy(string.find(joined(lines), 'contested', 1, true), 'legend')
     expect.truthy(string.find(gridOnly(lines), '#', 1, true),
         'a contested cell between the two realms')
-    expect.truthy(string.find(gridOnly(lines), '-', 1, true), 'and consolidated ground')
 end
 
 function M.rejectsUnknownMode()

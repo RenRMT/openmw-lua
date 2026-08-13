@@ -42,8 +42,10 @@ end
 
 function M.registersEveryHoldingAsASettlementOrPowerCentre()
     loadPack()
-    -- 36 contestable settlements out of 63, per the build script.
+    -- 36 settlements out of 63 holdings, per the build script.
     expect.equal(#registry.settlementIds, 36, 'settlements')
+    -- And every one of their cells is a territory of its own.
+    expect.greater(#registry.settlementCellIds, 36, 'settlements span more cells than that')
 end
 
 function M.hasNoReferenceProblems()
@@ -88,7 +90,7 @@ end
 function M.everySettlementFactionIsDefined()
     loadPack()
 
-    for _, territoryId in ipairs(registry.settlementIds) do
+    for _, territoryId in ipairs(registry.settlementCellIds) do
         local territory = registry.territories[territoryId]
         if territory.defaultOwner then
             expect.truthy(registry.factions[territory.defaultOwner],
@@ -107,21 +109,15 @@ function M.takesTheCellSizeFromTheFramework()
     local size = api.CELL_SIZE
     expect.equal(size, 8192, 'the ESM3 grid the engine works in')
 
-    -- Every settlement's centroid must be the mean of its cells' middles,
-    -- measured in the framework's cell size. Checked across all of them,
-    -- since a wrong constant shows up as a proportional error that a
-    -- single-cell settlement near the origin could hide.
-    for _, id in ipairs(registry.settlementIds) do
+    -- Every settlement cell's centroid is that cell's middle, measured in
+    -- the framework's cell size. Checked across all of them, since a wrong
+    -- constant shows up as a proportional error a cell near the origin
+    -- could hide.
+    for _, id in ipairs(registry.settlementCellIds) do
         local territory = registry.territories[id]
-        local sumX, sumY = 0, 0
-        for _, name in ipairs(territory.cells) do
-            local gridX, gridY = cells.parse(name)
-            sumX = sumX + gridX * size + size / 2
-            sumY = sumY + gridY * size + size / 2
-        end
-        local count = #territory.cells
-        expect.near(territory.centroid.x, sumX / count, 1e-6, id .. ' centroid x')
-        expect.near(territory.centroid.y, sumY / count, 1e-6, id .. ' centroid y')
+        local gridX, gridY = cells.parse(territory.cells[1])
+        expect.near(territory.centroid.x, gridX * size + size / 2, 1e-6, id .. ' centroid x')
+        expect.near(territory.centroid.y, gridY * size + size / 2, 1e-6, id .. ' centroid y')
     end
 end
 
@@ -198,32 +194,41 @@ end
 function M.placesKnownSettlementsInTheRightCells()
     loadPack()
 
-    expect.equal(registry.territoryForCell('#-3,-2').id, 'balmora', 'Balmora')
-    expect.equal(registry.territoryForCell('#-2,6').id, 'ald_ruhn', 'Ald-Ruhn')
-    expect.equal(registry.territoryForCell('#18,4').id, 'sadrith_mora', 'Sadrith Mora')
-    expect.equal(registry.territoryForCell('#-17,25').id, 'raven_rock', 'Raven Rock')
+    expect.equal(registry.territoryForCell('#-3,-2').settlement, 'balmora', 'Balmora')
+    expect.equal(registry.territoryForCell('#-2,6').settlement, 'ald_ruhn', 'Ald-Ruhn')
+    expect.equal(registry.territoryForCell('#18,4').settlement, 'sadrith_mora', 'Sadrith Mora')
+    expect.equal(registry.territoryForCell('#-17,25').settlement, 'raven_rock', 'Raven Rock')
 end
 
---- Vivec covers fifteen cells and must be a single settlement over all of
--- them, not fifteen adjacent ones fighting each other.
-function M.keepsMultiCellSettlementsWhole()
+--- Vivec is fifteen cells, each ownable on its own, all tagged as one
+-- settlement. The tag is what holds the city together now that the
+-- territory is no longer the city.
+function M.keepsMultiCellSettlementsTogether()
     loadPack()
+    resolve.assignInitialControl()
 
-    local vivec = registry.territories.vivec
+    local vivec = registry.settlements.vivec
     expect.truthy(vivec, 'Vivec registered')
     expect.count(vivec.cells, 15, 'all fifteen cells')
+    expect.count(vivec.territoryIds, 15, 'fifteen territories')
     expect.equal(vivec.tier, 'metropolis', 'tier')
-    -- Projecting from the mean of the footprint, not from a corner.
-    expect.equal(registry.territoryForCell('#3,-9').id, 'vivec', 'northern district')
-    expect.equal(registry.territoryForCell('#4,-14').id, 'vivec', 'southern district')
+
+    expect.equal(registry.territoryForCell('#3,-9').settlement, 'vivec', 'northern district')
+    expect.equal(registry.territoryForCell('#4,-14').settlement, 'vivec', 'southern district')
+
+    -- Separately ownable, but the garrison floor applies across the whole
+    -- footprint, so in practice they move together or not at all.
+    for _, id in ipairs(vivec.territoryIds) do
+        expect.equal(state.getOwner(id), 'temple', id .. ' is Temple')
+    end
 end
 
 function M.assignsSolstheimToItsOwnLandmass()
     loadPack()
 
-    expect.equal(registry.territories.raven_rock.landmass, 'solstheim', 'Raven Rock')
-    expect.equal(registry.territories.skaal.landmass, 'solstheim', 'Skaal Village')
-    expect.equal(registry.territories.balmora.landmass, 'vvardenfell', 'Balmora')
+    expect.equal(registry.settlements.raven_rock.landmass, 'solstheim', 'Raven Rock')
+    expect.equal(registry.settlements.skaal.landmass, 'solstheim', 'Skaal Village')
+    expect.equal(registry.settlements.balmora.landmass, 'vvardenfell', 'Balmora')
 end
 
 --------------------------------------------------------------------------
@@ -237,21 +242,25 @@ function M.derivesAStartingMapFromSettlementsAlone()
     loadPack()
     resolve.assignInitialControl()
 
+    local function holder(settlementId)
+        return resolve.settlementOwner(registry.settlements[settlementId])
+    end
+
     local owned = {}
     for _, id in ipairs(registry.settlementIds) do
-        local owner = state.getOwner(id)
+        local owner = holder(id)
         if owner then
             owned[owner] = (owned[owner] or 0) + 1
         end
     end
 
     -- Lore placement, derived rather than authored.
-    expect.equal(state.getOwner('balmora'), 'hlaalu', 'Balmora is Hlaalu')
-    expect.equal(state.getOwner('ald_ruhn'), 'redoran', 'Ald-Ruhn is Redoran')
-    expect.equal(state.getOwner('sadrith_mora'), 'telvanni', 'Sadrith Mora is Telvanni')
-    expect.equal(state.getOwner('vivec'), 'temple', 'Vivec is the Temple')
-    expect.equal(state.getOwner('raven_rock'), 'east empire company', 'Raven Rock is the EEC')
-    expect.equal(state.getOwner('skaal'), 'skaal', 'Skaal Village is the Skaal')
+    expect.equal(holder('balmora'), 'hlaalu', 'Balmora is Hlaalu')
+    expect.equal(holder('ald_ruhn'), 'redoran', 'Ald-Ruhn is Redoran')
+    expect.equal(holder('sadrith_mora'), 'telvanni', 'Sadrith Mora is Telvanni')
+    expect.equal(holder('vivec'), 'temple', 'Vivec is the Temple')
+    expect.equal(holder('raven_rock'), 'east empire company', 'Raven Rock is the EEC')
+    expect.equal(holder('skaal'), 'skaal', 'Skaal Village is the Skaal')
 
     expect.greater(owned.hlaalu or 0, 0, 'Hlaalu hold something')
     expect.greater(owned.redoran or 0, 0, 'Redoran hold something')
@@ -266,9 +275,10 @@ function M.leavesRedMountainWithTheSixthHouse()
     loadPack()
     resolve.assignInitialControl()
 
-    expect.equal(state.getOwner('dagoth_ur'), 'sixth house', 'Red Mountain')
+    expect.equal(resolve.settlementOwner(registry.settlements.dagoth_ur), 'sixth house',
+        'Red Mountain')
 
-    for _, id in ipairs(registry.settlementIds) do
+    for _, id in ipairs(registry.settlementCellIds) do
         expect.isNil(registry.territories[id].defaultOwner,
             id .. ' has no authored owner')
     end
@@ -282,7 +292,7 @@ function M.givesSettlementsARing()
 
     local ringless = {}
     for _, id in ipairs(registry.settlementIds) do
-        if #registry.territories[id].adjacentFrontier == 0 then
+        if #registry.settlements[id].adjacentFrontier == 0 then
             ringless[#ringless + 1] = id
         end
     end
@@ -302,7 +312,7 @@ end
 function M.staysWithinAWorkableNumberOfTerritories()
     loadPack()
 
-    local total = #registry.settlementIds + #registry.frontierIds
+    local total = #registry.settlementCellIds + #registry.frontierIds
     expect.greater(total, 100, 'a real map was generated')
     expect.greater(4000, total, 'territory count stays workable, got ' .. total)
 end

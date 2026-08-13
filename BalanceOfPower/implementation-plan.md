@@ -166,6 +166,25 @@ held.
 [glossary.md](glossary.md) became the authority — with *cell* and *territory*
 pinned as different things, which they had been used as if they were not.
 
+**And then the model followed the vocabulary.** Once *cell* and *territory*
+were pinned apart, the fact that a settlement was one territory over fifteen
+cells stopped looking like a convenience and started looking like the source of
+the confusion. So **every territory became exactly one cell**, and a settlement
+became a group tagged across them.
+
+That let the last special case go. Settlements no longer take a separate
+resolution path: every cell in the world runs the same rule, and what holds a
+city is `SEAT_FLOOR` — a garrison floor on a faction's projection at a cell its
+own power centre occupies. A rule with no exceptions beat a rule that read
+slightly more directly, because weight 0 gives a floor of 0 and an unaffiliated
+ruin falls out correctly with nothing written about it.
+
+Ownership also became continuously governed by the claim threshold rather than
+only at first claim: a cell nobody can hold is released rather than staying on
+the books, and a roll now requires the challenger to be above the threshold.
+`classify()` became a four-way partition where `unclaimed` means exactly "no
+owner".
+
 ---
 
 ## Phase 4 — Spawn subsystem *(deferred by request)*

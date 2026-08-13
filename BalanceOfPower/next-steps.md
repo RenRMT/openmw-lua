@@ -16,7 +16,7 @@ Near-term and actionable. The full phase breakdown is in
 | 6 — Invasion | Not started — **recommended next**, as a separate mod |
 | 7 — Tuning and UX | Not started |
 
-**97 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
+**120 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
 that loads the real Morrowind pack through its own `main.lua` headlessly. What
 tests cannot cover: whether the faction ids match real ESM records, whether the
 derived map looks right against the actual game world, and first-tick timing
@@ -48,10 +48,10 @@ its own, so it composes with the pack rather than colliding with it.
 At load you should see roughly:
 
 ```
-[BalanceOfPower] registered landmass "vvardenfell": 14 factions, 33 settlements, 0 frontier cells
-[BalanceOfPower] registered landmass "solstheim": 3 factions, 3 settlements, 0 frontier cells
+[BalanceOfPower] registered landmass "vvardenfell": 15 factions, 33 settlements over 64 cells, 0 frontier cells
+[BalanceOfPower] registered landmass "solstheim": 3 factions, 3 settlements over 4 cells, 0 frontier cells
 [BalanceOfPower] generated ~540 frontier cells for "vvardenfell" from ... power centers
-[BalanceOfPower] initial control assigned by projection: ~500 territories claimed
+[BalanceOfPower] initial control assigned by projection: ~456 territories claimed
 ```
 
 Then check, in the log or via `luag`:
@@ -117,9 +117,13 @@ Things to look for:
 
 - **Regions that read wrong.** If the Ascadian Isles come out Temple rather
   than Hlaalu, Vivec's `capital` range is drowning the plantation belt.
-- **Too much unclaimed ground.** ~176 cells start unowned. That's expansion
+- **Too much unclaimed ground.** 174 cells start unowned. That's expansion
   room, but if it's mostly interior rather than coastal, ranges are too short.
-- **Ashlanders holding almost nothing** (3 territories). Their camps are
+- **Whether `SEAT_FLOOR = 250` is right.** It makes a settlement takeable only
+  by roughly ten times a faction's starting standing, and gives minor holdings
+  their own cell 16 times out of 17. Raise it for more stubborn one-cell
+  islands; lower it to let a strong invader take a city.
+- **Ashlanders holding almost nothing** (6 cells). Their camps are
   `outpost` tier, which may be too weak for a faction that nominally roams the
   whole Ashlands.
 

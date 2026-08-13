@@ -222,14 +222,14 @@ function M.generate(def)
     -- Settlements are registered before the frontier exists, so a pack has no
     -- way to name generated cells in its own `adjacentFrontier`. The link
     -- is made here instead, in both directions -- without it no settlement
-    -- would ever count as surrounded and no siege could ever begin.
+    -- would ever be reported as surrounded.
     ----------------------------------------------------------------------
 
     local settlementsByBlock = {}    -- blockKey -> { settlementId, ... }
     local frontierBySettlement = {}  -- settlementId -> { blockKey, ... }
 
     for _, settlementId in ipairs(registry.settlementIds) do
-        local settlement = registry.territories[settlementId]
+        local settlement = registry.settlements[settlementId]
         if settlement.landmass == landmassId then
             local seen = {}
             for _, name in ipairs(settlement.cells) do
@@ -308,7 +308,7 @@ function M.generate(def)
 
     local wired = 0
     for settlementId, blockKeys in pairs(frontierBySettlement) do
-        local settlement = registry.territories[settlementId]
+        local settlement = registry.settlements[settlementId]
         local ring = settlement.adjacentFrontier
         for _, blockKey in ipairs(blockKeys) do
             ring[#ring + 1] = planned[blockKey]

@@ -1,5 +1,5 @@
--- Territory resolution: projection maths, initial control, frontier
--- rolls and settlement sieges.
+-- Territory resolution: projection maths, initial control, the garrison
+-- floor, and frontier rolls.
 
 local expect = require('support.expect')
 
@@ -322,6 +322,10 @@ local function settlementRinged()
                 powerCenters = {
                     { id = 'alpha_seat', tier = 'capital',
                       coords = { x = 0, y = 0 }, influenceRange = RANGE },
+                    -- Standing in the town itself. This is what makes the
+                    -- town alpha's and keeps it that way.
+                    { id = 'town', tier = 'capital', coords = { x = 20480, y = 0 },
+                      influenceRange = RANGE, cells = { '#2,0' } },
                 },
             },
             {
@@ -337,7 +341,10 @@ local function settlementRinged()
             {
                 id = 'town',
                 tier = 'town',
-                centroid = { x = 20000, y = 0 },
+                -- Cell #2,0 spans 16384..24576, so its middle is 20480 --
+                -- close enough to the midpoint between the two seats that
+                -- projection alone would be a near tie here.
+                cells = { '#2,0' },
                 defaultOwner = 'alpha',
                 adjacentFrontier = { 'ring_1', 'ring_2', 'ring_3', 'ring_4' },
             },
@@ -362,59 +369,102 @@ end
 --- The decision this framework is built around: influence competes,
 -- armies don't. Morrowind has nowhere to put the consequences of a city
 -- changing hands, so seats don't move however the map around them goes.
-function M.settlementsNeverChangeHands()
+function M.settlementsHoldAgainstOrdinaryPolitics()
     settlementRinged()
     encircle(4)                     -- completely cut off
-    power.set('beta', 100000)       -- and outrageously out-projected
+    power.set('beta', 250)          -- five times its neighbour's standing
     resolve.setRandom(always(0))    -- with every roll going against it
 
     for day = 1, 500 do
-        resolve.run(day, { 'town' })
+        resolve.run(day)
     end
 
-    expect.equal(state.getOwner('town'), 'alpha', 'the seat held')
-    expect.count(core._test.eventsNamed('BoP_TerritoryFlipped'), 0, 'and never flipped')
+    expect.equal(resolve.settlementOwner(registry.settlements.town), 'alpha', 'the seat held')
+end
+
+--- And the honest other half: the floor is a number, not an absolute. A
+-- faction strong enough does take a settlement, which is the knob rather
+-- than a hole -- SEAT_FLOOR decides how strong "enough" is. Pinning the
+-- figure here means retuning it can't quietly change what the design
+-- promises.
+function M.aSettlementFallsOnlyToOverwhelmingPower()
+    settlementRinged()
+    local cell = registry.settlements.town.territoryIds[1]
+    local reach = resolve.projectionFactors(registry.territories[cell]).factors.beta
+
+    -- What it takes to out-project a capital-tier garrison from one cell
+    -- away: about ten times the standing either faction starts with.
+    local needed = config.SEAT_FLOOR / reach
+    expect.greater(needed, 8 * 50, 'a settlement is not casually taken')
+
+    power.set('beta', needed * 1.01)
+    resolve.setRandom(always(0))
+    resolve.run(1)
+
+    expect.equal(state.getOwner(cell), 'beta', 'overwhelming force does take it')
 end
 
 --- The one thing that still happens to a settlement: a first claim, for
 -- one nobody reached when the world was made.
 function M.unownedSettlementsAreStillClaimed()
     settlementRinged()
-    state.setOwner('town', nil)
+    local cell = registry.settlements.town.territoryIds[1]
+    state.setOwner(cell, nil)
 
-    resolve.run(1, { 'town' })
+    resolve.run(1)
 
-    expect.equal(state.getOwner('town'), 'alpha', 'claimed by its strongest projector')
+    expect.equal(state.getOwner(cell), 'alpha', 'claimed by its strongest projector')
+end
+
+--- The floor, and why it is a number rather than a rule. A holding with
+-- no weight behind it gets a floor of zero and behaves like open ground,
+-- which is what makes an unaffiliated ruin claimable without a single
+-- exception anywhere in the ownership logic.
+function M.theFloorAppliesOnlyWhereAFactionStands()
+    settlementRinged()
+    local town = registry.settlements.town
+    local cell = registry.territories[town.territoryIds[1]]
+
+    -- A capital-tier seat: the floor is SEAT_FLOOR scaled by weight 1.0.
+    expect.near(resolve.effectivePower('alpha', cell), config.SEAT_FLOOR, 1e-6,
+        'alpha stands on its own ground, so the floor decides')
+    expect.near(resolve.effectivePower('beta', cell),
+        power.getLive('beta') * resolve.projectionFactors(cell).factors.beta, 1e-6,
+        'beta has no footing here, so plain projection decides')
 end
 
 --- Surrounded is a fact the framework publishes and does not act on.
 function M.reportsSurroundedAndRelieved()
     settlementRinged()
+    -- Alpha out-projects beta on the ring cells, so without a rigged
+    -- roll it takes them back and this becomes a coin toss.
+    resolve.setRandom(always(0.999))
     core._test.reset()
 
     encircle(3)                     -- 3 of 4 clears the 0.6 share
-    resolve.run(1, { 'town' })
+    resolve.run(1)
     expect.equal(state.get().surroundedSince.town, 1, 'records the day it started')
     expect.count(core._test.eventsNamed('BoP_SettlementSurrounded'), 1, 'announced once')
 
     -- Still surrounded: a fact that has not changed is not news.
-    resolve.run(2, { 'town' })
+    resolve.run(2)
     expect.count(core._test.eventsNamed('BoP_SettlementSurrounded'), 1, 'not repeated daily')
     expect.equal(state.get().surroundedSince.town, 1, 'and the day does not drift')
 
     state.setOwner('ring_1', 'alpha')   -- broken: 2 of 4
-    resolve.run(3, { 'town' })
+    resolve.run(3)
     expect.isNil(state.get().surroundedSince.town, 'cleared on relief')
     expect.count(core._test.eventsNamed('BoP_SettlementRelieved'), 1, 'and announced')
 end
 
 function M.notSurroundedBelowTheShare()
     settlementRinged()
+    resolve.setRandom(always(0.999))
     encircle(2)   -- 2 of 4 = 0.5, under the 0.6 share
 
-    resolve.run(1, { 'town' })
+    resolve.run(1)
 
-    expect.falsy(resolve.isSurrounded(registry.territories.town), 'not surrounded')
+    expect.falsy(resolve.isSurrounded(registry.settlements.town), 'not surrounded')
     expect.isNil(state.get().surroundedSince.town, 'nothing recorded')
 end
 

@@ -56,13 +56,24 @@ somewhere to count. Below it, a faction is in reach but not a contender.
 **Cell** — one exterior cell of the game world, 8192 units square, named
 `#x,y`. The engine's unit, not this system's.
 
-**Territory** — the unit that can be owned. Do not use these two words
-interchangeably.
+**Territory** — the unit that can be owned. **Exactly one exterior cell.** The
+two words are near enough to interchangeable in practice, but they are not the
+same idea: a cell is the engine's, a territory is this system's, and interior
+cells are cells that are not territories.
 
 **Settlement** — a place with a name: a city, town, village, fort or camp. A
-settlement is a power centre and has a tier (`metropolis`, `city`, `town`,
-`village`, `outpost`). Several settlements span more than one cell — Vivec
-covers fifteen.
+settlement is a *group of territories*, not a territory. Vivec is one
+settlement over fifteen cells, each of which is separately ownable and all of
+which carry the same `settlement` tag.
+
+A settlement has a tier (`metropolis`, `city`, `town`, `village`, `outpost`),
+which is metadata — nothing in the simulation branches on it.
+
+**Garrison floor** — the projection a faction is guaranteed at a cell its own
+power centre occupies, scaled by that centre's weight. It is what keeps a
+settlement with whoever built it, and it is a number rather than a rule, so
+there is no "settlements cannot change owner" branch anywhere. A holding with
+weight 0 gets a floor of 0 and behaves like open ground.
 
 **Frontier cell** — territory with no settlement on it. The wilderness between
 the named places. Generated rather than authored: a content pack declares where
@@ -79,6 +90,29 @@ and for future region-scoped rules. Never acted on by the simulation.
 ## Ownership
 
 **Owner** — the faction currently holding a territory, or nobody.
+
+**Cell state** — every territory is in exactly one of four, and the four cover
+everything:
+
+| | Meaning |
+|---|---|
+| `unclaimed` | Nobody owns it. Equivalently: nobody projects above the claim threshold |
+| `consolidated` | One faction is above the threshold, and holds it. Deep interior |
+| `uncontested` | Several are above it, and the owner is the strongest. A border, but a stable one |
+| `contested` | The owner is *not* the strongest. It is changing hands |
+
+`unclaimed` is exactly "no owner", so the other three cover everything owned
+and nothing is ever in two states at once.
+
+Note what `uncontested` does **not** mean: it does not mean nobody else is
+here. Two factions can both be projecting hard onto a cell and it still reads
+`uncontested` while the owner leads. The "deep interior, nobody else within
+reach" signal is `consolidated` — that is the one a spawn rule wants when
+deciding whether a cell is a border.
+
+A freshly derived map has **no** contested cells, and that is not a bug:
+initial control hands every cell to its strongest projector, so no owner is
+being out-projected. Contest appears only once power has moved.
 
 **Flip** — an ownership change during play. Distinct from the initial
 assignment at world creation, which is not a flip: it fires no events and

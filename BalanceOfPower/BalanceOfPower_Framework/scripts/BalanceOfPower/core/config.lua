@@ -119,6 +119,31 @@ M.POWER_CENTER_DEFAULTS = {
 
 M.DEFAULT_POWER_CENTER_TIER = 'regional'
 
+-- A faction is never weaker at a cell its own power center occupies than
+-- this, scaled by the center's weight.
+--
+-- This is what makes settlements hold themselves, and it is deliberately
+-- a number rather than a rule. "A settlement cannot change owner" would
+-- need exceptions the moment you look at the awkward cases -- a holding
+-- with no faction behind it, a farm too small to be worth defending --
+-- and every exception is a branch in the ownership logic. A floor needs
+-- none: it scales with weight, so a holding with weight 0 gets a floor
+-- of 0 and behaves like open ground, which is exactly right for a
+-- derelict Velothi tower.
+--
+-- For scale, against the tier weights above:
+--
+--   capital  1.00 -> 250   nothing plausible outranks a city
+--   regional 0.50 -> 125
+--   outpost  0.25 ->  62
+--   minor    0.15 ->  37   holds its own cell unless a city is adjacent
+--
+-- Raising it makes minor holdings more stubborn, which produces more
+-- one-cell islands inside a rival's country. Lowering it eventually lets
+-- a strong enough faction take a settlement outright, which the design
+-- deliberately avoids -- Morrowind has nowhere to put the consequences.
+M.SEAT_FLOOR = 250
+
 --------------------------------------------------------------------------
 -- Territory
 --------------------------------------------------------------------------

@@ -65,15 +65,39 @@ Frontier cells are contestable regardless of what is next to them — proximity
 decay is already the adjacency rule, since a faction with no foothold nearby
 projects nothing and cannot win.
 
-**Settlements are not contestable at all.** A settlement is claimed once and
-then held. The competition modelled here is non-violent: borders move, seats do
-not. Morrowind was not built for cities changing hands, and a mechanic for
-taking them would be bolted onto a game with nowhere to put the consequences.
+**Settlements hold themselves, and there is no rule saying so.** Every cell in
+the world goes through the same ownership logic, wilderness and city alike.
+What keeps a settlement with whoever built it is `SEAT_FLOOR`: a faction is
+never weaker at a cell its own power centre occupies than that centre's
+garrison value, scaled by weight.
 
-What the framework does offer is the fact an extension needs:
-`isSurrounded(territoryId)` reports whether rivals hold `SURROUND_SHARE` of a
-settlement's ring, and `surroundedSince(territoryId)` gives the day it started.
-Both are observed and published; nothing here acts on them.
+A number rather than a rule, deliberately. "A settlement cannot change owner"
+needs exceptions the moment you look at the awkward cases — a holding with no
+faction behind it, a farm too small to be worth defending — and each exception
+is a branch someone has to remember. A floor needs none: weight 0 gives a floor
+of 0, and a derelict tower behaves like open ground.
+
+At the shipped `SEAT_FLOOR = 250` a settlement is immovable by ordinary
+politics and takeable only by roughly ten times a faction's starting standing.
+That threshold is the knob, not a hole — lower it and cities fall to a strong
+enough invader; raise it and nothing ever takes one.
+
+The framework also publishes the fact an extension needs:
+`isSurrounded(settlementId)` reports whether rivals hold `SURROUND_SHARE` of a
+settlement's ring, and `surroundedSince(settlementId)` gives the day it
+started. Both are observed; nothing here acts on them.
+
+### Territories are cells
+
+**Every territory is exactly one exterior cell.** A settlement is a *group* of
+them — Vivec is one settlement over fifteen separately ownable cells, all
+tagged with the same `settlement` id. `getSettlement`, `settlementIds` and
+`getSettlementOwner` work with the named places; `territoryIds` works with
+cells.
+
+Interior cells belong to a settlement but are never territories: an interior
+has no grid position to project onto or from. `getTerritoryForCell` still
+resolves one, to its settlement's first exterior cell.
 
 ### Scale
 
@@ -102,7 +126,8 @@ I.BalanceOfPower.registerLandmass({
             basePower = 50,
             patrolRoster = { 'hlaalu guard' },
             powerCenters = {
-                { id = 'balmora', tier = 'capital', coords = { x = -22000, y = -14000 } },
+                { id = 'balmora', tier = 'capital', coords = { x = -22000, y = -14000 },
+                  cells = { '#-3,-2', '#-2,-2' } },
                 { id = 'caldera_holdings', tier = 'outpost', coords = { x = -12000, y = 12000 } },
             },
         },
@@ -112,9 +137,11 @@ I.BalanceOfPower.registerLandmass({
             id = 'balmora',
             displayName = 'Balmora',
             tier = 'city',
+            -- One territory per exterior cell: balmora_-3_-2 and
+            -- balmora_-2_-2. The interior belongs to the settlement but
+            -- is not a territory of its own.
             cells = { 'Balmora', '#-3,-2', '#-2,-2' },
             adjacentFrontier = { 'west_gash_a4', 'west_gash_a5' },
-            defaultOwner = 'hlaalu',
         },
     },
     frontier = {                               -- frontier cells: wilderness
@@ -145,13 +172,15 @@ see below), `extend` (see below).
 
 **Power center** — `id` (required), `coords` (required, `{x=, y=}`),
 `tier` (`capital` | `regional` | `outpost` | `minor`, default `regional`),
-`weight` and `influenceRange` (both default per tier). Tier defaults exist so a
-minor holding only needs an id and coordinates.
+`weight` and `influenceRange` (both default per tier), `cells` (the ground it
+physically stands on — its faction gets the garrison floor in each). Tier
+defaults exist so a minor holding only needs an id and coordinates.
 
-**Settlement** (`territories`) — `id` (required), `displayName`, `tier`
-(`outpost` | `village` | `town` | `city` | `metropolis`, default `town`),
-`cells`, `region`, `adjacentFrontier`, `defaultOwner` (omit for unclaimed),
-`centroid`, `cooldownDays` (defaults per tier).
+**Settlement** (`territories`) — `id` (required), `cells` (required — one
+territory is created per exterior cell), `displayName`, `tier` (`outpost` |
+`village` | `town` | `city` | `metropolis`, default `town`), `region`,
+`adjacentFrontier`, `defaultOwner` (omit for unclaimed), `centroid`,
+`cooldownDays` (defaults per tier).
 
 **Frontier cell** (`frontier`) — `id` (required), `centroid` (required),
 `cells`, `adjacentFrontier`, `adjacentSettlements`, `defaultOwner`, `cooldownDays`.
@@ -267,12 +296,16 @@ I.BalanceOfPower.awardPower(factionId, baseDelta, playerRankMultiplier)
 
 Also available: `getPower`, `setPower`, `getOwner`, `getTerritory`,
 `getTerritoryForCell`, `getFaction`, `factionIds`, `territoryIds`,
-`getEffectivePower`, `getProjection`, `classify`, `getReach`, `isSurrounded`,
-`surroundedSince`, `getCurrentDay`, `powerSummary`, `reactionAudit`,
-`dumpReactions`, `dump`, `dumpMap`, `renderMap`, `isDebug`, and the `CELL_SIZE`
-constant.
+`getEffectivePower`, `getProjection`, `classify`, `getReach`, `getSettlement`,
+`settlementIds`, `getSettlementOwner`, `isSurrounded`, `surroundedSince`,
+`getCurrentDay`, `powerSummary`, `reactionAudit`, `dumpReactions`, `dump`,
+`dumpMap`, `renderMap`, `isDebug`, and the `CELL_SIZE` constant.
 
-`classify(territoryId)` returns `'empty'`, `'consolidated'` or `'contested'`.
+`classify(territoryId)` returns `'unclaimed'`, `'consolidated'`,
+`'uncontested'` or `'contested'` — exactly one of the four, always, with
+`unclaimed` meaning precisely "no owner". See
+[glossary.md](../glossary.md) for what each means and why `uncontested` is not
+the same as "nobody else is here".
 `getReach(territoryId)` returns which factions can reach it at all and by what
 fraction of their power — static geometry, so it's cheap and stable.
 

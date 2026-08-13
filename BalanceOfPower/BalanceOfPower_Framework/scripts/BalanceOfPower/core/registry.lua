@@ -23,17 +23,35 @@
 --   on half a landmass that no retry can complete (the retry would trip
 --   over the factions the failed attempt had already inserted).
 
+local cells = require('scripts.BalanceOfPower.core.cells')
 local config = require('scripts.BalanceOfPower.core.config')
 local log = require('scripts.BalanceOfPower.core.log')
 
 local M = {}
 
-M.factions = {}      -- factionId   -> normalized faction
-M.landmasses = {}    -- landmassId  -> { id, displayName, factionIds, territoryIds }
-M.territories = {}   -- territoryId -> normalized territory (settlements and frontier both)
+M.factions = {}          -- factionId   -> normalized faction
+M.landmasses = {}        -- landmassId  -> { id, displayName, factionIds, territoryIds }
+
+-- Every ownable thing, and every one of them is exactly one exterior
+-- cell. A settlement's cells are in here individually, tagged with the
+-- settlement they belong to.
+M.territories = {}       -- territoryId -> normalized territory
+
+-- The named places. Grouping and metadata; not ownable themselves.
+M.settlements = {}       -- settlementId -> { id, displayName, tier, cells, territoryIds, ... }
+
 M.settlementIds = {}     -- registration-ordered list of settlement ids
-M.frontierIds = {}   -- registration-ordered list of frontier cell ids
-M.cellIndex = {}     -- cell name (interior name or "#x,y") -> territoryId
+M.settlementCellIds = {} -- registration-ordered territory ids belonging to settlements
+M.frontierIds = {}       -- registration-ordered list of frontier territory ids
+M.cellIndex = {}         -- cell name (interior name or "#x,y") -> territoryId
+
+-- One exterior cell's middle, in world units. CELL_SIZE is the engine's
+-- grid, not a tunable, so computing this here rather than making every
+-- pack pass it is safe -- see the constant's comment.
+local function cellCentre(gridX, gridY)
+    local size = config.CELL_SIZE
+    return { x = gridX * size + size / 2, y = gridY * size + size / 2, z = 0 }
+end
 
 -- Bumped on every successful registration. Consumers that cache derived
 -- data (power's reaction lookups, phase 2's adjacency graph) compare
@@ -145,6 +163,12 @@ local function normalizePowerCenter(def, context, seen, fallbackLandmass)
         weight = checkNumber(def.weight, ctx, 'weight', tierDefaults.weight),
         influenceRange = checkPositive(def.influenceRange, ctx, 'influenceRange',
             tierDefaults.influenceRange),
+        -- The cells this center physically occupies, if any. Its faction
+        -- gets a floor on its projection in each of them, which is what
+        -- keeps a settlement in the hands of whoever built it. A center
+        -- with no cells -- a claim on a region rather than a place -- is
+        -- fine, and simply has nowhere to stand its ground.
+        cells = copyStrings(def.cells, ctx, 'cells'),
     }
 end
 
@@ -283,10 +307,10 @@ end
 -- Territories
 --------------------------------------------------------------------------
 
-local function prepareTerritory(def, context, kind, landmassId, staged)
-    checkTable(def, context, kind)
-    local id = checkString(def.id, context, kind .. '.id')
-    local ctx = string.format('%s %s "%s"', context, kind, id)
+local function prepareFrontier(def, context, landmassId, staged)
+    checkTable(def, context, 'frontier')
+    local id = checkString(def.id, context, 'frontier.id')
+    local ctx = string.format('%s frontier "%s"', context, id)
 
     local clash = M.territories[id]
     if clash then
@@ -301,9 +325,9 @@ local function prepareTerritory(def, context, kind, landmassId, staged)
         checkString(def.defaultOwner, ctx, 'defaultOwner')
     end
 
-    local territory = {
+    return {
         id = id,
-        kind = kind,
+        kind = 'frontier',
         displayName = def.displayName or id,
         landmass = def.landmass or landmassId,
         -- The game's own region name, where there is one. Carried but
@@ -314,32 +338,107 @@ local function prepareTerritory(def, context, kind, landmassId, staged)
         -- nil is a legitimate authored value, meaning "unclaimed".
         defaultOwner = def.defaultOwner,
         cells = copyStrings(def.cells, ctx, 'cells'),
+        centroid = checkCoords(def.centroid, ctx, 'centroid'),
+        cooldownDays = checkNumber(def.cooldownDays, ctx, 'cooldownDays',
+            config.FRONTIER_COOLDOWN_DAYS),
+        adjacentFrontier = copyStrings(def.adjacentFrontier, ctx, 'adjacentFrontier'),
+        adjacentSettlements = copyStrings(def.adjacentSettlements, ctx, 'adjacentSettlements'),
+    }
+end
+
+--- A settlement is a *named group of cells*, and each of those cells is
+-- an ownable territory in its own right.
+--
+-- Vivec is one settlement over fifteen territories, not one territory
+-- over fifteen cells. That distinction is what lets a city sit on the
+-- map at the same granularity as the wilderness around it, so every cell
+-- in the world is resolved by exactly one rule with no special case for
+-- the named places. What holds a city together is the `settlement` tag
+-- its cells share, not a privileged kind of territory.
+--
+-- Interior cell names are carried on the settlement, and resolve to its
+-- first exterior territory, but never become territories themselves: an
+-- interior has no position on the grid to project onto or from.
+local function prepareSettlement(def, context, landmassId, staged, stagedSettlements)
+    checkTable(def, context, 'settlement')
+    local id = checkString(def.id, context, 'settlement.id')
+    local ctx = string.format('%s settlement "%s"', context, id)
+
+    if M.settlements[id] or stagedSettlements[id] then
+        fail(ctx, 'this settlement id is already registered')
+    end
+    stagedSettlements[id] = true
+
+    local tier = def.tier or config.DEFAULT_SETTLEMENT_TIER
+    local tierDefaults = config.SETTLEMENT_DEFAULTS[tier]
+    if not tierDefaults then
+        fail(ctx, 'unknown tier "' .. tostring(tier) .. '"')
+    end
+
+    if def.defaultOwner ~= nil then
+        checkString(def.defaultOwner, ctx, 'defaultOwner')
+    end
+
+    local cellNames = copyStrings(def.cells, ctx, 'cells')
+    if #cellNames == 0 then
+        fail(ctx, 'a settlement needs at least one cell')
+    end
+
+    local settlement = {
+        id = id,
+        displayName = def.displayName or id,
+        tier = tier,
+        landmass = def.landmass or landmassId,
+        region = type(def.region) == 'string' and def.region or nil,
+        cells = cellNames,
+        territoryIds = {},
+        interiors = {},
+        -- The middle of the whole footprint. Metadata: projection is per
+        -- cell now, so nothing in the simulation reads this.
+        centroid = def.centroid and checkCoords(def.centroid, ctx, 'centroid') or nil,
         adjacentFrontier = copyStrings(def.adjacentFrontier, ctx, 'adjacentFrontier'),
     }
 
-    if kind == 'settlement' then
-        local tier = def.tier or config.DEFAULT_SETTLEMENT_TIER
-        local tierDefaults = config.SETTLEMENT_DEFAULTS[tier]
-        if not tierDefaults then
-            fail(ctx, 'unknown tier "' .. tostring(tier) .. '"')
+    local cooldownDays = checkNumber(def.cooldownDays, ctx, 'cooldownDays',
+        tierDefaults.cooldownDays)
+
+    local territories = {}
+    for _, cellName in ipairs(cellNames) do
+        local gridX, gridY = cells.parse(cellName)
+        if not gridX then
+            settlement.interiors[#settlement.interiors + 1] = cellName
+        else
+            local territoryId = string.format('%s_%d_%d', id, gridX, gridY)
+            if M.territories[territoryId] or staged[territoryId] then
+                fail(ctx, string.format('cell %s is already a registered territory', cellName))
+            end
+            staged[territoryId] = true
+            settlement.territoryIds[#settlement.territoryIds + 1] = territoryId
+
+            territories[#territories + 1] = {
+                id = territoryId,
+                kind = 'settlement',
+                settlement = id,
+                -- "Vivec #3,-9" rather than "vivec_3_-9": a city's cells
+                -- have to stay legible as parts of one place.
+                displayName = string.format('%s %s', settlement.displayName, cellName),
+                landmass = settlement.landmass,
+                region = settlement.region,
+                defaultOwner = def.defaultOwner,
+                cells = { cellName },
+                centroid = cellCentre(gridX, gridY),
+                cooldownDays = cooldownDays,
+                tier = tier,
+                adjacentFrontier = {},
+            }
         end
-        territory.tier = tier
-        territory.cooldownDays = checkNumber(def.cooldownDays, ctx, 'cooldownDays',
-            tierDefaults.cooldownDays)
-        -- Optional on settlements: a settlement is identified by its cells,
-        -- but distance math still needs a point. A settlement without one
-        -- projects nothing.
-        if def.centroid ~= nil then
-            territory.centroid = checkCoords(def.centroid, ctx, 'centroid')
-        end
-    else
-        territory.centroid = checkCoords(def.centroid, ctx, 'centroid')
-        territory.cooldownDays = checkNumber(def.cooldownDays, ctx, 'cooldownDays',
-            config.FRONTIER_COOLDOWN_DAYS)
-        territory.adjacentSettlements = copyStrings(def.adjacentSettlements, ctx, 'adjacentSettlements')
     end
 
-    return territory
+    if #territories == 0 then
+        fail(ctx, 'a settlement needs at least one exterior cell')
+    end
+
+    return settlement, territories
 end
 
 local function indexCells(territory)
@@ -373,19 +472,22 @@ function M.registerLandmass(def)
     end
 
     -- Phase one: validate everything, mutating nothing.
-    local factionOps, territories = {}, {}
-    local stagedFactions, stagedTerritories = {}, {}
+    local factionOps, settlements, territories = {}, {}, {}
+    local stagedFactions, stagedTerritories, stagedSettlements = {}, {}, {}
 
     for _, factionDef in ipairs(def.factions or {}) do
         factionOps[#factionOps + 1] = prepareFaction(factionDef, context, id, stagedFactions)
     end
     for _, settlementDef in ipairs(def.territories or {}) do
-        territories[#territories + 1] = prepareTerritory(settlementDef, context, 'settlement', id,
-            stagedTerritories)
+        local settlement, cellTerritories =
+            prepareSettlement(settlementDef, context, id, stagedTerritories, stagedSettlements)
+        settlements[#settlements + 1] = settlement
+        for _, territory in ipairs(cellTerritories) do
+            territories[#territories + 1] = territory
+        end
     end
     for _, frontierDef in ipairs(def.frontier or {}) do
-        territories[#territories + 1] = prepareTerritory(frontierDef, context, 'frontier', id,
-            stagedTerritories)
+        territories[#territories + 1] = prepareFrontier(frontierDef, context, id, stagedTerritories)
     end
 
     -- Phase two: commit. Nothing below can fail.
@@ -394,6 +496,7 @@ function M.registerLandmass(def)
         displayName = def.displayName or id,
         factionIds = {},
         territoryIds = {},
+        settlementIds = {},
     }
 
     for _, op in ipairs(factionOps) do
@@ -405,12 +508,22 @@ function M.registerLandmass(def)
         landmass.factionIds[#landmass.factionIds + 1] = op.id
     end
 
-    local settlementCount = 0
+    for _, settlement in ipairs(settlements) do
+        M.settlements[settlement.id] = settlement
+        M.settlementIds[#M.settlementIds + 1] = settlement.id
+        landmass.settlementIds[#landmass.settlementIds + 1] = settlement.id
+        -- An interior has no grid position, so it is not a territory. It
+        -- still has to resolve to somewhere, or standing inside Balmora
+        -- would report no territory at all.
+        for _, interior in ipairs(settlement.interiors) do
+            M.cellIndex[interior] = settlement.territoryIds[1]
+        end
+    end
+
     for _, territory in ipairs(territories) do
         M.territories[territory.id] = territory
         if territory.kind == 'settlement' then
-            M.settlementIds[#M.settlementIds + 1] = territory.id
-            settlementCount = settlementCount + 1
+            M.settlementCellIds[#M.settlementCellIds + 1] = territory.id
         else
             M.frontierIds[#M.frontierIds + 1] = territory.id
         end
@@ -421,8 +534,15 @@ function M.registerLandmass(def)
     M.landmasses[id] = landmass
     M.generation = M.generation + 1
 
-    log.info('registered landmass "%s": %d factions, %d settlements, %d frontier cells',
-        id, #landmass.factionIds, settlementCount, #territories - settlementCount)
+    local settlementCells = 0
+    for _, settlement in ipairs(settlements) do
+        settlementCells = settlementCells + #settlement.territoryIds
+    end
+
+    log.info('registered landmass "%s": %d factions, %d settlements over %d cells, '
+        .. '%d frontier cells',
+        id, #landmass.factionIds, #settlements, settlementCells,
+        #territories - settlementCells)
     return landmass
 end
 
@@ -444,8 +564,7 @@ function M.registerFrontier(landmassId, definitions)
 
     local staged, territories = {}, {}
     for _, def in ipairs(definitions) do
-        territories[#territories + 1] =
-            prepareTerritory(def, context, 'frontier', landmassId, staged)
+        territories[#territories + 1] = prepareFrontier(def, context, landmassId, staged)
     end
 
     for _, territory in ipairs(territories) do
@@ -517,14 +636,28 @@ function M.validateReferences()
         end
     end
 
+    local function checkSettlementRefs(ownerId, field, ids)
+        for _, refId in ipairs(ids) do
+            if not M.settlements[refId] then
+                report('%s.%s references unknown settlement "%s"', ownerId, field, refId)
+            end
+        end
+    end
+
     for id, territory in pairs(M.territories) do
         if territory.defaultOwner and not M.factions[territory.defaultOwner] then
             report('territory "%s" defaults to unknown faction "%s"', id, territory.defaultOwner)
         end
         checkTerritoryRefs(id, 'adjacentFrontier', territory.adjacentFrontier)
         if territory.adjacentSettlements then
-            checkTerritoryRefs(id, 'adjacentSettlements', territory.adjacentSettlements)
+            -- Names a settlement record, not a territory: the ring around
+            -- a city points at the city, not at one of its cells.
+            checkSettlementRefs(id, 'adjacentSettlements', territory.adjacentSettlements)
         end
+    end
+
+    for id, settlement in pairs(M.settlements) do
+        checkTerritoryRefs(id, 'adjacentFrontier', settlement.adjacentFrontier)
     end
 
     if problems > config.MAX_REPORTED_PROBLEMS then

@@ -27,7 +27,12 @@ local M = {
     --    isCorrupted, and added isSurrounded, surroundedSince and the
     --    BoP_DayResolved event. Invasion, corruption and sieges are
     --    extension territory now; see ../../README.md.
-    version = 3,
+    -- v4 made every territory exactly one cell. A settlement's cells are
+    --    ownable individually and grouped by a settlement record --
+    --    getSettlement, settlementIds, getSettlementOwner. classify()
+    --    returns a four-way partition and isSurrounded takes a
+    --    settlement id.
+    version = 4,
 
     -- Event name constants, so listeners don't hardcode the strings.
     events = events,
@@ -122,12 +127,15 @@ function M.factionIds()
     return registry.sortedFactionIds()
 end
 
---- Registered territory ids. `kind` is 'settlement', 'frontier', or nil for
--- both. Registration order, copied.
+--- Registered territory ids -- one per exterior cell. `kind` is
+-- 'settlement', 'frontier', or nil for both. Registration order, copied.
+--
+-- A settlement's cells appear individually here. For the named places
+-- themselves, use settlementIds().
 function M.territoryIds(kind)
     local out = {}
     if kind ~= 'frontier' then
-        for _, id in ipairs(registry.settlementIds) do
+        for _, id in ipairs(registry.settlementCellIds) do
             out[#out + 1] = id
         end
     end
@@ -161,10 +169,12 @@ function M.getProjection(territoryId)
     return resolve.strongestProjector(territory)
 end
 
---- How settled a territory is: 'empty', 'consolidated' or 'contested'.
+--- How settled a territory is: 'unclaimed', 'consolidated', 'uncontested'
+-- or 'contested'. Exactly one of the four, always -- see
+-- core/resolve.lua for what each means and why the partition matters.
 function M.classify(territoryId)
     local territory = registry.territories[territoryId]
-    return territory and resolve.classify(territory) or 'empty'
+    return territory and resolve.classify(territory) or 'unclaimed'
 end
 
 --- Which factions can reach a territory at all, and by what fraction of
@@ -178,26 +188,50 @@ function M.getReach(territoryId)
     return resolve.projectionFactors(territory)
 end
 
+--- A named place: { id, displayName, tier, region, landmass, cells,
+-- territoryIds, interiors, centroid, adjacentFrontier }.
+--
+-- A settlement is a group, not a territory. Its cells are ownable
+-- individually and appear in territoryIds('settlement'); the settlement
+-- itself is what holds them together and what carries the name, the
+-- tier, and the ring used by isSurrounded().
+function M.getSettlement(settlementId)
+    return registry.settlements[settlementId]
+end
+
+--- Every settlement id, in registration order, copied.
+function M.settlementIds()
+    local out = {}
+    for _, id in ipairs(registry.settlementIds) do
+        out[#out + 1] = id
+    end
+    return out
+end
+
+--- Who holds a settlement. Its cells share an owner in practice, since
+-- the same garrison floor applies across the whole footprint.
+function M.getSettlementOwner(settlementId)
+    local settlement = registry.settlements[settlementId]
+    return settlement and resolve.settlementOwner(settlement) or nil
+end
+
 --- Whether rivals hold `SURROUND_SHARE` of a settlement's adjacent
--- frontier. Always false for a frontier cell, which has no ring.
+-- frontier. Takes a settlement id, not a territory id.
 --
 -- The framework observes this and does nothing about it. It is here
 -- because answering it needs the frontier ownership map, and because
 -- every extension that cares would otherwise derive the same fact from
 -- the same data.
-function M.isSurrounded(territoryId)
-    local territory = registry.territories[territoryId]
-    if not territory or territory.kind ~= 'settlement' then
-        return false
-    end
-    return resolve.isSurrounded(territory)
+function M.isSurrounded(settlementId)
+    local settlement = registry.settlements[settlementId]
+    return settlement ~= nil and resolve.isSurrounded(settlement)
 end
 
 --- The day a settlement most recently became surrounded, or nil.
 -- Subtract from getCurrentDay() for a duration; the framework
 -- deliberately keeps no streak of its own.
-function M.surroundedSince(territoryId)
-    return state.get().surroundedSince[territoryId]
+function M.surroundedSince(settlementId)
+    return state.get().surroundedSince[settlementId]
 end
 
 --------------------------------------------------------------------------
@@ -264,9 +298,10 @@ function M.dump()
     end
 
     log.info('--- Balance of Power -----------------------------------')
-    log.info('interface v%d | day %s | %d landmass(es) | %d settlements | %d frontier cells',
+    log.info('interface v%d | day %s | %d landmass(es) | %d settlements over %d cells '
+        .. '| %d frontier cells',
         M.version, tostring(data.lastResolvedDay), landmassCount,
-        #registry.settlementIds, #registry.frontierIds)
+        #registry.settlementIds, #registry.settlementCellIds, #registry.frontierIds)
 
     for _, id in ipairs(registry.sortedFactionIds()) do
         local faction = registry.factions[id]

@@ -65,10 +65,59 @@ function M.registersFactionsAndTerritories()
 
     expect.equal(registry.countFactions(), 1, 'faction count')
     expect.equal(#registry.settlementIds, 1, 'settlement count')
+    expect.equal(#registry.settlementCellIds, 1, 'settlement cell count')
     expect.equal(#registry.frontierIds, 1, 'frontier count')
     expect.equal(registry.factions.hlaalu.displayName, 'House Hlaalu', 'display name')
-    expect.equal(registry.territories.balmora.kind, 'settlement', 'settlement kind')
+    expect.equal(registry.territories['balmora_-3_-2'].kind, 'settlement', 'settlement kind')
     expect.equal(registry.territories.west_gash.kind, 'frontier', 'frontier kind')
+end
+
+--- A settlement is a group, not a territory. Its cells are the ownable
+-- things; the record is what carries the name and holds them together.
+function M.expandsASettlementIntoOneTerritoryPerCell()
+    registry.registerLandmass(minimalLandmass({
+        territories = {
+            {
+                id = 'vivec',
+                tier = 'metropolis',
+                displayName = 'Vivec',
+                cells = { '#3,-9', '#4,-9', '#3,-10' },
+            },
+        },
+        frontier = {},
+    }))
+
+    local vivec = registry.settlements.vivec
+    expect.truthy(vivec, 'the settlement record exists')
+    expect.count(vivec.territoryIds, 3, 'one territory per cell')
+    expect.isNil(registry.territories.vivec, 'the settlement is not itself a territory')
+
+    for _, id in ipairs(vivec.territoryIds) do
+        local territory = registry.territories[id]
+        expect.equal(territory.settlement, 'vivec', id .. ' knows its settlement')
+        expect.count(territory.cells, 1, id .. ' is exactly one cell')
+        expect.equal(territory.tier, 'metropolis', id .. ' carries the tier')
+    end
+end
+
+--- An interior has no grid position to project onto or from, so it never
+-- becomes a territory -- but standing in one still has to report the
+-- settlement it belongs to.
+function M.keepsInteriorsOutOfTheTerritoryListButStillResolvesThem()
+    registry.registerLandmass(minimalLandmass({
+        territories = {
+            {
+                id = 'balmora',
+                tier = 'city',
+                cells = { '#-3,-2', 'Balmora, Eight Plates' },
+            },
+        },
+        frontier = {},
+    }))
+
+    expect.count(registry.settlements.balmora.territoryIds, 1, 'only the exterior cell')
+    expect.equal(registry.territoryForCell('Balmora, Eight Plates').settlement, 'balmora',
+        'the interior resolves to its settlement')
 end
 
 function M.appliesTierDefaults()
@@ -78,7 +127,7 @@ function M.appliesTierDefaults()
     expect.greater(centre.influenceRange, 0, 'capital influenceRange default')
     expect.equal(centre.weight, 1.0, 'capital weight default')
 
-    local city = registry.territories.balmora
+    local city = registry.territories['balmora_-3_-2']
     expect.greater(city.cooldownDays, 0, 'city cooldownDays default')
 
     -- Tier is otherwise metadata, and has to survive registration: an
@@ -89,7 +138,8 @@ end
 function M.indexesCellsToTerritories()
     registry.registerLandmass(minimalLandmass())
 
-    expect.equal(registry.territoryForCell('#-3,-2').id, 'balmora', 'settlement cell lookup')
+    expect.equal(registry.territoryForCell('#-3,-2').settlement, 'balmora',
+        'settlement cell lookup')
     expect.equal(registry.territoryForCell('#-4,-2').id, 'west_gash', 'frontier cell lookup')
     expect.isNil(registry.territoryForCell('#99,99'), 'unknown cell lookup')
 end
@@ -98,7 +148,7 @@ function M.treatsOmittedDefaultOwnerAsUnclaimed()
     registry.registerLandmass(minimalLandmass())
     state.fillDefaults(registry)
 
-    expect.equal(state.getOwner('balmora'), 'hlaalu', 'authored owner')
+    expect.equal(state.getOwner('balmora_-3_-2'), 'hlaalu', 'authored owner')
     expect.isNil(state.getOwner('west_gash'), 'omitted owner')
 end
 
@@ -159,7 +209,7 @@ function M.failedRegistrationCommitsNothing()
             id = 'broken',
             factions = { { id = 'telvanni', basePower = 40 } },
             territories = {
-                { id = 'sadrith_mora', centroid = { x = 0, y = 0 }, defaultOwner = 'telvanni' },
+                { id = 'sadrith_mora', cells = { '#18,4' }, defaultOwner = 'telvanni' },
             },
             -- Fails here, after a valid faction and a valid settlement have
             -- already been staged.
@@ -171,6 +221,8 @@ function M.failedRegistrationCommitsNothing()
     expect.equal(#registry.settlementIds, settlementsBefore, 'settlement count after failure')
     expect.isNil(registry.factions.telvanni, 'faction from failed pack')
     expect.isNil(registry.landmasses.broken, 'landmass from failed pack')
+    expect.isNil(registry.settlements.sadrith_mora, 'settlement from failed pack')
+    expect.isNil(registry.territories['sadrith_mora_18_4'], 'its cells either')
 end
 
 --------------------------------------------------------------------------
@@ -247,7 +299,7 @@ function M.toleratesForwardReferences()
         territories = {
             {
                 id = 'red_mountain',
-                centroid = { x = 50000, y = 50000 },
+                cells = { '#6,6' },
                 defaultOwner = 'sixth house',   -- registered below
             },
         },

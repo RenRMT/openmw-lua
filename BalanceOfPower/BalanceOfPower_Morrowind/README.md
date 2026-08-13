@@ -24,6 +24,7 @@ load **before** this mod.
 |---|---|---|
 | Holdings | 59 | 4 |
 | Of those, settlements | 33 | 3 |
+| Settlement cells | 64 | 4 |
 | Generated frontier cells | ~540 | ~20 |
 
 63 holdings in total, 36 of them settlements. Everything else — farms, shacks,
@@ -82,21 +83,32 @@ list of ownership to keep in step with the first.
 
 Ownership at load, derived:
 
-| Faction | Territories |
+| Faction | Cells |
 |---|---|
-| Redoran | 116 |
-| Hlaalu | 102 |
-| Telvanni | 64 |
-| The Empire | 57 |
-| Temple | 53 |
-| Skaal | 15 |
-| East Empire Company | 11 |
-| Ashlanders | 3 |
+| Redoran | 120 |
+| Hlaalu | 111 |
+| Telvanni | 66 |
+| The Empire | 63 |
+| Temple | 61 |
+| Skaal | 16 |
+| East Empire Company | 12 |
+| Ashlanders | 6 |
 | Sixth House | 1 |
-| *unclaimed* | 176 |
+| *unclaimed* | 174 |
 
-The unclaimed cells are within reach of somebody but below the claim floor —
-genuine expansion room rather than dead ground.
+630 cells in total — 68 belonging to settlements, 562 frontier. The unclaimed
+ones are within reach of somebody but below the claim threshold: genuine
+expansion room rather than dead ground.
+
+By cell state at load: 404 consolidated, 52 uncontested, 174 unclaimed and
+**nothing contested**. That last figure is correct rather than suspicious —
+initial control hands every cell to its strongest projector, so no owner starts
+out being out-projected. The map only develops fronts once power moves.
+
+Minor holdings hold their own cell 16 times out of 17, the exception being one
+that sits next to a far larger neighbour. That is the garrison floor working as
+intended: a farm is a one-cell island of its owner inside whoever's country
+surrounds it.
 
 ## Editing the data
 
@@ -133,6 +145,10 @@ the mainland, which arrives with a Tamriel Rebuilt pack.
 | Village | `village` | `regional` |
 | Outpost/Fortress/Camp | `outpost` | `outpost` |
 | Minor location | — *(power center only)* | `minor` |
+
+A power center's cells are handed to the framework along with its coordinates,
+because that is what gives its faction the garrison floor there. It is why a
+minor holding keeps its own cell without being a settlement.
 
 `Velothi/Unaffiliated` is not a faction — it marks a holding with no political
 owner, which projects nothing and starts unclaimed.

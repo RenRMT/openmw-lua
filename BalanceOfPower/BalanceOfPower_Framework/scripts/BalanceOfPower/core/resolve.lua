@@ -84,18 +84,23 @@ end
 -- reach a given territory -- usually one or two out of a dozen, which is
 -- what keeps a large map cheap to resolve.
 --
--- territoryId -> { ids = {sorted factionIds}, factors = {factionId -> f} }
+-- territoryId -> {
+--   ids     = {sorted factionIds},
+--   factors = {factionId -> f},     -- power is multiplied by this
+--   floors  = {factionId -> n},     -- and can never fall below this
+-- }
 local projections = nil
 local projectionGeneration = -1
 
-local EMPTY = { ids = {}, factors = {} }
+local EMPTY = { ids = {}, factors = {}, floors = {} }
 
 local function buildProjections()
     local cache = {}
 
     for territoryId, territory in pairs(registry.territories) do
-        local factors, ids = {}, {}
+        local factors, floors, ids = {}, {}, {}
         local centroid = territory.centroid
+        local ownCell = territory.cells[1]
 
         if centroid then
             for factionId, faction in pairs(registry.factions) do
@@ -103,7 +108,7 @@ local function buildProjections()
                 -- ground and project nothing, so they never appear in a
                 -- territory's reach list at all.
                 if faction.territorial then
-                    local best = 0
+                    local best, floor = 0, 0
                     for _, centre in ipairs(faction.powerCenters) do
                         -- The strongest single center, never the sum
                         -- (doc 3.2). Summing would let a faction
@@ -115,9 +120,22 @@ local function buildProjections()
                         if weighted > best then
                             best = weighted
                         end
+                        -- Standing on its own ground. A center occupying
+                        -- this cell can't be projected out of it, which
+                        -- is what stops settlements changing hands
+                        -- without a rule anywhere saying they can't.
+                        for _, cellName in ipairs(centre.cells) do
+                            if cellName == ownCell then
+                                local seat = config.SEAT_FLOOR * centre.weight
+                                if seat > floor then
+                                    floor = seat
+                                end
+                            end
+                        end
                     end
-                    if best > 0 then
+                    if best > 0 or floor > 0 then
                         factors[factionId] = best
+                        floors[factionId] = floor
                         ids[#ids + 1] = factionId
                     end
                 end
@@ -127,7 +145,7 @@ local function buildProjections()
         -- Sorted, so a tie between two equal projections resolves the
         -- same way every session rather than following table order.
         table.sort(ids)
-        cache[territoryId] = { ids = ids, factors = factors }
+        cache[territoryId] = { ids = ids, factors = factors, floors = floors }
     end
 
     projections = cache
@@ -150,16 +168,18 @@ function M.invalidateProjections()
 end
 
 --- How strong a faction is at a territory: its power scaled by how far
--- its nearest foothold reaches there.
+-- its nearest foothold reaches there, and never less than the garrison
+-- floor of a power center standing on this very cell.
 function M.effectivePower(factionId, territory)
-    local factor = M.projectionFactors(territory).factors[factionId]
+    local entry = M.projectionFactors(territory)
+    local factor = entry.factors[factionId]
     if not factor then
         return 0
     end
     -- Batch-aware: during a resolution pass this reads the snapshot
     -- taken at the start of the day, so every territory is evaluated
     -- against the same numbers.
-    return power.get(factionId) * factor
+    return math.max(power.get(factionId) * factor, entry.floors[factionId] or 0)
 end
 
 --- The strongest projector at a territory, plus the incumbent's own
@@ -170,7 +190,7 @@ local function evaluate(territory, ownerId)
     local bestId, bestValue, ownerValue = nil, 0, 0
 
     for _, id in ipairs(entry.ids) do
-        local value = power.get(id) * entry.factors[id]
+        local value = math.max(power.get(id) * entry.factors[id], entry.floors[id] or 0)
         if id == ownerId then
             ownerValue = value
         end
@@ -182,27 +202,43 @@ local function evaluate(territory, ownerId)
     return bestId, bestValue, ownerValue
 end
 
---- How settled a territory is, right now.
+--- How settled a territory is, right now. One of four, and exactly one:
 --
---   'empty'        nobody projects hard enough to hold it
---   'consolidated' exactly one faction is above the claim floor
---   'contested'    two or more are, so it can change hands
+--   'unclaimed'    nobody owns it
+--   'consolidated' one faction is above the claim threshold, and holds it
+--   'uncontested'  several are, and the owner is the strongest
+--   'contested'    the owner is not the strongest, so it is changing hands
 --
--- Exposed rather than used internally: the resolution passes already
--- have the numbers in hand. It's here so a UI, a spawn rule or a future
--- staggering scheduler can ask the question without recomputing.
+-- The partition is the point. `unclaimed` is exactly "no owner", so the
+-- other three cover everything owned and nothing is in two states at
+-- once. Anything reading this can switch on it without also having to
+-- ask getOwner().
+--
+-- Note what `uncontested` does *not* mean: it does not mean nobody else
+-- is here. Two factions can both be projecting hard onto a cell and it
+-- still reads uncontested while the owner leads. The "deep interior,
+-- nobody else within reach" signal is `consolidated`, which is the one
+-- a spawn rule wants when deciding whether a cell is a border.
 function M.classify(territory)
+    if state.getOwner(territory.id) == nil then
+        return 'unclaimed'
+    end
+
     local entry = M.projectionFactors(territory)
     local above = 0
     for _, id in ipairs(entry.ids) do
-        if power.get(id) * entry.factors[id] >= config.MIN_CLAIM_POWER then
+        local value = math.max(power.get(id) * entry.factors[id], entry.floors[id] or 0)
+        if value >= config.MIN_CLAIM_POWER then
             above = above + 1
-            if above > 1 then
-                return 'contested'
-            end
         end
     end
-    return above == 1 and 'consolidated' or 'empty'
+
+    if above <= 1 then
+        return 'consolidated'
+    end
+
+    local bestId = evaluate(territory, nil)
+    return bestId == state.getOwner(territory.id) and 'uncontested' or 'contested'
 end
 
 --- The attacker's share of the two sides' strength.
@@ -287,22 +323,53 @@ function M.assignInitialControl()
 end
 
 --------------------------------------------------------------------------
--- Pass 1: frontier
+-- Resolution
 --------------------------------------------------------------------------
 
-local function resolveFrontier(territory, day)
+--- Let go of ground nobody can hold any more.
+--
+-- The claim threshold governs ownership the whole way through, not only
+-- at the moment of first claim. A faction whose power collapses stops
+-- holding the far edges of what it reached, and those cells go back to
+-- being nobody's rather than staying on the books forever.
+--
+-- Released only when *no* faction clears the threshold, deliberately.
+-- Releasing as soon as the owner fell below would hand the cell to a
+-- rival with no roll at all, and the front would snap instead of creep.
+local function release(territory, owner, day)
+    state.setOwner(territory.id, nil)
+    events.emit(events.TERRITORY_FLIPPED, {
+        territory = territory.id,
+        kind = territory.kind,
+        from = owner,
+        to = nil,
+        day = day,
+    })
+    log.debug('%s: %s -> unclaimed', territory.id, tostring(owner))
+end
+
+--- One rule, every cell.
+--
+-- Settlements go through this exactly like wilderness. What keeps a city
+-- in the same hands is not a branch here but the garrison floor in its
+-- projection -- see config.SEAT_FLOOR. A rule with no exceptions is
+-- worth more than a rule that reads slightly more directly, because
+-- every exception is a case somebody has to remember later.
+local function resolveTerritory(territory, day)
     local owner = state.getOwner(territory.id)
     local bestId, bestValue, ownerValue = evaluate(territory, owner)
+    local reachable = bestId ~= nil and bestValue >= config.MIN_CLAIM_POWER
 
-    if not bestId then
+    if owner == nil then
+        -- Nobody to fight. Projection alone decides it, above the floor.
+        if reachable then
+            capture(territory, nil, bestId, day)
+        end
         return
     end
 
-    if owner == nil then
-        -- Nobody to fight. Projection alone decides it, above a floor.
-        if bestValue >= config.MIN_CLAIM_POWER then
-            capture(territory, nil, bestId, day)
-        end
+    if not reachable then
+        release(territory, owner, day)
         return
     end
 
@@ -321,13 +388,15 @@ local function resolveFrontier(territory, day)
 end
 
 --------------------------------------------------------------------------
--- Pass 2: settlements
+-- Settlements
 --------------------------------------------------------------------------
 
 --- Whether enough of a settlement's surrounding frontier is in rival
 -- hands. Observed and published; nothing in the framework acts on it.
-function M.isSurrounded(territory)
-    local adjacent = territory.adjacentFrontier
+--
+-- @param settlement a record from registry.settlements, not a territory
+function M.isSurrounded(settlement)
+    local adjacent = settlement.adjacentFrontier
     local total = adjacent and #adjacent or 0
     if total == 0 then
         -- Nothing authored or generated around it. A data gap rather
@@ -335,7 +404,7 @@ function M.isSurrounded(territory)
         return false
     end
 
-    local ownerId = state.getOwner(territory.id)
+    local ownerId = M.settlementOwner(settlement)
     local rivalHeld = 0
     for _, id in ipairs(adjacent) do
         local holder = state.getOwner(id)
@@ -346,46 +415,29 @@ function M.isSurrounded(territory)
     return (rivalHeld / total) >= config.SURROUND_SHARE
 end
 
+--- Who holds a settlement. Its cells share an owner in practice, since
+-- the same garrison floor applies across the whole footprint, so the
+-- first one answers for all of them.
+function M.settlementOwner(settlement)
+    return state.getOwner(settlement.territoryIds[1])
+end
+
 --- Record whether a settlement is surrounded, and announce the change.
-local function updateSurrounded(territory, day)
+local function updateSurrounded(settlement, day)
     local data = state.get()
-    local was = data.surroundedSince[territory.id] ~= nil
-    local now = M.isSurrounded(territory)
+    local was = data.surroundedSince[settlement.id] ~= nil
+    local now = M.isSurrounded(settlement)
 
     if now == was then
         return
     end
 
     if now then
-        data.surroundedSince[territory.id] = day
-        events.emit(events.SETTLEMENT_SURROUNDED, { territory = territory.id, day = day })
+        data.surroundedSince[settlement.id] = day
+        events.emit(events.SETTLEMENT_SURROUNDED, { territory = settlement.id, day = day })
     else
-        data.surroundedSince[territory.id] = nil
-        events.emit(events.SETTLEMENT_RELIEVED, { territory = territory.id, day = day })
-    end
-end
-
---- A settlement is claimed once and then held.
---
--- Morrowind was not built for cities changing hands, and a mechanic for
--- taking them would be bolted onto a game that has nowhere to put the
--- consequences. So the framework's competition is non-violent: borders
--- move, seats do not.
---
--- The one thing that still happens here is the first claim, for a
--- settlement nobody reached at world creation. After that its owner is
--- fixed as far as this framework is concerned. An extension that wants
--- conquest owns both the mechanic and the consequences.
-local function resolveSettlement(territory, day)
-    updateSurrounded(territory, day)
-
-    if state.getOwner(territory.id) ~= nil then
-        return
-    end
-
-    local bestId, bestValue = evaluate(territory, nil)
-    if bestId and bestValue >= config.MIN_CLAIM_POWER then
-        capture(territory, nil, bestId, day)
+        data.surroundedSince[settlement.id] = nil
+        events.emit(events.SETTLEMENT_RELIEVED, { territory = settlement.id, day = day })
     end
 end
 
@@ -403,33 +455,29 @@ end
 -- the graph is large. Keeping the parameter means that becomes a change
 -- to the scheduler alone.
 --
--- Frontier always resolves before settlements, within whatever batch is
--- given: the frontier is what decides whether a settlement is surrounded,
--- so evaluating settlements first would judge them on yesterday's map.
+-- Every cell goes through the same rule, in one pass. The surrounded
+-- check runs after all of it, because it reads the frontier ownership
+-- the pass has just settled -- doing it inline would judge each
+-- settlement against a half-updated map.
 function M.run(day, batch)
-    local frontier, settlements = {}, {}
     if batch then
         for _, id in ipairs(batch) do
             local territory = registry.territories[id]
             if territory then
-                local bucket = territory.kind == 'settlement' and settlements or frontier
-                bucket[#bucket + 1] = territory
+                resolveTerritory(territory, day)
             end
         end
     else
         for _, id in ipairs(registry.frontierIds) do
-            frontier[#frontier + 1] = registry.territories[id]
+            resolveTerritory(registry.territories[id], day)
         end
-        for _, id in ipairs(registry.settlementIds) do
-            settlements[#settlements + 1] = registry.territories[id]
+        for _, id in ipairs(registry.settlementCellIds) do
+            resolveTerritory(registry.territories[id], day)
         end
     end
 
-    for _, territory in ipairs(frontier) do
-        resolveFrontier(territory, day)
-    end
-    for _, territory in ipairs(settlements) do
-        resolveSettlement(territory, day)
+    for _, id in ipairs(registry.settlementIds) do
+        updateSurrounded(registry.settlements[id], day)
     end
 end
 

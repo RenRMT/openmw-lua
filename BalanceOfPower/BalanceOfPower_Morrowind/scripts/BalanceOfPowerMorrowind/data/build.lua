@@ -73,6 +73,7 @@ function M.plan(settlements, cellSize)
     for _, settlement in ipairs(settlements) do
         local entry = landmass(settlement.landmass)
         local centroid = centroidOf(settlement.cells, cellSize)
+        local names = cellNames(settlement.cells)
         local id = M.idFor(settlement.name)
 
         -- Unaffiliated holdings still exist on the map, but project
@@ -85,6 +86,12 @@ function M.plan(settlements, cellSize)
                 tier = settlement.centerTier,
                 coords = centroid,
                 landmass = settlement.landmass,
+                -- The ground it physically stands on. The framework gives
+                -- its faction a floor on its projection in these cells,
+                -- which is what keeps a settlement with whoever built it
+                -- -- and, for a minor holding, is the whole of its
+                -- footprint on the map.
+                cells = names,
             }
         end
 
@@ -94,7 +101,7 @@ function M.plan(settlements, cellSize)
                 displayName = settlement.name,
                 tier = settlement.settlementTier,
                 region = settlement.region,
-                cells = cellNames(settlement.cells),
+                cells = names,
                 centroid = centroid,
                 -- No defaultOwner except where the framework must not be
                 -- allowed to derive one -- see main.lua. Initial control

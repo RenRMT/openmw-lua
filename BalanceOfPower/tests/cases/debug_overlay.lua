@@ -133,7 +133,7 @@ end
 function M.boostPushesWhoeverHoldsTheGroundYouAreOn()
     local handlers = loadWithOverlay()
 
-    local owner = state.getOwner('balmora')
+    local owner = state.getOwner(registry.territoryForCell('#-3,-2').id)
     expect.truthy(owner, 'Balmora is held by somebody')
     local before = power.getLive(owner)
 
@@ -146,7 +146,7 @@ end
 function M.boostCanWeaken()
     local handlers = loadWithOverlay()
 
-    local owner = state.getOwner('balmora')
+    local owner = state.getOwner(registry.territoryForCell('#-3,-2').id)
     local before = power.getLive(owner)
     handlers.BoPDebug_Boost({ cell = '#-3,-2', target = 'owner', amount = -50 })
 

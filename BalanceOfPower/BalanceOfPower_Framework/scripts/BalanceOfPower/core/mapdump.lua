@@ -131,15 +131,18 @@ function renderers.projection(territory, symbols)
     return symbolFor(territory, resolve.strongestProjector(territory), symbols)
 end
 
---- How settled each cell is, ignoring who holds it.
+-- How settled each cell is, ignoring who holds it. The four states of
+-- classify(), drawn so the eye reads density as pressure: open ground is
+-- quiet, a border is busy.
+local CONTEST_SYMBOLS = {
+    unclaimed = UNCLAIMED,
+    consolidated = '-',
+    uncontested = '+',
+    contested = '#',
+}
+
 function renderers.contest(territory)
-    local class = resolve.classify(territory)
-    if class == 'contested' then
-        return '#', nil
-    elseif class == 'consolidated' then
-        return '-', nil
-    end
-    return UNCLAIMED, nil
+    return CONTEST_SYMBOLS[resolve.classify(territory)] or UNCLAIMED, nil
 end
 
 --------------------------------------------------------------------------
@@ -239,7 +242,8 @@ function M.render(opts)
     end
 
     if mode == 'contest' then
-        lines[#lines + 1] = 'legend: # contested   - consolidated   . nobody reaches'
+        lines[#lines + 1] = 'legend: # contested   + uncontested   '
+            .. '- consolidated   . unclaimed'
         return lines
     end
 

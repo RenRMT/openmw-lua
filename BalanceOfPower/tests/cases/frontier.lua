@@ -187,15 +187,16 @@ function M.doesNotOverlapSettlementCells()
     })
     generate()
 
-    expect.equal(registry.territoryForCell('#0,0').id, 'town', 'settlement keeps its cell')
-    expect.equal(registry.territoryForCell('#1,0').id, 'town', 'and its second cell')
-    expect.equal(registry.territories.town.kind, 'settlement', 'still a settlement')
+    expect.equal(registry.territoryForCell('#0,0').settlement, 'town',
+        'settlement keeps its cell')
+    expect.equal(registry.territoryForCell('#1,0').settlement, 'town', 'and its second cell')
+    expect.equal(registry.settlements.town.tier, 'town', 'the settlement record survives')
 end
 
 --- Settlements are registered before the frontier exists, so a pack cannot
 -- name generated cells in its own adjacentFrontier. The generator has to
--- make that link itself -- without it no settlement is ever surrounded and
--- no siege can begin, which would quietly disable half the simulation.
+-- make that link itself -- without it no settlement is ever reported as
+-- surrounded, and anything built on that fact goes silently quiet.
 function M.wiresSettlementsToTheirSurroundingCells()
     oneSettlement({
         settlements = {
@@ -209,7 +210,7 @@ function M.wiresSettlementsToTheirSurroundingCells()
     })
     generate()
 
-    local ring = registry.territories.town.adjacentFrontier
+    local ring = registry.settlements.town.adjacentFrontier
     expect.greater(#ring, 0, 'the settlement was given a ring')
     for _, id in ipairs(ring) do
         expect.truthy(registry.territories[id], 'ring member ' .. id .. ' exists')
