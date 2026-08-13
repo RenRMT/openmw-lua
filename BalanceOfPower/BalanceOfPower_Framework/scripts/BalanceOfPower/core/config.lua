@@ -55,35 +55,25 @@ M.REACTION_CLAMP = 3
 
 -- Which way round `core.factions.records[id].reactions` reads.
 --
--- This is the single most load-bearing unverified fact in the framework,
--- so it is a flag rather than an assumption buried in the propagation
--- loop. `true` means a row is "how everyone else feels about me", which
--- is how OpenMW's own documentation describes it. `false` means it is
--- "how I feel about everyone else", which is how the underlying ESM3
--- FACT record is conventionally read -- the ANAM/INTV pairs live on the
--- faction's own record. The two cannot both be right.
+-- **Outbound**, settled in-game on 2026-08-13 against the asymmetric
+-- Telvanni / Twin Lamps pair: a record row is "how I feel about everyone
+-- else", matching the underlying ESM3 FACT record, where the ANAM/INTV
+-- pairs live on the faction's own record. OpenMW's own documentation
+-- describes it the other way round, and the documentation is wrong.
 --
--- It matters because it fails quietly. A symmetric pair behaves
--- identically either way; only asymmetric ones (Camonna Tong and the
--- Thieves Guild are the standard example) diverge, and only in
--- magnitude, so a wrong setting produces a world that is subtly off
--- rather than obviously broken.
+-- This shipped as `true` -- the documented reading -- through phases 1-3,
+-- which propagated every asymmetric vanilla pair backwards. It failed
+-- exactly as quietly as predicted: symmetric pairs behave identically
+-- either way, so the world was subtly off rather than obviously broken.
 --
--- To settle it, compare both directions of one asymmetric pair against
--- the Construction Set:
---
---   luag print(require('openmw.core').factions
---       .records['camonna tong'].reactions['thieves guild'])
---   luag print(require('openmw.core').factions
---       .records['thieves guild'].reactions['camonna tong'])
---
--- Then record the answer in openmw-lua-api-notes.md section 9a with a
--- date, and this comment can shrink to one line.
+-- The flag stays because it is not free knowledge for other content.
+-- ESM4 records are a different format read through a different code
+-- path, so a future Skyrim pack may well need the other setting.
 --
 -- Only record data is governed by this. Authored `reactions` tables in a
 -- pack always mean "how everyone else feels about me", because that
 -- convention is ours to define and there is no reason to leave it open.
-M.RECORD_REACTIONS_ARE_INBOUND = true
+M.RECORD_REACTIONS_ARE_INBOUND = false
 
 -- Power changes smaller than this neither fire BoP_PowerChanged nor get
 -- logged. Propagation to a barely-interested faction otherwise produces

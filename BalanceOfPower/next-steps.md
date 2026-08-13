@@ -56,19 +56,18 @@ At load you should see roughly:
 
 Then check, in the log or via `luag`:
 
-1. **Which way round do record reactions read?** This is the one unverified
-   fact the whole power model rests on, and it fails quietly — only
-   asymmetric pairs diverge, and only in magnitude. Run:
+1. ~~**Which way round do record reactions read?**~~ **Settled 2026-08-13:
+   outbound.** Verified against the asymmetric Telvanni / Twin Lamps pair.
+   `RECORD_REACTIONS_ARE_INBOUND` is now `false`; it shipped `true` — the
+   reading OpenMW's own documentation gives — and propagated every asymmetric
+   vanilla pair backwards for three phases.
 
-   ```
-   luag print(require('openmw.core').factions.records['camonna tong'].reactions['thieves guild'])
-   luag print(require('openmw.core').factions.records['thieves guild'].reactions['camonna tong'])
-   ```
-
-   Compare against the Construction Set. If the data is "how I feel about
-   everyone else" rather than "how everyone else feels about me", set
-   `config.RECORD_REACTIONS_ARE_INBOUND = false`. Either way, record the answer
-   in `openmw-lua-api-notes.md` §9a with a date.
+   Worth an audit while playing: the pack's authored rows are inbound by
+   convention, and hostility now reads the same table. An author writing
+   Hlaalu's row and typing `['sixth house'] = -3` may have meant "Hlaalu hates
+   them" where the convention says the reverse. The values are near-symmetric
+   so it mostly won't show, which is exactly why it needs checking rather than
+   assuming.
 
 2. **Run `luag require('openmw.interfaces').BalanceOfPower.dumpReactions()`.**
    Every faction should have a non-zero `moves` *and* `movedBy`. A zero in

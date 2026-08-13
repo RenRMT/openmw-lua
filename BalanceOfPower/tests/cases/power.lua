@@ -78,8 +78,12 @@ end
 -- records. Same maths either way -- that fallback is the seam that lets
 -- a Tamriel Rebuilt house or a Lua-only invader behave like a vanilla
 -- faction without one.
+--
+-- Note where the record row sits: records read *outbound*, so "redoran
+-- moves when hlaalu moves" is stored on redoran's record as its opinion
+-- of hlaalu, not on hlaalu's.
 function M.propagatesAlongRecordReactions()
-    core.factions.records.hlaalu = { reactions = { redoran = 3 } }
+    core.factions.records.redoran = { reactions = { hlaalu = 3 } }
     threeFactions()
 
     power.apply('hlaalu', 10)
@@ -88,8 +92,11 @@ function M.propagatesAlongRecordReactions()
     expect.equal(power.getLive('telvanni'), 50, 'faction with no opinion')
 end
 
+--- Both sources naming the same ordered pair, from the opposite ends
+-- their conventions put it: the record on redoran (outbound), the
+-- authored table on hlaalu (inbound). Authored wins.
 function M.authoredReactionsBeatRecords()
-    core.factions.records.hlaalu = { reactions = { redoran = 3 } }
+    core.factions.records.redoran = { reactions = { hlaalu = 3 } }
     threeFactions({ hlaalu = { reactions = { redoran = -3 } } })
 
     power.apply('hlaalu', 10)
@@ -104,7 +111,7 @@ end
 -- merge there was no way to say so that didn't cost the Empire every
 -- real relationship it has.
 function M.authoredReactionsMergeOverRecordsRatherThanReplacingThem()
-    core.factions.records.hlaalu = { reactions = { redoran = 3 } }
+    core.factions.records.redoran = { reactions = { hlaalu = 3 } }
     threeFactions({ hlaalu = { reactions = { telvanni = -3 } } })
 
     power.apply('hlaalu', 10)
@@ -131,28 +138,17 @@ end
 -- Which way round the record data reads
 --------------------------------------------------------------------------
 
---- The framework's single most load-bearing unverified fact, so it is a
--- flag rather than an assumption baked into the loop. Under the default
--- reading, a record row is "how everyone else feels about me".
-function M.readsRecordRowsAsInboundByDefault()
-    expect.truthy(config.RECORD_REACTIONS_ARE_INBOUND, 'the documented default')
+--- Settled in-game on 2026-08-13 against the Telvanni / Twin Lamps pair:
+-- a record row is "how I feel about everyone else", so the propagation
+-- table is its transpose. This shipped the other way round for three
+-- phases, propagating every asymmetric vanilla pair backwards, which is
+-- why the direction is asserted here rather than left implied by the
+-- behavioural tests.
+function M.readsRecordRowsAsOutboundByDefault()
+    expect.falsy(config.RECORD_REACTIONS_ARE_INBOUND, 'settled: records read outbound')
 
-    core.factions.records.hlaalu = { reactions = { redoran = 3 } }
-    threeFactions()
-
-    power.apply('hlaalu', 10)
-    expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6,
-        'redoran feels +3 about hlaalu, so it moves with hlaalu')
-end
-
---- Flipping the flag transposes the record data and nothing else, so
--- settling the question in-game is a one-line change rather than an
--- audit of every call site.
-function M.transposesRecordRowsWhenTheyReadAsOutbound()
-    config.RECORD_REACTIONS_ARE_INBOUND = false
-
-    -- Now this says hlaalu feels +3 about redoran, which tells us
-    -- nothing about how redoran responds to hlaalu...
+    -- This says hlaalu feels +3 about redoran, which tells us nothing
+    -- about how redoran responds to hlaalu...
     core.factions.records.hlaalu = { reactions = { redoran = 3 } }
     -- ...and this says telvanni feels -3 about hlaalu, which does.
     core.factions.records.telvanni = { reactions = { hlaalu = -3 } }
@@ -165,12 +161,26 @@ function M.transposesRecordRowsWhenTheyReadAsOutbound()
         'the faction with an opinion about hlaalu is the one that moves')
 end
 
+--- The flag survives because ESM4 content is read through a different
+-- code path and may not share ESM3's convention. Setting it uses each
+-- row as-is instead of transposing.
+function M.readsRecordRowsAsInboundWhenTheFlagIsSet()
+    config.RECORD_REACTIONS_ARE_INBOUND = true
+
+    core.factions.records.hlaalu = { reactions = { redoran = 3 } }
+    threeFactions()
+
+    power.apply('hlaalu', 10)
+    expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6,
+        'the row now reads as redoran feeling +3 about hlaalu')
+end
+
 --- Authored tables mean one fixed thing regardless of the flag. The
--- record convention is the engine's and uncertain; ours is not, and
--- making both configurable would mean every pack's data changed meaning
--- when the flag moved.
+-- record convention is the engine's and varies by format; ours is not,
+-- and making both configurable would mean every pack's data changed
+-- meaning when the flag moved.
 function M.authoredTablesAreAlwaysInbound()
-    config.RECORD_REACTIONS_ARE_INBOUND = false
+    config.RECORD_REACTIONS_ARE_INBOUND = true
     threeFactions({ hlaalu = { reactions = { redoran = 3 } } })
 
     power.apply('hlaalu', 10)

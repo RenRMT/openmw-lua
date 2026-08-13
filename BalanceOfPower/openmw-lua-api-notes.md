@@ -61,16 +61,7 @@ All under `require('openmw.types').NPC` unless noted:
 | `NPC.clearExpelled(actor, factionId)` | Clears the expelled flag |
 
 - `core.factions.records[factionId]` — read-only **FactionRecord**, includes `.skills` (list of skill IDs tied to rank advancement) and **`.reactions`** — a read-only map of faction IDs to reaction values. This is the live equivalent of the disposition table used throughout this design.
-- **⚠ Unconfirmed, and load-bearing: which direction `.reactions` reads.** OpenMW's documentation describes a row as *other* faction IDs to their reaction toward this faction (inbound). The underlying ESM3 `FACT` record stores ANAM/INTV pairs on the faction's own record, which is conventionally read as this faction's reaction *toward* the named one (outbound). Both cannot be right, and the whole power-propagation model depends on the answer. It fails quietly: a symmetric pair behaves identically either way, so only asymmetric pairs diverge, and only in magnitude.
-
-  The framework hedges with `config.RECORD_REACTIONS_ARE_INBOUND` (default `true`, the documented reading), which transposes the record data and nothing else — authored tables are fixed at inbound. To settle it, compare both directions of an asymmetric pair against the Construction Set:
-
-  ```
-  luag print(require('openmw.core').factions.records['camonna tong'].reactions['thieves guild'])
-  luag print(require('openmw.core').factions.records['thieves guild'].reactions['camonna tong'])
-  ```
-
-  Move this into §9a with a date once checked.
+- **`.reactions` reads outbound.** Settled in-game — see §9a. A row is *this faction's* reaction toward the named ones, matching the ESM3 `FACT` record, whose ANAM/INTV pairs live on the faction's own record. **The OpenMW documentation states the opposite** (inbound) and is wrong for ESM3.
 - **Confirmed engine quirk:** vanilla Morrowind's actual behavior is that an NPC's reaction to the player is the *minimum* reaction across all factions the player belongs to (when a faction has duplicate reaction entries for the same other faction in the ESM data). OpenMW currently collapses duplicates to whichever value appears *last* in the file rather than the minimum (GitLab #7553, open at time of writing). Rare edge case, but worth knowing if computed numbers ever look off for a specific pair.
 - **Unconfirmed:** whether a *setter* for cross-faction reputation exists as of your target version. Getters are solid; a setter was requested years ago (GitLab #7468: "a way to get/set reputation with given faction") — status at any given release should be checked directly rather than assumed.
 
@@ -132,6 +123,12 @@ Flagging these separately because the design document leans on them, but this se
 ### 9a. Confirmed during phase 1 implementation (August 2026)
 
 Checked directly against the docs while building the framework, so these no longer need re-verification:
+
+- **Faction record reactions read OUTBOUND** *(verified in-game 2026-08-13)*. `core.factions.records[id].reactions` is a map of *how this faction feels about the named ones*, not how they feel about it. Verified against the asymmetric Telvanni / Twin Lamps pair, where the two directions carry different values and so cannot both be read the same way.
+
+  **The documentation says inbound, and is wrong** for ESM3 content. Anyone building on the docs alone will get this backwards, as this project did: `config.RECORD_REACTIONS_ARE_INBOUND` shipped at `true` through phases 1–3 and propagated every asymmetric vanilla pair in the wrong direction. It is now `false`.
+
+  The flag stays configurable because ESM4 records are read through a different code path and may not share the convention. Authored reaction tables in a content pack are always inbound regardless — that convention is the framework's own.
 
 - **`openmw_aux.time`** — constants `time.second` / `time.minute` / `time.hour` / `time.day`, type constants `time.SimulationTime` / `time.GameTime`, and `time.runRepeatedly(fn, period, options)` where `options` accepts `initialDelay` and `type`, returning a stop function. This covers the once-per-day resolution tick.
 - **`core.getGameTime()`** — returns game time in **seconds**, so an in-game day index is `math.floor(core.getGameTime() / time.day)`.

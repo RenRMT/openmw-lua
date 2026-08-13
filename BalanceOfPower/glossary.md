@@ -22,6 +22,13 @@ as `reactions[X] = how X feels about the faction whose row this is`, so a row
 answers *"when this faction's power moves, who moves with it?"* Sourced from
 the game's faction records and from authored tables, merged.
 
+That **inbound** reading is the framework's own convention and applies to every
+authored table. The game's records are the other way round — a record row is
+how that faction feels about the others — so record data is transposed on the
+way in. Getting this backwards is silent: symmetric pairs behave identically
+either way, and the framework shipped it backwards for three phases before an
+asymmetric pair caught it.
+
 **Power centre** — a point on the map that projects a faction's power outward.
 Every settlement is a power centre; **not every power centre is a settlement.**
 Farms, shacks and mines are power centres that are not settlements: they shape
