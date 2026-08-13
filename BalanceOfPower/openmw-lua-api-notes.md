@@ -60,7 +60,17 @@ All under `require('openmw.types').NPC` unless noted:
 | `NPC.expel(actor, factionId)` | Expels; NPC keeps rank/reputation, just gets an expelled flag |
 | `NPC.clearExpelled(actor, factionId)` | Clears the expelled flag |
 
-- `core.factions.records[factionId]` — read-only **FactionRecord**, includes `.skills` (list of skill IDs tied to rank advancement) and **`.reactions`** — a read-only map of *other* faction IDs to their reaction value toward this faction. This is the live equivalent of the disposition table used throughout this design.
+- `core.factions.records[factionId]` — read-only **FactionRecord**, includes `.skills` (list of skill IDs tied to rank advancement) and **`.reactions`** — a read-only map of faction IDs to reaction values. This is the live equivalent of the disposition table used throughout this design.
+- **⚠ Unconfirmed, and load-bearing: which direction `.reactions` reads.** OpenMW's documentation describes a row as *other* faction IDs to their reaction toward this faction (inbound). The underlying ESM3 `FACT` record stores ANAM/INTV pairs on the faction's own record, which is conventionally read as this faction's reaction *toward* the named one (outbound). Both cannot be right, and the whole power-propagation model depends on the answer. It fails quietly: a symmetric pair behaves identically either way, so only asymmetric pairs diverge, and only in magnitude.
+
+  The framework hedges with `config.RECORD_REACTIONS_ARE_INBOUND` (default `true`, the documented reading), which transposes the record data and nothing else — authored tables are fixed at inbound. To settle it, compare both directions of an asymmetric pair against the Construction Set:
+
+  ```
+  luag print(require('openmw.core').factions.records['camonna tong'].reactions['thieves guild'])
+  luag print(require('openmw.core').factions.records['thieves guild'].reactions['camonna tong'])
+  ```
+
+  Move this into §9a with a date once checked.
 - **Confirmed engine quirk:** vanilla Morrowind's actual behavior is that an NPC's reaction to the player is the *minimum* reaction across all factions the player belongs to (when a faction has duplicate reaction entries for the same other faction in the ESM data). OpenMW currently collapses duplicates to whichever value appears *last* in the file rather than the minimum (GitLab #7553, open at time of writing). Rare edge case, but worth knowing if computed numbers ever look off for a specific pair.
 - **Unconfirmed:** whether a *setter* for cross-faction reputation exists as of your target version. Getters are solid; a setter was requested years ago (GitLab #7468: "a way to get/set reputation with given faction") — status at any given release should be checked directly rather than assumed.
 

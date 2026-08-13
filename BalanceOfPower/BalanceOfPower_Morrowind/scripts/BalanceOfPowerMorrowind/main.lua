@@ -29,7 +29,11 @@ local factionDefs = require('scripts.BalanceOfPowerMorrowind.data.factions')
 local settlements = require('scripts.BalanceOfPowerMorrowind.data.settlements')
 local sixthHouse = require('scripts.BalanceOfPowerMorrowind.data.invasions.sixth_house')
 
-local plan = build.plan(settlements)
+-- The cell size comes from the framework rather than from a constant
+-- here. It is an engine fact, not a Morrowind one, and the settlement
+-- centroids computed from it have to agree with the grid the frontier
+-- generator lays down.
+local plan = build.plan(settlements, BoP.CELL_SIZE)
 local defined = {}
 
 --------------------------------------------------------------------------

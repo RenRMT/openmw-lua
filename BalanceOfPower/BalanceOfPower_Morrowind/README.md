@@ -50,11 +50,23 @@ Two notes on ids:
   something invented here — and every Imperial holding in the settlement list
   is a fort or a Legion-garrisoned town, so it isn't much of a stretch. The
   Imperial Cult is kept separate, as a power-only faction.
-- **The East Empire Company and the Skaal have authored reaction tables,**
-  because neither exists as a joinable faction record. Everyone else reads
-  theirs from `core.factions.records`. The framework warns at load about any
-  faction that ends up with neither, so a mistyped id is visible rather than
-  silent.
+- **Four factions have no ESM record: the East Empire Company, the Skaal, the
+  Ashlanders and the Sixth House.** Their own reaction tables are authored in
+  full. Everyone else reads theirs from `core.factions.records`.
+
+  Because nothing in Morrowind.esm can name those four, the *other* half of
+  each relationship is authored too — every vanilla faction here carries a
+  short `reactions` table naming them. Authored values merge over the record
+  rather than replacing it, so those additions cost the vanilla rows nothing.
+
+  Without them, all four would move other factions perfectly well and never
+  move themselves: their standing could only change through a direct award.
+  Nothing about that reads as an error, which is why
+  `BoP.dumpReactions()` reports a `movedBy` column, and why the test suite
+  asserts no faction sits at zero in either direction.
+
+  The numbers in those added rows are guesswork, like `basePower`. They are
+  the second thing to reach for when the politics feel wrong.
 
 ## The starting map is derived, not authored
 

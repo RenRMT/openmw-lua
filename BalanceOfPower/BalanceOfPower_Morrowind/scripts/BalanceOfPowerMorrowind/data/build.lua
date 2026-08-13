@@ -15,25 +15,22 @@
 
 local M = {}
 
--- Morrowind exterior cell size, in world units.
-local CELL_SIZE = 8192
-
 local function cellName(gridX, gridY)
     return string.format('#%d,%d', gridX, gridY)
 end
 
-local function cellCentre(gridX, gridY)
-    return gridX * CELL_SIZE + CELL_SIZE / 2, gridY * CELL_SIZE + CELL_SIZE / 2
+local function cellCentre(gridX, gridY, cellSize)
+    return gridX * cellSize + cellSize / 2, gridY * cellSize + cellSize / 2
 end
 
 --- The middle of a settlement's footprint.
 -- Vivec covers fifteen cells; projecting from the mean rather than from
 -- whichever cell happened to be listed first is the difference between
 -- the city radiating outward and radiating off one corner.
-local function centroidOf(cells)
+local function centroidOf(cells, cellSize)
     local sumX, sumY = 0, 0
     for _, cell in ipairs(cells) do
-        local x, y = cellCentre(cell[1], cell[2])
+        local x, y = cellCentre(cell[1], cell[2], cellSize)
         sumX, sumY = sumX + x, sumY + y
     end
     return { x = sumX / #cells, y = sumY / #cells }
@@ -49,8 +46,18 @@ end
 
 --- Group the settlement list by landmass, producing anchors and power
 -- centers.
+--
+-- @param cellSize world units per exterior cell. Comes from the
+--        framework (`BoP.CELL_SIZE`) rather than being written down here
+--        as well: the centroids computed below have to land in the same
+--        places the framework's frontier generator expects, and two
+--        copies of one number is how that quietly stops being true.
 -- @return { [landmassId] = { territories = {...}, centers = { [factionId] = {...} } } }
-function M.plan(settlements)
+function M.plan(settlements, cellSize)
+    if type(cellSize) ~= 'number' or cellSize <= 0 then
+        error('BalanceOfPowerMorrowind: build.plan needs the framework cell size', 0)
+    end
+
     local byLandmass = {}
 
     local function landmass(id)
@@ -60,7 +67,7 @@ function M.plan(settlements)
 
     for _, settlement in ipairs(settlements) do
         local entry = landmass(settlement.landmass)
-        local centroid = centroidOf(settlement.cells)
+        local centroid = centroidOf(settlement.cells, cellSize)
         local id = M.idFor(settlement.name)
 
         -- Unaffiliated holdings still exist on the map, but project

@@ -53,6 +53,38 @@ M.INFLUENCE_STRENGTH = 0.15
 -- scaling. Also the divisor that normalizes a reaction to [-1, 1].
 M.REACTION_CLAMP = 3
 
+-- Which way round `core.factions.records[id].reactions` reads.
+--
+-- This is the single most load-bearing unverified fact in the framework,
+-- so it is a flag rather than an assumption buried in the propagation
+-- loop. `true` means a row is "how everyone else feels about me", which
+-- is how OpenMW's own documentation describes it. `false` means it is
+-- "how I feel about everyone else", which is how the underlying ESM3
+-- FACT record is conventionally read -- the ANAM/INTV pairs live on the
+-- faction's own record. The two cannot both be right.
+--
+-- It matters because it fails quietly. A symmetric pair behaves
+-- identically either way; only asymmetric ones (Camonna Tong and the
+-- Thieves Guild are the standard example) diverge, and only in
+-- magnitude, so a wrong setting produces a world that is subtly off
+-- rather than obviously broken.
+--
+-- To settle it, compare both directions of one asymmetric pair against
+-- the Construction Set:
+--
+--   luag print(require('openmw.core').factions
+--       .records['camonna tong'].reactions['thieves guild'])
+--   luag print(require('openmw.core').factions
+--       .records['thieves guild'].reactions['camonna tong'])
+--
+-- Then record the answer in openmw-lua-api-notes.md section 9a with a
+-- date, and this comment can shrink to one line.
+--
+-- Only record data is governed by this. Authored `reactions` tables in a
+-- pack always mean "how everyone else feels about me", because that
+-- convention is ours to define and there is no reason to leave it open.
+M.RECORD_REACTIONS_ARE_INBOUND = true
+
 -- Power changes smaller than this neither fire BoP_PowerChanged nor get
 -- logged. Propagation to a barely-interested faction otherwise produces
 -- a lot of events carrying a delta of 0.0003.
@@ -67,8 +99,8 @@ M.POWER_EVENT_EPSILON = 0.01
 -- Design doc 3.2: minor holdings should be authorable without individual
 -- tuning, so an outpost only needs an id and coords.
 --
--- Scale matters more than it looks. A Morrowind exterior cell is 8192
--- units across, so the design document's illustrative 6000 would not
+-- Scale matters more than it looks. An exterior cell is CELL_SIZE units
+-- across -- 8192 -- so the design document's illustrative 6000 would not
 -- reach even the neighbouring cell -- a capital would project onto
 -- nothing but itself, and no frontier cell would ever be contested. The
 -- doc's figure predates the anchor/frontier split; these are sized in
@@ -117,8 +149,18 @@ M.FRONTIER_COOLDOWN_DAYS = 3
 -- Frontier generation
 --------------------------------------------------------------------------
 
--- World units per exterior cell. 8192 for Morrowind-style content; a
--- pack for content with a different grid overrides it per call.
+-- World units per exterior cell.
+--
+-- Not a tuning value and not content knowledge: 8192 is the ESM3 grid
+-- the engine itself works in, so it is the same for Vvardenfell, Tamriel
+-- Rebuilt, Project Cyrodiil and Skyrim Home of the Nords alike. A pack
+-- must never redeclare it -- read it from the interface as
+-- `BoP.CELL_SIZE`, so a pack's own geometry and the frontier grid can't
+-- drift apart.
+--
+-- `generateFrontier` still takes a `cellSize` override, which earns its
+-- keep only for content on a different grid entirely (ESM4 cells are a
+-- different size). Nothing shipping here needs it.
 M.CELL_SIZE = 8192
 
 -- Exterior cells per generated frontier territory, along each axis.

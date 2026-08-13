@@ -10,6 +10,8 @@ local expect = require('support.expect')
 
 local world = require('openmw.world')
 
+local api = require('scripts.BalanceOfPower.core.api')
+local cells = require('scripts.BalanceOfPower.core.cells')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -92,6 +94,100 @@ function M.everySettlementFactionIsDefined()
             expect.truthy(registry.factions[territory.defaultOwner],
                 territoryId .. ' has a defined owner')
         end
+    end
+end
+
+--- The pack must take the cell size from the framework, not write 8192
+-- down a second time. If the two ever disagree, settlement centroids
+-- land off the grid the frontier generator lays down -- a map subtly out
+-- of register with its own settlements, and nothing to catch it.
+function M.takesTheCellSizeFromTheFramework()
+    loadPack()
+
+    local size = api.CELL_SIZE
+    expect.equal(size, 8192, 'the ESM3 grid the engine works in')
+
+    -- Every anchor's centroid must be the mean of its cells' middles,
+    -- measured in the framework's cell size. Checked across all of them,
+    -- since a wrong constant shows up as a proportional error that a
+    -- single-cell settlement near the origin could hide.
+    for _, id in ipairs(registry.anchorIds) do
+        local territory = registry.territories[id]
+        local sumX, sumY = 0, 0
+        for _, name in ipairs(territory.cells) do
+            local gridX, gridY = cells.parse(name)
+            sumX = sumX + gridX * size + size / 2
+            sumY = sumY + gridY * size + size / 2
+        end
+        local count = #territory.cells
+        expect.near(territory.centroid.x, sumX / count, 1e-6, id .. ' centroid x')
+        expect.near(territory.centroid.y, sumY / count, 1e-6, id .. ' centroid y')
+    end
+end
+
+--- Refusing to guess is the point: a pack that can't reach the framework
+-- constant must fail loudly rather than fall back to a literal.
+function M.refusesToPlanWithoutACellSize()
+    expect.raises(function()
+        require('scripts.BalanceOfPowerMorrowind.data.build').plan({}, nil)
+    end, 'cell size', 'no silent default')
+end
+
+--------------------------------------------------------------------------
+-- Politics
+--------------------------------------------------------------------------
+
+--- Every faction must be wired into the reaction table in both
+-- directions. The outbound half was always visible -- a faction that
+-- moves nobody produces a warning. The inbound half is the one that
+-- hides: four factions here (the Company, the Skaal, the Ashlanders and
+-- the Sixth House) have no ESM record, so nothing in the game's own data
+-- can name them, and without an authored row on the other side their
+-- standing would never move for any reason but a direct award.
+--
+-- This runs against an empty record stub, which is the worst case: if it
+-- passes here, the authored rows alone are enough, and whatever the
+-- game's records add in play is a bonus.
+function M.wiresEveryFactionIntoThePoliticsBothWays()
+    loadPack()
+
+    local mute, deaf = {}, {}
+    for _, row in ipairs(power.reactionAudit()) do
+        if row.moves == 0 then
+            mute[#mute + 1] = row.id
+        end
+        if row.movedBy == 0 then
+            deaf[#deaf + 1] = row.id
+        end
+    end
+
+    expect.count(mute, 0, 'factions that move nobody: ' .. table.concat(mute, ', '))
+    expect.count(deaf, 0, 'factions nobody reacts to: ' .. table.concat(deaf, ', '))
+end
+
+--- The invasion's whole economy, and the reason it needs no special
+-- casing: everyone hates the Sixth House, so its growth is automatically
+-- everyone else's loss.
+function M.makesTheSixthHouseEveryonesProblem()
+    loadPack()
+
+    local others = {}
+    for _, id in ipairs(registry.sortedFactionIds()) do
+        if id ~= 'sixth house' then
+            others[#others + 1] = id
+        end
+    end
+
+    local before = {}
+    for _, id in ipairs(others) do
+        before[id] = power.getLive(id)
+    end
+
+    power.apply('sixth house', 20)
+
+    for _, id in ipairs(others) do
+        expect.greater(before[id], power.getLive(id),
+            id .. ' loses standing when the Sixth House grows')
     end
 end
 

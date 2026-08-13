@@ -57,19 +57,35 @@ At load you should see roughly:
 
 Then check, in the log or via `luag`:
 
-1. **Any "has no reactions" warnings?** Each one names a faction whose id
-   doesn't match a real faction record and has no authored table. Most likely
-   candidates are `sixth house`, `ashlanders` and `temple`, whose exact record
-   ids weren't verifiable outside the game. Fix by correcting the id in
-   `sources/build_settlements.py` / `data/factions.lua`, or by authoring a
-   `reactions` table.
-2. **Any cell-collision warnings?** The build script rejects collisions between
+1. **Which way round do record reactions read?** This is the one unverified
+   fact the whole power model rests on, and it fails quietly — only
+   asymmetric pairs diverge, and only in magnitude. Run:
+
+   ```
+   luag print(require('openmw.core').factions.records['camonna tong'].reactions['thieves guild'])
+   luag print(require('openmw.core').factions.records['thieves guild'].reactions['camonna tong'])
+   ```
+
+   Compare against the Construction Set. If the data is "how I feel about
+   everyone else" rather than "how everyone else feels about me", set
+   `config.RECORD_REACTIONS_ARE_INBOUND = false`. Either way, record the answer
+   in `openmw-lua-api-notes.md` §9a with a date.
+
+2. **Run `luag require('openmw.interfaces').BalanceOfPower.dumpReactions()`.**
+   Every faction should have a non-zero `moves` *and* `movedBy`. A zero in
+   either column means a faction is outside the politics in that direction.
+   The suite asserts this against an empty record stub, so a zero appearing
+   in-game means a record id doesn't match — most likely `temple`, whose exact
+   id wasn't verifiable outside the game. Fix by correcting the id in
+   `sources/build_settlements.py` / `data/factions.lua`, or by authoring the
+   missing side of the relationship.
+3. **Any cell-collision warnings?** The build script rejects collisions between
    settlements, but a generated cell overlapping something unexpected would
    show up here.
-3. **Does the derived map look like Morrowind?** Ald-Ruhn Redoran, Balmora
+4. **Does the derived map look like Morrowind?** Ald-Ruhn Redoran, Balmora
    Hlaalu, Sadrith Mora Telvanni, Vivec Temple, Raven Rock EEC. The headless
    test asserts these, but only against the stubbed cell grid.
-4. **How long does the first tick take?** ~600 territories resolving in one
+5. **How long does the first tick take?** ~600 territories resolving in one
    pass. If there's a visible hitch, `FRONTIER_CELLS_PER_UNIT = 2` cuts the
    count roughly fourfold.
 

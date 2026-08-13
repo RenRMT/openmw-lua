@@ -67,10 +67,16 @@ the defender's projection is multiplied by `defenseMultiplier`.
 
 ### Scale
 
-Influence ranges are in world units, and **a Morrowind exterior cell is 8192
-units across**. Ranges below that project onto nothing but their own cell. The
-tier defaults are sized in cells: roughly 5 (capital), 3 (regional) and 1.5
+Influence ranges are in world units, and **an exterior cell is 8192 units
+across**. That is the ESM3 grid the engine works in, not a Morrowind-specific
+number — it is the same for Tamriel Rebuilt, Project Cyrodiil and Skyrim Home
+of the Nords. Ranges below it project onto nothing but their own cell. The tier
+defaults are sized in cells: roughly 5 (capital), 3 (regional) and 1.5
 (outpost).
+
+A pack that places anything by grid coordinate should read the constant from
+the interface as `BoP.CELL_SIZE` rather than writing 8192 down again — its
+geometry has to agree with the grid `generateFrontier` lays down.
 
 ## Using it from a content pack
 
@@ -198,13 +204,55 @@ rectangle full of sea.
 Options: `cellsPerUnit` (cells per territory per axis — the main performance
 lever), `cellSize`, `margin`, `idPrefix`, `requireExistingCell`.
 
-### Factions with no faction record
+### Reactions, and which way round they read
 
-Power propagation reads reaction values from `core.factions.records` by
-default. A faction that doesn't exist as an ESM record — a Tamriel Rebuilt
-House Dres, an invader that only exists in Lua — supplies its own `reactions`
-table (`{ otherFactionId = -3, ... }`, meaning *how that other faction feels
-about this one*). The propagation math is identical either way.
+A faction's reaction row answers one question: **when this faction's power
+moves, who moves with it?** Both sources are read as
+
+```lua
+reactions[otherFactionId] = how that other faction feels about this one
+```
+
+Values come from `core.factions.records` where a faction has an ESM record,
+and from an authored `reactions` table in the faction definition otherwise —
+a Tamriel Rebuilt House Dres, an invader that only exists in Lua.
+
+**The two are merged, not swapped.** Authored values win where both name the
+same pair, but the rest of the record survives. That matters more than it
+sounds: a vanilla faction's record can only name factions that exist in the
+ESM, so teaching the Empire how to feel about a Lua-only faction is *only*
+possible from the authored side — and before the merge, doing so would have
+cost the Empire every real relationship it has.
+
+#### Both directions have to be wired
+
+A faction with no ESM record is invisible to every other faction's record row.
+Authoring its own table makes it move other factions; it does **not** make
+anything move *it*. That half has to be authored on the other side, as an
+entry on each faction that should react to it.
+
+The framework warns at load about both failures, and `dumpReactions()` shows
+the wiring:
+
+```
+luag require('openmw.interfaces').BalanceOfPower.dumpReactions()
+```
+
+`moves` is how many factions this one can push; `movedBy` is how many can push
+it. **A zero in either column is a faction standing outside the politics**,
+which produces no error and is close to invisible in play.
+
+#### One unverified assumption
+
+Whether `core.factions.records[id].reactions` really reads inbound (*"how
+everyone else feels about me"*, which is how OpenMW documents it) or outbound
+(*"how I feel about everyone else"*, which is how the underlying ESM3 `FACT`
+record is conventionally read) has not been confirmed against a running game.
+
+`config.RECORD_REACTIONS_ARE_INBOUND` selects it, so settling the question is a
+one-line change rather than an audit. Authored tables are unaffected — their
+convention is fixed at inbound. See the comment on that constant for the
+console command that answers it.
 
 ### Awarding power
 

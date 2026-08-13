@@ -21,10 +21,22 @@ local state = require('scripts.BalanceOfPower.core.state')
 local M = {
     -- Bumped when this interface changes in a way a pack could notice.
     -- Packs should check it rather than assuming a function exists.
-    version = 1,
+    --
+    -- v2 added CELL_SIZE, reactionAudit and dumpReactions.
+    version = 2,
 
     -- Event name constants, so listeners don't hardcode the strings.
     events = events,
+
+    -- World units per exterior cell, as the engine defines it.
+    --
+    -- Exposed because a pack that places anything by grid coordinate has
+    -- to agree with the frontier generator about where a cell is, and
+    -- the only alternative is for the pack to write 8192 down a second
+    -- time. Two copies of a constant that must match is exactly the kind
+    -- of drift that produces a map subtly out of register with its own
+    -- settlements, with nothing to catch it.
+    CELL_SIZE = config.CELL_SIZE,
 }
 
 --------------------------------------------------------------------------
@@ -187,6 +199,30 @@ end
 --- One-line faction standings.
 function M.powerSummary()
     return power.summary()
+end
+
+--- How the reaction wiring resolved, per faction: `moves` is how many
+-- factions it can push, `movedBy` how many can push it.
+--
+-- Worth reading after adding a faction. A zero in either column is a
+-- faction standing outside the politics in one direction, which never
+-- shows up as an error and is close to invisible in play -- a faction
+-- with no ESM record behind it sits at movedBy = 0 until some pack
+-- authors the other side of the relationship.
+-- @return list of { id, moves, movedBy }, sorted by id
+function M.reactionAudit()
+    return power.reactionAudit()
+end
+
+--- The same audit, printed.
+function M.dumpReactions()
+    log.info('--- reaction wiring ------------------------------------')
+    log.info('  %-24s %6s %8s', 'faction', 'moves', 'moved by')
+    for _, row in ipairs(power.reactionAudit()) do
+        log.info('  %-24s %6d %8d%s', row.id, row.moves, row.movedBy,
+            (row.moves == 0 or row.movedBy == 0) and '   <-- outside the politics' or '')
+    end
+    log.info('--------------------------------------------------------')
 end
 
 --- The in-game day the simulation has resolved up to.
