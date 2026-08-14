@@ -176,55 +176,17 @@ local function normalizeRoster(value, context)
 end
 
 --------------------------------------------------------------------------
--- Power centers
+-- Settlements
 --------------------------------------------------------------------------
 
--- @param seen table set of power center ids already claimed by this
---        faction, including any staged in the current call
-local function normalizePowerCenter(def, context, seen, fallbackLandmass)
-    checkTable(def, context, 'powerCenter')
-    local id = checkString(def.id, context, 'powerCenter.id')
-    local ctx = string.format('%s power center "%s"', context, id)
-
-    if seen[id] then
-        fail(ctx, 'duplicate power center id on this faction')
+--- The tier ladder as a lookup, with a readable error when a pack misses.
+local function tierDefaultsFor(tier, ctx)
+    local defaults = config.SETTLEMENT_TIERS[tier]
+    if not defaults then
+        fail(ctx, string.format('unknown tier "%s" -- expected one of: %s',
+            tostring(tier), table.concat(config.SETTLEMENT_TIER_ORDER, ', ')))
     end
-    seen[id] = true
-
-    local tier = def.tier or config.DEFAULT_POWER_CENTER_TIER
-    local tierDefaults = config.POWER_CENTER_DEFAULTS[tier]
-    if not tierDefaults then
-        fail(ctx, 'unknown tier "' .. tostring(tier) .. '"')
-    end
-
-    return {
-        id = id,
-        tier = tier,
-        coords = checkCoords(def.coords, ctx, 'coords'),
-        landmass = def.landmass or fallbackLandmass,
-        weight = checkNumber(def.weight, ctx, 'weight', tierDefaults.weight),
-        influenceRange = checkPositive(def.influenceRange, ctx, 'influenceRange',
-            tierDefaults.influenceRange),
-        -- The cells this center physically occupies, if any. Its faction
-        -- gets a floor on its projection in each of them, which is what
-        -- keeps a settlement in the hands of whoever built it. A center
-        -- with no cells -- a claim on a region rather than a place -- is
-        -- fine, and simply has nowhere to stand its ground.
-        cells = copyStrings(def.cells, ctx, 'cells'),
-    }
-end
-
-local function normalizePowerCenters(defs, context, existing, fallbackLandmass)
-    local seen = {}
-    for _, center in ipairs(existing or {}) do
-        seen[center.id] = true
-    end
-
-    local out = {}
-    for _, def in ipairs(defs or {}) do
-        out[#out + 1] = normalizePowerCenter(def, context, seen, fallbackLandmass)
-    end
-    return out
+    return defaults
 end
 
 --------------------------------------------------------------------------
@@ -271,7 +233,10 @@ local function defineFaction(def, context, fallbackLandmass)
         -- core/patrol.lua for who reads it.
         hostile = def.hostile == true,
         landmass = landmass,
-        powerCenters = normalizePowerCenters(def.powerCenters, ctx, nil, landmass),
+        -- Filled in by registerLandmass from the settlements that name
+        -- this faction. A faction has no geography of its own: it holds
+        -- seats, and a seat is a settlement.
+        seats = {},
         patrolRoster = normalizeRoster(def.patrolRoster, ctx),
         -- Authored reactions: how this faction feels about others, the
         -- same direction the game's own records use. Merged over the
@@ -281,10 +246,13 @@ local function defineFaction(def, context, fallbackLandmass)
 end
 
 -- Validate an extension without touching the faction it extends.
--- Merging rather than overwriting is the point: a faction like Hlaalu
--- legitimately spans several packs (Balmora on Vvardenfell, Bal Foyen
--- once a Tamriel Rebuilt pack loads), and both seats have to project
--- influence at once.
+--
+-- A faction like Hlaalu legitimately spans several packs -- Balmora on
+-- Vvardenfell, Bal Foyen once a Tamriel Rebuilt pack loads -- and both
+-- seats have to project at once. That now needs nothing merged: the
+-- settlements are registered against their own landmass and name the
+-- faction, so the second pack's seats arrive on their own. What is left
+-- to merge is the faction's own content, its roster and its reactions.
 local function prepareExtension(faction, def, context)
     local ctx = string.format('%s faction "%s" (extend)', context, faction.id)
 
@@ -300,18 +268,12 @@ local function prepareExtension(faction, def, context)
     end
 
     return {
-        powerCenters = normalizePowerCenters(def.powerCenters, ctx, faction.powerCenters,
-            def.landmass or faction.landmass),
         patrolRoster = normalizeRoster(def.patrolRoster, ctx),
         reactions = def.reactions and checkTable(def.reactions, ctx, 'reactions') or nil,
     }
 end
 
 local function applyExtension(faction, extension)
-    for _, center in ipairs(extension.powerCenters) do
-        faction.powerCenters[#faction.powerCenters + 1] = center
-    end
-
     -- Deduplicated by record id: two packs listing the same guard is
     -- ordinary, and the entry that arrives first keeps its tier.
     local seen = {}
@@ -352,8 +314,8 @@ local function prepareFaction(def, context, fallbackLandmass, staged)
 
     if existing or staged[id] then
         fail(context, string.format(
-            'faction "%s" is already registered -- set extend = true to add power centers '
-            .. 'and roster entries to it instead of redefining it', id))
+            'faction "%s" is already registered -- set extend = true to add roster '
+            .. 'entries and reactions to it instead of redefining it', id))
     end
     staged[id] = true
 
@@ -427,13 +389,13 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
     stagedSettlements[id] = true
 
     local tier = def.tier or config.DEFAULT_SETTLEMENT_TIER
-    local tierDefaults = config.SETTLEMENT_DEFAULTS[tier]
-    if not tierDefaults then
-        fail(ctx, 'unknown tier "' .. tostring(tier) .. '"')
-    end
+    local tierDefaults = tierDefaultsFor(tier, ctx)
 
     if def.defaultOwner ~= nil then
         checkString(def.defaultOwner, ctx, 'defaultOwner')
+    end
+    if def.faction ~= nil then
+        checkString(def.faction, ctx, 'faction')
     end
 
     local cellNames = copyStrings(def.cells, ctx, 'cells')
@@ -450,9 +412,21 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
         cells = cellNames,
         territoryIds = {},
         interiors = {},
-        -- The middle of the whole footprint. Metadata: projection is per
-        -- cell now, so nothing in the simulation reads this.
+        -- Whose seat this is, and so whose power it projects. Not the
+        -- same question as who owns the ground: ownership is derived and
+        -- can flip, while a settlement goes on projecting for the faction
+        -- that built it. A settlement with no faction -- a derelict
+        -- tower, an unaffiliated Velothi holding -- projects nothing and
+        -- is ordinary ground with a name.
+        faction = def.faction,
+        -- The projection origin, and load-bearing: this is the point
+        -- every reach calculation measures from. For a multi-cell city it
+        -- should be the middle of the footprint, so Vivec radiates from
+        -- the city rather than from whichever cell was listed first.
         centroid = def.centroid and checkCoords(def.centroid, ctx, 'centroid') or nil,
+        weight = checkNumber(def.weight, ctx, 'weight', tierDefaults.weight),
+        influenceRange = checkPositive(def.influenceRange, ctx, 'influenceRange',
+            tierDefaults.influenceRange),
         adjacentFrontier = copyStrings(def.adjacentFrontier, ctx, 'adjacentFrontier'),
     }
 
@@ -460,6 +434,7 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
         tierDefaults.cooldownDays)
 
     local territories = {}
+    local sumX, sumY = 0, 0
     for _, cellName in ipairs(cellNames) do
         local gridX, gridY = cells.parse(cellName)
         if not gridX then
@@ -472,6 +447,9 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
             staged[territoryId] = true
             settlement.territoryIds[#settlement.territoryIds + 1] = territoryId
 
+            local cellCentroid = cellCentre(gridX, gridY)
+            sumX, sumY = sumX + cellCentroid.x, sumY + cellCentroid.y
+
             territories[#territories + 1] = {
                 id = territoryId,
                 kind = 'settlement',
@@ -483,7 +461,7 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
                 region = settlement.region,
                 defaultOwner = def.defaultOwner,
                 cells = { cellName },
-                centroid = cellCentre(gridX, gridY),
+                centroid = cellCentroid,
                 cooldownDays = cooldownDays,
                 tier = tier,
                 adjacentFrontier = {},
@@ -493,6 +471,17 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
 
     if #territories == 0 then
         fail(ctx, 'a settlement needs at least one exterior cell')
+    end
+
+    -- Derived from the footprint unless the pack said otherwise, so a
+    -- fifteen-cell city radiates from its middle rather than from
+    -- whichever cell happened to be listed first. Deriving it here rather
+    -- than in every pack keeps one definition of where a cell is: a pack
+    -- computing this itself has to agree with the frontier generator
+    -- about the grid, and two copies of that arithmetic is how a map ends
+    -- up subtly out of register with its own settlements.
+    if not settlement.centroid then
+        settlement.centroid = { x = sumX / #territories, y = sumY / #territories }
     end
 
     return settlement, territories
@@ -569,6 +558,20 @@ function M.registerLandmass(def)
         M.settlements[settlement.id] = settlement
         M.settlementIds[#M.settlementIds + 1] = settlement.id
         landmass.settlementIds[#landmass.settlementIds + 1] = settlement.id
+        -- Hand the settlement to the faction whose seat it is. Done here
+        -- rather than in prepareSettlement because a settlement may name
+        -- a faction this same call is about to register, and validation
+        -- must not depend on the order the two appear in.
+        local faction = settlement.faction and M.factions[settlement.faction]
+        if faction then
+            faction.seats[#faction.seats + 1] = settlement
+        elseif settlement.faction then
+            -- Not fatal: the settlement is still ground, it simply
+            -- projects for nobody. Dangling ids are reported in full by
+            -- validateReferences().
+            log.warn('settlement "%s" names faction "%s", which is not registered '
+                .. '-- it will project nothing', settlement.id, tostring(settlement.faction))
+        end
         -- An interior has no grid position, so it is not a territory. It
         -- still has to resolve to somewhere, or standing inside Balmora
         -- would report no territory at all.
@@ -606,7 +609,7 @@ end
 --- Add frontier cells to a landmass that is already registered.
 --
 -- Split out from registerLandmass because the frontier grid is derived
--- from the power centers rather than authored alongside them (see
+-- from the settlements rather than authored alongside them (see
 -- core/frontier.lua), so it can only be built once the landmass's
 -- settlements are in the registry.
 --

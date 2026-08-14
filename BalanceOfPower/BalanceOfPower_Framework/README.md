@@ -27,7 +27,7 @@ What exists:
 - the in-game day tick driver
 - territory resolution: projection maths, derived initial control, frontier
   rolls
-- frontier grid generation from registered power centers
+- frontier grid generation from registered settlements
 - the event bus, including the `BoP_DayResolved` scheduling hook
 
 What doesn't exist yet: patrol spawning (phase 4) and player hooks (phase 5).
@@ -40,10 +40,10 @@ and keep their own state. See [glossary.md](../glossary.md).
 
 ## How territory works
 
-Every power center projects influence that decays linearly to zero at its
+Every settlement projects influence that decays linearly to zero at its
 `influenceRange`. A faction's strength at a place is its **strongest single
 projection** there, never the sum — so a faction can't out-project a rival by
-accumulating minor outposts.
+accumulating farms.
 
 Whoever projects most at a territory is who ends up holding it. Not instantly:
 taking ground off an existing owner is a daily roll whose odds are the two
@@ -57,7 +57,7 @@ takes, not who wins it. Ownership only moves when the projection ordering
 changes — which happens when faction power moves.
 
 The starting map is derived the same way. A pack that authors no `defaultOwner`
-gets ownership assigned from its power centers on the first tick, which is what
+gets ownership assigned from its settlements on the first tick, which is what
 makes a procedurally generated frontier grid viable. An authored `defaultOwner`
 overrides that, for a pack that wants a specific starting owner somewhere.
 
@@ -68,7 +68,7 @@ projects nothing and cannot win.
 **Settlements hold themselves, and there is no rule saying so.** Every cell in
 the world goes through the same ownership logic, wilderness and city alike.
 What keeps a settlement with whoever built it is `SEAT_FLOOR`: a faction is
-never weaker at a cell its own power centre occupies than that centre's
+never weaker at a cell its own settlement occupies than that settlement's
 garrison value, scaled by weight.
 
 A number rather than a rule, deliberately. "A settlement cannot change owner"
@@ -105,8 +105,8 @@ Influence ranges are in world units, and **an exterior cell is 8192 units
 across**. That is the ESM3 grid the engine works in, not a Morrowind-specific
 number — it is the same for Tamriel Rebuilt, Project Cyrodiil and Skyrim Home
 of the Nords. Ranges below it project onto nothing but their own cell. The tier
-defaults are sized in cells: roughly 5 (capital), 3 (regional) and 1.5
-(outpost).
+defaults are sized in cells, from a bit over one (`minor location`) to seven
+(`megalopolis`).
 
 A pack that places anything by grid coordinate should read the constant from
 the interface as `BoP.CELL_SIZE` rather than writing 8192 down again — its
@@ -125,18 +125,14 @@ I.BalanceOfPower.registerLandmass({
             displayName = 'House Hlaalu',
             basePower = 50,
             patrolRoster = { 'hlaalu guard' },   -- record ids, never inspected
-            powerCenters = {
-                { id = 'balmora', tier = 'capital', coords = { x = -22000, y = -14000 },
-                  cells = { '#-3,-2', '#-2,-2' } },
-                { id = 'caldera_holdings', tier = 'outpost', coords = { x = -12000, y = 12000 } },
-            },
         },
     },
     territories = {                            -- settlements: named places
         {
             id = 'balmora',
             displayName = 'Balmora',
-            tier = 'city',
+            tier = 'small city',
+            faction = 'hlaalu',                -- whose seat it is, so whose power it projects
             -- One territory per exterior cell: balmora_-3_-2 and
             -- balmora_-2_-2. The interior belongs to the settlement but
             -- is not a territory of its own.
@@ -167,26 +163,38 @@ Anything with a default may be omitted.
 
 **Faction** — `id` (required), `displayName`, `territorial` (default `true`,
 see below), `basePower` (default 50), `growthPerDay` (default 0, see below),
-`hostile` (default `false`, see below), `landmass`, `powerCenters`,
-`patrolRoster` (see below), `reactions` (only for factions with no ESM faction
-record — see below), `extend` (see below).
+`hostile` (default `false`, see below), `landmass`, `patrolRoster` (see below),
+`reactions` (only for factions with no ESM faction record — see below),
+`extend` (see below).
+
+A faction declares no geography of its own. It holds whatever settlements name
+it, which the registry hands it as `seats`.
 
 `growthPerDay` and `hostile` are base configuration like `basePower`: whichever
 pack registers a faction first owns them, and an extending pack setting either
 is ignored with a warning. Which pack won would otherwise depend on load
 order.
 
-**Power center** — `id` (required), `coords` (required, `{x=, y=}`),
-`tier` (`capital` | `regional` | `outpost` | `minor`, default `regional`),
-`weight` and `influenceRange` (both default per tier), `cells` (the ground it
-physically stands on — its faction gets the garrison floor in each). Tier
-defaults exist so a minor holding only needs an id and coordinates.
-
 **Settlement** (`territories`) — `id` (required), `cells` (required — one
-territory is created per exterior cell), `displayName`, `tier` (`outpost` |
-`village` | `town` | `city` | `metropolis`, default `town`), `region`,
-`adjacentFrontier`, `defaultOwner` (omit for unclaimed), `centroid`,
-`cooldownDays` (defaults per tier).
+territory is created per exterior cell), `faction` (whose seat it is; omit for
+an unaffiliated holding that projects nothing), `displayName`, `tier`,
+`region`, `adjacentFrontier`, `defaultOwner` (omit for unclaimed), `centroid`
+(defaults to the middle of its own cells), `weight`, `influenceRange` and
+`cooldownDays` (all three default per tier).
+
+**Tier** is one ladder, smallest to largest:
+
+`minor location` · `outpost` · `village` · `town` · `small city` ·
+`large city` · `metropolis` · `megalopolis`
+
+Default `town`. It is not metadata: it sets how strongly the settlement
+projects, how far, and how long its cells are immune after a flip. Tier
+defaults exist so a farm needs only an id and a cell.
+
+There is **no separate category for things that project.** A settlement is the
+only thing that does. A farm is a `minor location` — it reaches barely past its
+own cell and holds that cell against most comers, which is what a farm should
+do — and it differs from Vivec by the numbers behind its tier, not by kind.
 
 **Frontier cell** (`frontier`) — `id` (required), `centroid` (required),
 `cells`, `adjacentFrontier`, `adjacentSettlements`, `defaultOwner`, `cooldownDays`.
@@ -197,19 +205,22 @@ A faction like Hlaalu holds ground on more than one landmass. The second and
 every later pack marks its entry `extend = true`:
 
 ```lua
-{ id = 'hlaalu', extend = true, powerCenters = { { id = 'bal_foyen', ... } } }
+{ id = 'hlaalu', extend = true, patrolRoster = { 'hlaalu councilor' } }
 ```
 
-Power centers and roster entries are merged in; `basePower`, `displayName` and
-`territorial` stay owned by whichever pack registered the faction first, and an
-extending pack that tries to set them gets a warning. Redefining an id without
-`extend` is an error rather than a silent overwrite.
+The seats need no help: a settlement names its faction, so the second pack's
+holdings attach themselves wherever they are registered. What `extend` carries
+is the faction's own content — roster entries and reactions are merged in, while
+`basePower`, `displayName` and `territorial` stay owned by whichever pack
+registered the faction first, and an extending pack that tries to set them gets
+a warning. Redefining an id without `extend` is an error rather than a silent
+overwrite.
 
 ### Land-holding and power-only factions
 
 `territorial` decides whether a faction appears on the map at all:
 
-- `true` (default) — it owns ground, projects influence from its power centers,
+- `true` (default) — it owns ground, projects influence from its settlements,
   and can be recorded as a territory's owner.
 - `false` — a **power-only** faction. It has a power score, it reacts to
   everyone else through the reaction table, and other systems can read its
@@ -229,7 +240,7 @@ Register the settlements first, then:
 I.BalanceOfPower.generateFrontier({ landmass = 'vvardenfell' })
 ```
 
-It walks outward from every power center registered on that landmass and
+It walks outward from every settlement registered on that landmass and
 creates one territory per exterior cell within reach, skipping cells a
 settlement already claims and grid positions the content files don't define
 (which removes most open ocean for free). It also wires each settlement to the ring
@@ -449,7 +460,7 @@ scripts/BalanceOfPower/
   core/registry.lua  authored data from packs, validation, merging
   core/power.lua     power, reaction propagation, batching
   core/resolve.lua   projection maths, initial control, frontier flips
-  core/frontier.lua  derives the wilderness grid from power centers
+  core/frontier.lua  derives the wilderness grid from settlements
   core/cells.lua     exterior cell naming
   core/mapdump.lua   the text map
   core/driver.lua    the clock: day rollover, catch-up, forced ticks

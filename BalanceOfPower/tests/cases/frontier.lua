@@ -24,27 +24,29 @@ end
 
 --- One settlement at the origin with a two-cell reach, on a defined
 -- 11x11 grid of exterior cells.
+--- The landmass's settlements: whatever the test asked for, or a single
+-- seat at the origin. Either way they are alpha's, and either way they
+-- reach as far as the fixture says -- a settlement is the only thing that
+-- generates a frontier, so a test supplying its own still needs one.
+local function settlements(overrides)
+    local list = overrides.settlements or {
+        { id = 'alpha_seat', tier = 'large city', cells = { '#0,0' } },
+    }
+    for _, entry in ipairs(list) do
+        entry.faction = entry.faction or 'alpha'
+        entry.influenceRange = entry.influenceRange or overrides.range or (2 * CELL)
+    end
+    return list
+end
+
 local function oneSettlement(overrides)
     overrides = overrides or {}
     world._test.defineExteriorGrid(-5, 5, -5, 5, overrides.region)
 
     registry.registerLandmass({
         id = 'testland',
-        factions = {
-            {
-                id = 'alpha',
-                basePower = 50,
-                powerCenters = {
-                    {
-                        id = 'alpha_seat',
-                        tier = 'capital',
-                        coords = cellCentre(0, 0),
-                        influenceRange = overrides.range or (2 * CELL),
-                    },
-                },
-            },
-        },
-        territories = overrides.settlements,
+        factions = { { id = 'alpha', basePower = 50 } },
+        territories = settlements(overrides),
     })
     state.fillDefaults(registry)
 end
@@ -123,18 +125,22 @@ function M.skipsCellsThatDoNotExist()
             {
                 id = 'alpha',
                 basePower = 50,
-                powerCenters = {
-                    { id = 'seat', tier = 'capital',
-                      coords = cellCentre(0, 0), influenceRange = 3 * CELL },
-                },
             },
+        },
+        territories = {
+            { id = 'seat', tier = 'large city', faction = 'alpha',
+              cells = { '#0,0' }, influenceRange = 3 * CELL },
         },
     })
     state.fillDefaults(registry)
 
     local created = generate()
 
-    expect.equal(created, 2, 'only the defined cells')
+    -- One, not two: #0,0 is the seat's own cell and already territory, so
+    -- the only cell left to generate is #1,0. Everything else the seat
+    -- reaches has no cell record behind it.
+    expect.equal(created, 1, 'only the defined cell that is not already the seat')
+    expect.equal(registry.territoryForCell('#0,0').settlement, 'seat', 'the seat keeps its cell')
     expect.truthy(registry.territoryForCell('#1,0'), 'defined cell')
     expect.isNil(registry.territoryForCell('#0,1'), 'undefined cell')
 end
@@ -153,12 +159,11 @@ function M.respectsGranularity()
             {
                 id = 'beta',
                 basePower = 50,
-                powerCenters = {
-                    { id = 'beta_seat', tier = 'capital',
-                      coords = cellCentre(0, 0), influenceRange = 4 * CELL,
-                      landmass = 'coarseland' },
-                },
             },
+        },
+        territories = {
+            { id = 'beta_seat', tier = 'large city', faction = 'beta',
+              cells = { '#0,0' }, influenceRange = 4 * CELL },
         },
     })
     local coarse = frontier.generate({

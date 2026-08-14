@@ -49,10 +49,10 @@ function M.registerLandmass(def)
     return landmass
 end
 
---- Derive a landmass's frontier grid from its registered power centers.
+--- Derive a landmass's frontier grid from its registered settlements.
 -- Call after registerLandmass, once the settlements are in.
 --
--- Only ground within reach of some power center becomes territory, so the
+-- Only ground within reach of some settlement becomes territory, so the
 -- map's size follows from the content rather than from a bounding box.
 -- See core/frontier.lua for the options.
 -- @return number of frontier territories created

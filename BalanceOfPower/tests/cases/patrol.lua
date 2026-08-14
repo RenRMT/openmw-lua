@@ -16,10 +16,6 @@ local M = {}
 
 local CELL = 8192
 
-local function cellCentre(gridX, gridY)
-    return { x = gridX * CELL + CELL / 2, y = gridY * CELL + CELL / 2 }
-end
-
 --------------------------------------------------------------------------
 -- Fixtures
 --------------------------------------------------------------------------
@@ -36,10 +32,6 @@ local function twoRealms(overrides)
             basePower = 50,
             reactions = { invader = -3 },
             patrolRoster = { 'house guard' },
-            powerCenters = {
-                { id = 'house_seat', tier = 'capital', coords = cellCentre(-2, 0),
-                  influenceRange = 3 * CELL, cells = { '#-2,0' } },
-            },
         },
         {
             id = 'invader',
@@ -51,19 +43,11 @@ local function twoRealms(overrides)
                 { id = 'ash ghoul', tier = 2 },
                 { id = 'ascended sleeper', tier = 3 },
             },
-            powerCenters = {
-                { id = 'invader_seat', tier = 'capital', coords = cellCentre(2, 0),
-                  influenceRange = 3 * CELL, cells = { '#2,0' } },
-            },
         },
         -- Holds ground, musters nobody. The opt-out, with no flag.
         {
             id = 'quiet',
             basePower = 50,
-            powerCenters = {
-                { id = 'quiet_seat', tier = 'outpost', coords = cellCentre(-5, 5),
-                  influenceRange = 2 * CELL, cells = { '#-5,5' } },
-            },
         },
     }
     for _, faction in ipairs(factions) do
@@ -75,13 +59,17 @@ local function twoRealms(overrides)
     registry.registerLandmass({
         id = 'testland',
         factions = factions,
+        -- Each town is its faction's seat as well as its ground, so the
+        -- reach that puts the invader on the house's border is declared
+        -- once. Ranges are explicit because these tests were written
+        -- against them, not against the tier defaults.
         territories = {
-            { id = 'housetown', tier = 'town', cells = { '#-2,0' },
-              centroid = cellCentre(-2, 0) },
-            { id = 'invadertown', tier = 'town', cells = { '#2,0' },
-              centroid = cellCentre(2, 0) },
-            { id = 'quietpost', tier = 'outpost', cells = { '#-5,5' },
-              centroid = cellCentre(-5, 5) },
+            { id = 'housetown', tier = 'town', faction = 'house',
+              cells = { '#-2,0' }, influenceRange = 3 * CELL },
+            { id = 'invadertown', tier = 'town', faction = 'invader',
+              cells = { '#2,0' }, influenceRange = 3 * CELL },
+            { id = 'quietpost', tier = 'outpost', faction = 'quiet',
+              cells = { '#-5,5' }, influenceRange = 2 * CELL },
         },
     })
     state.fillDefaults(registry)

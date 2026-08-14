@@ -22,14 +22,14 @@ load **before** this mod.
 
 | | Vvardenfell | Solstheim |
 |---|---|---|
-| Holdings | 59 | 4 |
-| Of those, settlements | 33 | 3 |
-| Settlement cells | 64 | 4 |
-| Generated frontier cells | ~540 | ~20 |
+| Settlements | 57 | 4 |
+| Settlement cells | 86 | 7 |
+| Generated frontier cells | ~375 | ~43 |
 
-63 holdings in total, 36 of them settlements. Everything else — farms, shacks,
-mines, minor manors — is a power center only: it shapes who a region belongs to
-without being a place on the map.
+61 settlements in total. Every holding is one: farms, shacks, mines and minor
+manors are `minor location` settlements, projecting a little and holding their
+own cell. The CSV lists 63 holdings; two are dropped for sharing a cell with a
+larger neighbour.
 
 ### Factions
 
@@ -83,7 +83,7 @@ There is no authored ownership anywhere in this pack. The whole map falls out
 of where the settlements are. Registering Balmora as a Hlaalu seat is what
 makes the West Gash Hlaalu ground; nobody writes down that the West Gash is
 Hlaalu, and nobody writes down that Red Mountain is the Sixth House's — it
-holds its own seat because it has a power centre there and nobody else reaches
+holds its own seat because its settlement stands there and nobody else reaches
 it.
 
 That's what makes the ~560 generated frontier cells viable — there is no second
@@ -93,30 +93,29 @@ Ownership at load, derived:
 
 | Faction | Cells |
 |---|---|
-| Redoran | 120 |
-| Hlaalu | 111 |
-| Telvanni | 66 |
-| The Empire | 63 |
-| Temple | 61 |
-| Skaal | 16 |
+| Redoran | 88 |
+| Temple | 86 |
+| Hlaalu | 68 |
+| The Empire | 42 |
+| Telvanni | 31 |
 | East Empire Company | 12 |
 | Ashlanders | 6 |
+| Skaal | 3 |
 | Sixth House | 1 |
 | *unclaimed* | 174 |
 
-630 cells in total — 68 belonging to settlements, 562 frontier. The unclaimed
+511 cells in total — 93 belonging to settlements, 418 frontier. The unclaimed
 ones are within reach of somebody but below the claim threshold: genuine
 expansion room rather than dead ground.
 
-By cell state at load: 404 consolidated, 52 uncontested, 174 unclaimed and
+By cell state at load: 294 consolidated, 43 uncontested, 174 unclaimed and
 **nothing contested**. That last figure is correct rather than suspicious —
 initial control hands every cell to its strongest projector, so no owner starts
 out being out-projected. The map only develops fronts once power moves.
 
-Minor holdings hold their own cell 16 times out of 17, the exception being one
-that sits next to a far larger neighbour. That is the garrison floor working as
-intended: a farm is a one-cell island of its owner inside whoever's country
-surrounds it.
+Every minor holding with a faction behind it — 15 of 15 — holds its own cell.
+That is the garrison floor working as intended: a farm is a one-cell island of
+its owner inside whoever's country surrounds it.
 
 ## Editing the data
 
@@ -145,18 +144,22 @@ the mainland, which arrives with a Tamriel Rebuilt pack.
 
 ### Tier mapping
 
-| CSV tier | Settlement | Power center |
-|---|---|---|
-| Metropolis | `metropolis` | `capital` |
-| Small City | `city` | `capital` |
-| Town | `town` | `regional` |
-| Village | `village` | `regional` |
-| Outpost/Fortress/Camp | `outpost` | `outpost` |
-| Minor location | — *(power center only)* | `minor` |
+| CSV tier | Framework tier |
+|---|---|
+| Metropolis | `metropolis` |
+| Small City | `small city` |
+| Town | `town` |
+| Village | `village` |
+| Outpost/Fortress/Camp | `outpost` |
+| Minor location | `minor location` |
 
-A power center's cells are handed to the framework along with its coordinates,
-because that is what gives its faction the garrison floor there. It is why a
-minor holding keeps its own cell without being a settlement.
+Every row becomes a settlement. There is no second category — a farm is a
+settlement of the smallest tier, projecting a little and holding its own cell,
+which is exactly what a farm should do.
+
+The CSV's vocabulary is Morrowind's and stays in this pack; the right-hand
+column is the framework's own ladder. That mapping is the only reason this
+table exists, and it is why the framework never learns what a "Small City" is.
 
 `Velothi/Unaffiliated` is not a faction — it marks a holding with no political
 owner, which projects nothing and starts unclaimed.
@@ -168,9 +171,20 @@ survives:
 
 - **Thirsk** is promoted from `Minor location` to `Village`. It's a mead hall
   with its own warrior population and a faction behind it, not a farmstead.
-- **Arvs-Drelen** is demoted to `Minor location`. It shares cell `-11,11` with
-  Gnisis, and one cell can only belong to one settlement; as a power center the
-  Telvanni presence in the West Gash still registers.
+
+Two holdings are dropped outright, because they stand in a cell another holding
+already occupies and the simulation has room for one owner per cell. There is
+no tier that resolves this: a holding used to be able to duck the collision by
+being a power center and not a settlement, projecting into a cell without
+claiming it, and now that every holding is a settlement something has to give.
+
+- **Arvs-Drelen** shares cell `-11,11` with Gnisis. A Redoran town outranks a
+  Telvanni tower standing in it, so Gnisis takes the cell and the Telvanni lose
+  their foothold in the West Gash — the one real casualty of the merge, and the
+  place to look if Telvanni influence there ever reads thin.
+- **Nilera's Farm** shares cell `4,-8` with Piernette's Farm. Both are Hlaalu
+  holdings of the same tier, so which survives changes nothing: projection takes
+  the strongest single seat, never the sum.
 
 ## Tuning
 
@@ -257,5 +271,5 @@ scripts/BalanceOfPowerMorrowind/
   main.lua                 GLOBAL: registration + frontier generation
   data/settlements.lua     GENERATED -- do not edit
   data/factions.lua        faction list and authored reactions
-  data/build.lua           holdings -> settlements and power centers
+  data/build.lua           holdings -> settlements
 ```

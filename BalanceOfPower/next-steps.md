@@ -17,7 +17,7 @@ Near-term and actionable. The full phase breakdown is in
 | 6 — Invasion | **Dissolved.** It was two fields on a faction |
 | 7 — Tuning and UX | Not started |
 
-**158 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
+**162 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
 that loads the real Morrowind pack through its own `main.lua` headlessly. What
 tests cannot cover: whether the faction ids match real ESM records, whether the
 derived map looks right against the actual game world, and first-tick timing
@@ -54,10 +54,10 @@ its own, so it composes with the pack rather than colliding with it.
 At load you should see roughly:
 
 ```
-[BalanceOfPower] registered landmass "vvardenfell": 15 factions, 33 settlements over 64 cells, 0 frontier cells
-[BalanceOfPower] registered landmass "solstheim": 3 factions, 3 settlements over 4 cells, 0 frontier cells
-[BalanceOfPower] generated ~540 frontier cells for "vvardenfell" from ... power centers
-[BalanceOfPower] initial control assigned by projection: ~456 territories claimed
+[BalanceOfPower] registered landmass "vvardenfell": 22 factions, 57 settlements over 86 cells, 0 frontier cells
+[BalanceOfPower] registered landmass "solstheim": 3 factions, 4 settlements over 7 cells, 0 frontier cells
+[BalanceOfPower] generated ~375 frontier cells for "vvardenfell" from ... settlements
+[BalanceOfPower] initial control assigned by projection: ~337 territories claimed
 ```
 
 Then check, in the log or via `luag`:
@@ -124,25 +124,35 @@ change immediately, where `owner` only catches up after days of rolls. Combine
 with `reloadlua` to edit `config.lua` and see the result without restarting.
 
 The single most important dial is `influenceRange` per tier in the framework's
-`config.lua`, because ownership is derived from projection. Current values are
-~5 / ~3 / ~1.5 / ~1.2 cells for capital / regional / outpost / minor.
+`config.lua`, because ownership is derived from projection. The ladder runs
+from ~1.2 cells (`minor location`) to ~7 (`megalopolis`), with `town` at ~3.
+
+The tier merge shrank the generated frontier from ~560 cells to ~418: `small
+city` and `village` no longer inherit the reach of the old `capital` and
+`regional` tiers, which they shared with `metropolis` and `town` respectively.
+Widening those two is the first thing to try if the map now reads too small.
 
 Things to look for:
 
 - **Regions that read wrong.** If the Ascadian Isles come out Temple rather
-  than Hlaalu, Vivec's `capital` range is drowning the plantation belt.
+  than Hlaalu, Vivec's `metropolis` range is drowning the plantation belt. The
+  Temple now holds 86 cells to Hlaalu's 68, which is worth a look.
 - **Too much unclaimed ground.** 174 cells start unowned. That's expansion
   room, but if it's mostly interior rather than coastal, ranges are too short.
 - **Whether `SEAT_FLOOR = 250` is right.** It makes a settlement takeable only
-  by roughly ten times a faction's starting standing, and gives minor holdings
-  their own cell 16 times out of 17. Raise it for more stubborn one-cell
-  islands; lower it to let a strong invader take a city.
+  by roughly ten times a faction's starting standing, and every minor holding
+  with a faction behind it — 15 of 15 — keeps its own cell. Raise it for more
+  stubborn one-cell islands; lower it to let a strong invader take a city.
+- **Telvanni at 31 cells**, down from 66 before the tier merge. Sadrith Mora is
+  a `small city` where it used to project at what is now `large city` reach.
+  Whether that is a correction or an over-correction is a question for the map,
+  not the table.
 - **Ashlanders holding almost nothing** (6 cells). Their camps are
   `outpost` tier, which may be too weak for a faction that nominally roams the
   whole Ashlands.
 
-Per-faction overrides go on the power center, so a pack can give Telvanni long
-weak reach and Hlaalu short strong reach without touching the framework.
+Per-settlement overrides sit on the settlement, so a pack can give Telvanni
+long weak reach and Hlaalu short strong reach without touching the framework.
 
 ---
 
@@ -193,7 +203,7 @@ and is tested.
 
 - **`FRONTIER_GENERATION_MARGIN` is 0 for a reason.** Influence decays to
   exactly zero at `influenceRange`, so ground beyond it can never be held by
-  anyone. Only raise it for a pack where power centers can appear at runtime.
+  anyone. Only raise it for a pack where settlements can appear at runtime.
 - **`adjacentFrontier` on frontier cells is tracked but unread.** Only settlements
   use theirs. Kept deliberately, exposed through the API, available when a
   later phase wants real adjacency.

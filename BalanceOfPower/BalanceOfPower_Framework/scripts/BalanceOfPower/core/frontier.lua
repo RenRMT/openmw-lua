@@ -7,22 +7,22 @@
 --
 -- The generator is landmass-agnostic on purpose, and has to stay that
 -- way. It knows nothing about Morrowind, cell naming conventions or
--- which factions exist: it reads the power centers already in the
+-- which factions exist: it reads the settlements already in the
 -- registry and works outward from them. A pack supplies data, never
 -- behaviour.
 --
 -- **Only ground somebody can actually reach becomes a territory.** The
--- union of every power center's influence radius defines the grid, so
+-- union of every settlement's influence radius defines the grid, so
 -- open ocean and deep wilderness never exist as territories rather than
 -- existing and being skipped. That keeps the daily pass small by
 -- construction instead of by optimization, and keeps the save file
 -- proportional to the inhabited world.
 --
 -- Note that the union is bounded by influence range, not by power:
--- influence decays to exactly zero at a center's range, so no amount of
+-- influence decays to exactly zero at a settlement's range, so no amount of
 -- power reaches past it. That makes the ceiling real but harmless -- the
 -- ground left ungenerated is ground nobody could ever have held anyway.
--- FRONTIER_GENERATION_MARGIN exists for packs that add power centers at
+-- FRONTIER_GENERATION_MARGIN exists for packs that add settlements at
 -- runtime, where the reachable region genuinely can grow, and defaults
 -- to zero for everyone else.
 --
@@ -78,13 +78,13 @@ end
 -- Generation
 --------------------------------------------------------------------------
 
---- Generate frontier territories around a landmass's power centers.
+--- Generate frontier territories around a landmass's settlements.
 --
 -- @param def table
---   landmass              string, required; only centers on it are used
+--   landmass              string, required; only seats on it are used
 --   cellSize              world units per exterior cell
 --   cellsPerUnit          exterior cells per territory, per axis (1 = one each)
---   margin                extra world units beyond each center's range
+--   margin                extra world units beyond each seat's range
 --   idPrefix              prefix for generated territory ids
 --   requireExistingCell   skip grid positions with no cell record
 -- @return number of frontier territories created
@@ -119,10 +119,10 @@ function M.generate(def)
     end
 
     ----------------------------------------------------------------------
-    -- 1. Claim every block within reach of a power center.
+    -- 1. Claim every block within reach of a settlement.
     ----------------------------------------------------------------------
 
-    local blocks, order, centerCount = {}, {}, 0
+    local blocks, order, seatCount = {}, {}, 0
 
     local function claim(blockX, blockY)
         local id = key(blockX, blockY)
@@ -150,21 +150,21 @@ function M.generate(def)
 
     for _, faction in pairs(registry.factions) do
         if faction.territorial then
-            for _, centre in ipairs(faction.powerCenters) do
-                if centre.landmass == landmassId then
-                    centerCount = centerCount + 1
-                    local reach = centre.influenceRange + margin
-                    local minX = math.floor((centre.coords.x - reach) / blockSize)
-                    local maxX = math.floor((centre.coords.x + reach) / blockSize)
-                    local minY = math.floor((centre.coords.y - reach) / blockSize)
-                    local maxY = math.floor((centre.coords.y + reach) / blockSize)
+            for _, seat in ipairs(faction.seats) do
+                if seat.landmass == landmassId then
+                    seatCount = seatCount + 1
+                    local reach = seat.influenceRange + margin
+                    local minX = math.floor((seat.centroid.x - reach) / blockSize)
+                    local maxX = math.floor((seat.centroid.x + reach) / blockSize)
+                    local minY = math.floor((seat.centroid.y - reach) / blockSize)
+                    local maxY = math.floor((seat.centroid.y + reach) / blockSize)
 
                     for blockX = minX, maxX do
                         for blockY = minY, maxY do
                             -- Against the disc itself, not its bounding
                             -- box, so the generated region is round.
-                            local dx = (blockX + 0.5) * blockSize - centre.coords.x
-                            local dy = (blockY + 0.5) * blockSize - centre.coords.y
+                            local dx = (blockX + 0.5) * blockSize - seat.centroid.x
+                            local dy = (blockY + 0.5) * blockSize - seat.centroid.y
                             -- Strictly inside: influence is exactly zero
                             -- at the range itself, so a cell on the
                             -- boundary could never be held by anybody.
@@ -178,8 +178,8 @@ function M.generate(def)
         end
     end
 
-    if centerCount == 0 then
-        log.warn('generateFrontier("%s"): no power centers on this landmass, nothing generated',
+    if seatCount == 0 then
+        log.warn('generateFrontier("%s"): no settlements on this landmass, nothing generated',
             landmassId)
         return 0
     end
@@ -317,9 +317,9 @@ function M.generate(def)
         wired = wired + 1
     end
 
-    log.info('generated %d frontier cells for "%s" from %d power centers '
+    log.info('generated %d frontier cells for "%s" from %d settlements '
         .. '(%d blocks already settled, %d settlements given a ring)',
-        #definitions, landmassId, centerCount, skipped, wired)
+        #definitions, landmassId, seatCount, skipped, wired)
     return #definitions
 end
 

@@ -1,7 +1,7 @@
 -- Territory resolution: who holds what, and how that changes (design
 -- doc 3.2 and 3.4).
 --
--- The model in one paragraph. Every power center projects influence that
+-- The model in one paragraph. Every settlement projects influence that
 -- decays with distance; a faction's strength at a given place is its
 -- strongest single projection there, never the sum, so a faction can't
 -- out-project a rival by accumulating minor outposts. Whoever projects
@@ -61,7 +61,7 @@ local function distanceBetween(a, b)
     return math.sqrt(dx * dx + dy * dy)
 end
 
---- Linear falloff from 1 at the power center to 0 at influenceRange.
+--- Linear falloff from 1 at the settlement to 0 at influenceRange.
 function M.proximityFactor(distance, influenceRange)
     if influenceRange <= 0 then
         return 0
@@ -74,7 +74,7 @@ end
 --------------------------------------------------------------------------
 
 -- How far a faction reaches into a territory is fixed: it depends only
--- on the distance from its power centers and their ranges, none of which
+-- on the distance from its settlements and their ranges, none of which
 -- move. Only the faction's *power* changes from day to day, and that's a
 -- single multiplication.
 --
@@ -109,26 +109,27 @@ local function buildProjections()
                 -- territory's reach list at all.
                 if faction.territorial then
                     local best, floor = 0, 0
-                    for _, centre in ipairs(faction.powerCenters) do
-                        -- The strongest single center, never the sum
+                    for _, seat in ipairs(faction.seats) do
+                        -- The strongest single seat, never the sum
                         -- (doc 3.2). Summing would let a faction
                         -- out-project a rival purely by accumulating
-                        -- minor outposts; max says a place is under the
-                        -- influence of whichever foothold is nearest.
-                        local weighted = centre.weight * M.proximityFactor(
-                            distanceBetween(centroid, centre.coords), centre.influenceRange)
+                        -- farms; max says a place is under the influence
+                        -- of whichever holding is nearest.
+                        local weighted = seat.weight * M.proximityFactor(
+                            distanceBetween(centroid, seat.centroid), seat.influenceRange)
                         if weighted > best then
                             best = weighted
                         end
-                        -- Standing on its own ground. A center occupying
-                        -- this cell can't be projected out of it, which
-                        -- is what stops settlements changing hands
-                        -- without a rule anywhere saying they can't.
-                        for _, cellName in ipairs(centre.cells) do
+                        -- Standing on its own ground. A settlement
+                        -- occupying this cell can't be projected out of
+                        -- it, which is what stops settlements changing
+                        -- hands without a rule anywhere saying they
+                        -- can't.
+                        for _, cellName in ipairs(seat.cells) do
                             if cellName == ownCell then
-                                local seat = config.SEAT_FLOOR * centre.weight
-                                if seat > floor then
-                                    floor = seat
+                                local floorHere = config.SEAT_FLOOR * seat.weight
+                                if floorHere > floor then
+                                    floor = floorHere
                                 end
                             end
                         end
@@ -161,7 +162,7 @@ function M.projectionFactors(territory)
     return projections[territory.id] or EMPTY
 end
 
---- Force a rebuild. Only needed if a pack mutates power center geometry
+--- Force a rebuild. Only needed if a pack mutates settlement geometry
 -- after registration, which it shouldn't.
 function M.invalidateProjections()
     projections = nil
@@ -169,7 +170,7 @@ end
 
 --- How strong a faction is at a territory: its power scaled by how far
 -- its nearest foothold reaches there, and never less than the garrison
--- floor of a power center standing on this very cell.
+-- floor of a settlement standing on this very cell.
 function M.effectivePower(factionId, territory)
     local entry = M.projectionFactors(territory)
     local factor = entry.factors[factionId]
@@ -304,7 +305,7 @@ function M.assignInitialControl()
     local claimed = 0
 
     -- Order-independent: each territory is judged only against the
-    -- power centres, never against its neighbours' ownership, so
+    -- settlements, never against its neighbours' ownership, so
     -- iteration order can't change the result.
     for id, territory in pairs(registry.territories) do
         if state.getOwner(id) == nil then

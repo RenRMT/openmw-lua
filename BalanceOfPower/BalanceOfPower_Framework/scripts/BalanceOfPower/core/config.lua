@@ -97,36 +97,63 @@ M.HOSTILITY_REACTION_THRESHOLD = -3
 M.ALL_FACTIONS_HOSTILE = false
 
 --------------------------------------------------------------------------
--- Power centers
+-- Settlements
 --------------------------------------------------------------------------
 
--- Per-tier fallbacks for a power center's projection strength and the
--- distance at which its contribution decays to zero (world units).
--- Design doc 3.2: minor holdings should be authorable without individual
--- tuning, so an outpost only needs an id and coords.
+-- The tier ladder, smallest to largest. This is the ranking: a pack
+-- naming a tier is placing its holding on this scale and nothing else,
+-- and every number below follows the order.
+M.SETTLEMENT_TIER_ORDER = {
+    'minor location',
+    'outpost',
+    'village',
+    'town',
+    'small city',
+    'large city',
+    'metropolis',
+    'megalopolis',
+}
+
+-- Per-tier fallbacks, so a farm needs an id and a cell and nothing else.
+--
+--   weight          how strongly it projects, and what scales SEAT_FLOOR
+--   influenceRange  world units at which its contribution reaches zero
+--   cooldownDays    how long its cells are immune after changing hands
 --
 -- Scale matters more than it looks. An exterior cell is CELL_SIZE units
 -- across -- 8192 -- so the design document's illustrative 6000 would not
--- reach even the neighbouring cell -- a capital would project onto
--- nothing but itself, and no frontier cell would ever be contested. The
--- doc's figure predates the settlement/frontier split; these are sized in
--- cells instead: roughly 5, 3 and 1.5 cells of reach.
-M.POWER_CENTER_DEFAULTS = {
-    capital  = { weight = 1.00, influenceRange = 40000 },
-    regional = { weight = 0.50, influenceRange = 24000 },
-    outpost  = { weight = 0.25, influenceRange = 12000 },
+-- reach even the neighbouring cell: a city would project onto nothing but
+-- itself and no frontier cell would ever be contested. These are sized in
+-- cells instead, from a bit over one to seven.
+--
+-- A settlement is the only thing that projects, so the ladder is the
+-- whole of the map's shape. Two tiers sharing a weight makes the two
+-- indistinguishable in play, which is what the previous split did to
+-- Vivec and Balmora -- both landed on one "capital" tier and projected
+-- identically, and no amount of tuning could tell them apart.
+M.SETTLEMENT_TIERS = {
     -- Farms, shacks, mines, minor manors. Individually negligible and
     -- barely reaching past their own cell, but they cluster -- a
     -- plantation belt is a dozen of these overlapping, which is what
     -- makes a region read as belonging to somebody without any single
-    -- holding being worth contesting.
-    minor    = { weight = 0.15, influenceRange = 10000 },
+    -- holding being worth a war.
+    ['minor location'] = { weight = 0.15, influenceRange = 10000, cooldownDays = 5 },
+    outpost            = { weight = 0.25, influenceRange = 12000, cooldownDays = 10 },
+    village            = { weight = 0.35, influenceRange = 16000, cooldownDays = 15 },
+    town               = { weight = 0.50, influenceRange = 24000, cooldownDays = 25 },
+    ['small city']     = { weight = 0.75, influenceRange = 32000, cooldownDays = 40 },
+    ['large city']     = { weight = 1.00, influenceRange = 40000, cooldownDays = 60 },
+    metropolis         = { weight = 1.25, influenceRange = 48000, cooldownDays = 90 },
+    -- Nothing in Morrowind is one. It exists so a pack for a larger
+    -- landmass has somewhere to put its imperial capital without having
+    -- to redefine what a metropolis means everywhere else.
+    megalopolis        = { weight = 1.50, influenceRange = 56000, cooldownDays = 120 },
 }
 
-M.DEFAULT_POWER_CENTER_TIER = 'regional'
+M.DEFAULT_SETTLEMENT_TIER = 'town'
 
--- A faction is never weaker at a cell its own power center occupies than
--- this, scaled by the center's weight.
+-- A faction is never weaker at a cell its own settlement occupies than
+-- this, scaled by the settlement's weight.
 --
 -- This is what makes settlements hold themselves, and it is deliberately
 -- a number rather than a rule. "A settlement cannot change owner" would
@@ -139,10 +166,10 @@ M.DEFAULT_POWER_CENTER_TIER = 'regional'
 --
 -- For scale, against the tier weights above:
 --
---   capital  1.00 -> 250   nothing plausible outranks a city
---   regional 0.50 -> 125
---   outpost  0.25 ->  62
---   minor    0.15 ->  37   holds its own cell unless a city is adjacent
+--   megalopolis    1.50 -> 375
+--   large city     1.00 -> 250   nothing plausible outranks a city
+--   town           0.50 -> 125
+--   minor location 0.15 ->  37   holds its own cell unless a city adjoins
 --
 -- Raising it makes minor holdings more stubborn, which produces more
 -- one-cell islands inside a rival's country. Lowering it eventually lets
@@ -153,19 +180,6 @@ M.SEAT_FLOOR = 250
 --------------------------------------------------------------------------
 -- Territory
 --------------------------------------------------------------------------
-
-M.DEFAULT_SETTLEMENT_TIER = 'town'
-
--- Per-tier fallbacks for settlements. The tier is otherwise metadata:
--- an extension needs to know Vivec is a metropolis and Gnaar Mok is a
--- village, and it should not have to work that out from cell counts.
-M.SETTLEMENT_DEFAULTS = {
-    outpost    = { cooldownDays = 10 },
-    village    = { cooldownDays = 15 },
-    town       = { cooldownDays = 25 },
-    city       = { cooldownDays = 60 },
-    metropolis = { cooldownDays = 90 },
-}
 
 -- Frontier cells are the layer that's meant to visibly creep, so they
 -- recover from a flip far faster than a settlement does.
@@ -196,7 +210,7 @@ M.CELL_SIZE = 8192
 -- the main lever on the performance risk in design doc 7.
 M.FRONTIER_CELLS_PER_UNIT = 1
 
--- Extra reach, in world units, beyond each power center's influence
+-- Extra reach, in world units, beyond each settlement's influence
 -- range when deciding which cells to generate.
 --
 -- Zero, and that is the right default. It is tempting to add slack "so a
@@ -207,7 +221,7 @@ M.FRONTIER_CELLS_PER_UNIT = 1
 -- in the save, iterated every day, and ownable by nobody. On the
 -- Morrowind pack a one-cell margin alone produced 482 of them.
 --
--- Raise it only for a pack that expects power centers to appear at
+-- Raise it only for a pack that expects settlements to appear at
 -- runtime, where the reachable region genuinely can grow.
 M.FRONTIER_GENERATION_MARGIN = 0
 

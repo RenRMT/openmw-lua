@@ -28,24 +28,23 @@ setting selects a direction. Getting it backwards anyway is silent — symmetric
 pairs behave identically either way, and the framework shipped it backwards for
 three phases before an asymmetric pair caught it.
 
-**Power centre** — a point on the map that projects a faction's power outward.
-Every settlement is a power centre; **not every power centre is a settlement.**
-Farms, shacks and mines are power centres that are not settlements: they shape
-who a region belongs to without being places anything happens.
+**Seat** — a settlement, seen from its faction's side. A faction has no
+geography of its own; it holds seats, and a seat is a settlement that names it.
+There is no such thing as a projector that is not a settlement: a farm is a
+settlement of the smallest tier, not a different sort of thing.
 
-**Weight** — a power centre's share of its faction's power, by tier. A capital
-projects at full weight, a minor holding at a fraction of it.
+**Weight** — a settlement's share of its faction's power, by tier. A city
+projects at full weight, a minor location at a fraction of it.
 
-**Influence range** — the distance at which a power centre's contribution
-decays to exactly zero. Beyond it a faction projects nothing there, however
-powerful it is — which is why ground outside every influence range is never
-generated as territory at all.
+**Influence range** — the distance at which a settlement's contribution decays
+to exactly zero. Beyond it a faction projects nothing there, however powerful
+it is — which is why ground outside every influence range is never generated as
+territory at all.
 
 **Power projection** — a faction's power at a particular place: its raw power
-scaled by distance decay from its nearest power centre. A faction's projection
-somewhere is its **strongest single** power centre's contribution, never the
-sum of several — so a faction cannot out-project a rival by accumulating minor
-holdings.
+scaled by distance decay from its nearest seat. A faction's projection
+somewhere is its **strongest single** settlement's contribution, never the sum
+of several — so a faction cannot out-project a rival by accumulating farms.
 
 **Reach** — which factions project *anything at all* onto a place, however
 small. Distinct from projecting *above the claim threshold*. Reach is fixed
@@ -67,16 +66,32 @@ two words are near enough to interchangeable in practice, but they are not the
 same idea: a cell is the engine's, a territory is this system's, and interior
 cells are cells that are not territories.
 
-**Settlement** — a place with a name: a city, town, village, fort or camp. A
-settlement is a *group of territories*, not a territory. Vivec is one
-settlement over fifteen cells, each of which is separately ownable and all of
-which carry the same `settlement` tag.
+**Settlement** — a named place, and **the only thing on the map that projects
+power.** A settlement is a *group of territories*, not a territory: Vivec is one
+settlement over fifteen cells, each separately ownable and all carrying the same
+`settlement` tag.
 
-A settlement has a tier (`metropolis`, `city`, `town`, `village`, `outpost`),
-which is metadata — nothing in the simulation branches on it.
+Every holding is one, down to a single farm. There is no second category for
+things too small to be places — a farm is a `minor location`, projecting a
+little and holding its own cell, and it differs from Vivec by the numbers behind
+its tier rather than by kind.
+
+**Tier** — where a settlement sits on one ladder, smallest to largest:
+
+`minor location` · `outpost` · `village` · `town` · `small city` ·
+`large city` · `metropolis` · `megalopolis`
+
+The tier is not metadata. It sets three things at once: how strongly the
+settlement projects (weight), how far (influence range), and how long its cells
+are immune after changing hands (cooldown).
+
+**Faction** (of a settlement) — whose seat it is, and so whose power it
+projects. Not the same question as who *owns* the ground: ownership is derived
+and can flip, while a settlement goes on projecting for the faction that built
+it. A settlement with no faction is ordinary ground with a name.
 
 **Garrison floor** — the projection a faction is guaranteed at a cell its own
-power centre occupies, scaled by that centre's weight. It is what keeps a
+settlement occupies, scaled by that settlement's weight. It is what keeps a
 settlement with whoever built it, and it is a number rather than a rule, so
 there is no "settlements cannot change owner" branch anywhere. A holding with
 weight 0 gets a floor of 0 and behaves like open ground.

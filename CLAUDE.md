@@ -71,9 +71,15 @@ Output goes to `openmw.log`.
 ## Rules that must not be broken
 
 **The framework never names content.** `BalanceOfPower_Framework/` knows nothing
-about Morrowind, faction ids, or what a "Small City" is. The day `core/` needs
+about Morrowind, faction ids, or that Balmora is Hlaalu's. The day `core/` needs
 `if landmass == 'cyrodiil'`, the abstraction has failed. Content packs depend on
 the framework; never the reverse.
+
+The settlement tier ladder is the edge case worth understanding: the framework
+owns generic size words (`village`, `town`, `small city`, `metropolis`), and the
+pack maps its own source vocabulary onto them in `build_settlements.py`. A tier
+name that only makes sense in one game world belongs on the pack's side of that
+mapping.
 
 **Content packs reach the framework only through its interface.** The merged VFS
 technically lets a pack `require` a core module directly. Doing so couples it to

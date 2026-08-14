@@ -41,12 +41,16 @@ function M.loadsWithoutError()
     expect.truthy(registry.factions['sixth house'], 'the Sixth House is an ordinary faction')
 end
 
-function M.registersEveryHoldingAsASettlementOrPowerCentre()
+--- Every holding in the source list is a settlement. There is no second
+-- category: a farm is a settlement of the smallest tier, which is why
+-- this number is the whole list rather than a subset of it.
+function M.registersEveryHoldingAsASettlement()
     loadPack()
-    -- 36 settlements out of 63 holdings, per the build script.
-    expect.equal(#registry.settlementIds, 36, 'settlements')
+    -- 61 holdings, per the build script -- 63 in the CSV, less the two
+    -- that share a cell with a larger neighbour.
+    expect.equal(#registry.settlementIds, 61, 'settlements')
     -- And every one of their cells is a territory of its own.
-    expect.greater(#registry.settlementCellIds, 36, 'settlements span more cells than that')
+    expect.greater(#registry.settlementCellIds, 61, 'settlements span more cells than that')
 end
 
 function M.hasNoReferenceProblems()
@@ -64,15 +68,15 @@ function M.mergesFactionsAcrossLandmasses()
     expect.truthy(empire, 'the Empire is registered')
 
     local landmasses = {}
-    for _, centre in ipairs(empire.powerCenters) do
-        landmasses[centre.landmass] = true
+    for _, seat in ipairs(empire.seats) do
+        landmasses[seat.landmass] = true
     end
     expect.truthy(landmasses.vvardenfell, 'holds ground on Vvardenfell')
     expect.truthy(landmasses.solstheim, 'and on Solstheim')
 end
 
---- Guilds have standing but no geography. If one ever acquires a power
--- center, something has mis-mapped a settlement onto it.
+--- Guilds have standing but no geography. If one ever acquires a seat,
+-- something has mis-mapped a settlement onto it.
 function M.powerOnlyFactionsHoldNothing()
     loadPack()
 
@@ -81,7 +85,7 @@ function M.powerOnlyFactionsHoldNothing()
         local faction = registry.factions[id]
         expect.truthy(faction, id .. ' is registered')
         expect.falsy(faction.territorial, id .. ' holds no land')
-        expect.count(faction.powerCenters, 0, id .. ' has no power centres')
+        expect.count(faction.seats, 0, id .. ' holds no settlement')
         expect.greater(power.getLive(id), 0, id .. ' still has standing')
     end
 end
@@ -122,12 +126,30 @@ function M.takesTheCellSizeFromTheFramework()
     end
 end
 
---- Refusing to guess is the point: a pack that can't reach the framework
--- constant must fail loudly rather than fall back to a literal.
-function M.refusesToPlanWithoutACellSize()
-    expect.raises(function()
-        require('scripts.BalanceOfPowerMorrowind.data.build').plan({}, nil)
-    end, 'cell size', 'no silent default')
+--- The pack no longer does grid arithmetic of its own: it hands over cell
+-- names and the framework derives every centroid from them. This pins
+-- that, because a pack that starts computing world coordinates again has
+-- to agree with the frontier generator about where a cell is, and the
+-- two drifting apart is silent.
+function M.leavesGridArithmeticToTheFramework()
+    loadPack()
+
+    local balmora = registry.settlements.balmora
+    expect.truthy(balmora, 'balmora is registered')
+    expect.truthy(balmora.centroid, 'and has a derived centroid')
+
+    -- The mean of its cells, not the first of them. Balmora spans
+    -- several, and a city radiating from whichever cell happened to be
+    -- listed first would be off-centre by a cell or more.
+    local sumX, sumY = 0, 0
+    for _, territoryId in ipairs(balmora.territoryIds) do
+        local territory = registry.territories[territoryId]
+        sumX, sumY = sumX + territory.centroid.x, sumY + territory.centroid.y
+    end
+    local count = #balmora.territoryIds
+    expect.greater(count, 1, 'balmora spans more than one cell')
+    expect.near(balmora.centroid.x, sumX / count, 1e-6, 'centroid is the footprint mean')
+    expect.near(balmora.centroid.y, sumY / count, 1e-6, 'on both axes')
 end
 
 --------------------------------------------------------------------------
@@ -380,16 +402,28 @@ end
 --- A settlement's ring is what `isSurrounded` reads, and packs can't name
 -- generated cells themselves. If this regresses, no settlement can ever
 -- be reported as surrounded and an extension built on that goes quiet.
+--- Every settlement anyone can reach gets a ring of frontier cells, or
+-- isSurrounded() could never report it.
+--
+-- The exception is derived rather than listed: a handful of unaffiliated
+-- shacks sit on islands no faction projects onto, and no frontier is
+-- generated around ground nobody could ever hold. Checking reach rather
+-- than naming them means a settlement that *is* reachable losing its ring
+-- still fails here.
 function M.givesSettlementsARing()
     loadPack()
 
     local ringless = {}
     for _, id in ipairs(registry.settlementIds) do
-        if #registry.settlements[id].adjacentFrontier == 0 then
-            ringless[#ringless + 1] = id
+        local settlement = registry.settlements[id]
+        if #settlement.adjacentFrontier == 0 then
+            local territory = registry.territories[settlement.territoryIds[1]]
+            if #resolve.projectionFactors(territory).ids > 0 then
+                ringless[#ringless + 1] = id
+            end
         end
     end
-    expect.count(ringless, 0, 'settlements with no surrounding frontier: '
+    expect.count(ringless, 0, 'reachable settlements with no surrounding frontier: '
         .. table.concat(ringless, ', '))
 end
 

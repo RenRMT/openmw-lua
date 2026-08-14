@@ -17,9 +17,6 @@ local function hlaalu(overrides)
         displayName = 'House Hlaalu',
         basePower = 50,
         patrolRoster = { 'hlaalu guard' },
-        powerCenters = {
-            { id = 'balmora', tier = 'capital', coords = { x = 0, y = 0 } },
-        },
     }
     for key, value in pairs(overrides or {}) do
         faction[key] = value
@@ -34,7 +31,8 @@ local function minimalLandmass(overrides)
         territories = {
             {
                 id = 'balmora',
-                tier = 'city',
+                tier = 'small city',
+                faction = 'hlaalu',
                 cells = { '#-3,-2' },
                 centroid = { x = 0, y = 0 },
                 adjacentFrontier = { 'west_gash' },
@@ -108,7 +106,8 @@ function M.keepsInteriorsOutOfTheTerritoryListButStillResolvesThem()
         territories = {
             {
                 id = 'balmora',
-                tier = 'city',
+                tier = 'small city',
+                faction = 'hlaalu',
                 cells = { '#-3,-2', 'Balmora, Eight Plates' },
             },
         },
@@ -123,16 +122,19 @@ end
 function M.appliesTierDefaults()
     registry.registerLandmass(minimalLandmass())
 
-    local centre = registry.factions.hlaalu.powerCenters[1]
-    expect.greater(centre.influenceRange, 0, 'capital influenceRange default')
-    expect.equal(centre.weight, 1.0, 'capital weight default')
+    -- One tier now supplies all three: how far the place reaches, how
+    -- hard it is to shift, and how strongly it projects.
+    local seat = registry.factions.hlaalu.seats[1]
+    expect.equal(seat.id, 'balmora', 'the settlement is the seat')
+    expect.greater(seat.influenceRange, 0, 'influenceRange default')
+    expect.equal(seat.weight, 0.75, 'small city weight default')
 
     local city = registry.territories['balmora_-3_-2']
-    expect.greater(city.cooldownDays, 0, 'city cooldownDays default')
+    expect.greater(city.cooldownDays, 0, 'cooldownDays default')
 
-    -- Tier is otherwise metadata, and has to survive registration: an
-    -- extension needs to know Balmora is a city without counting cells.
-    expect.equal(city.tier, 'city', 'tier is carried')
+    -- Tier also has to survive registration as metadata: an extension
+    -- needs to know Balmora is a city without counting cells.
+    expect.equal(city.tier, 'small city', 'tier is carried')
 end
 
 function M.indexesCellsToTerritories()
@@ -180,11 +182,19 @@ end
 function M.rejectsUnknownTier()
     expect.raises(function()
         registry.registerLandmass(minimalLandmass({
-            factions = { hlaalu({ powerCenters = {
-                { id = 'x', tier = 'imaginary', coords = { x = 0, y = 0 } },
-            } }) },
+            territories = { { id = 'x', tier = 'imaginary', cells = { '#0,0' } } },
         }))
-    end, 'unknown tier', 'bad power centre tier')
+    end, 'unknown tier', 'bad settlement tier')
+end
+
+--- The error has to name the ladder. A tier is a word off a fixed list,
+-- and "unknown tier" alone leaves a pack author guessing at spelling.
+function M.namesTheTiersWhenRejectingOne()
+    expect.raises(function()
+        registry.registerLandmass(minimalLandmass({
+            territories = { { id = 'x', tier = 'imaginary', cells = { '#0,0' } } },
+        }))
+    end, 'megalopolis', 'lists the valid tiers')
 end
 
 function M.rejectsFrontierCellWithoutCentroid()
@@ -229,7 +239,11 @@ end
 -- Cross-pack merging
 --------------------------------------------------------------------------
 
-function M.extendMergesPowerCentresAndRoster()
+--- A faction spanning two packs holds seats in both, and gains them
+-- without either pack merging anything: a settlement names its faction,
+-- so the second landmass's holdings attach themselves. What `extend`
+-- carries is the faction's own content.
+function M.extendGainsSeatsFromTheSecondPack()
     registry.registerLandmass(minimalLandmass())
     registry.registerLandmass({
         id = 'tamriel_rebuilt',
@@ -238,18 +252,18 @@ function M.extendMergesPowerCentresAndRoster()
                 id = 'hlaalu',
                 extend = true,
                 patrolRoster = { 'hlaalu guard', 'hlaalu councilor' },
-                powerCenters = {
-                    { id = 'bal_foyen', tier = 'regional', coords = { x = 100000, y = 0 } },
-                },
             },
+        },
+        territories = {
+            { id = 'bal_foyen', tier = 'town', faction = 'hlaalu', cells = { '#12,0' } },
         },
     })
 
     local faction = registry.factions.hlaalu
-    expect.count(faction.powerCenters, 2, 'merged power centres')
-    -- Appended, not replaced: the original capital must survive.
-    expect.equal(faction.powerCenters[1].id, 'balmora', 'original power centre')
-    expect.equal(faction.powerCenters[2].id, 'bal_foyen', 'added power centre')
+    expect.count(faction.seats, 2, 'seats from both packs')
+    -- Appended, not replaced: the original city must survive.
+    expect.equal(faction.seats[1].id, 'balmora', 'original seat')
+    expect.equal(faction.seats[2].id, 'bal_foyen', 'added seat')
     -- Roster merge de-duplicates rather than appending blindly.
     expect.count(faction.patrolRoster, 2, 'merged roster')
 end
@@ -268,21 +282,22 @@ function M.extendDoesNotOverwriteBaseConfig()
     expect.equal(faction.displayName, 'House Hlaalu', 'displayName stays with the first pack')
 end
 
-function M.rejectsDuplicatePowerCentreOnExtend()
+--- Two packs claiming one settlement id is a collision whichever pack
+-- got there first, and it has to be an error rather than a silent
+-- overwrite: the loser's cells would keep pointing at a place that no
+-- longer describes them.
+function M.rejectsDuplicateSettlementAcrossPacks()
     registry.registerLandmass(minimalLandmass())
 
     expect.raises(function()
         registry.registerLandmass({
             id = 'tamriel_rebuilt',
-            factions = {
-                {
-                    id = 'hlaalu',
-                    extend = true,
-                    powerCenters = { { id = 'balmora', coords = { x = 1, y = 1 } } },
-                },
+            factions = { { id = 'hlaalu', extend = true } },
+            territories = {
+                { id = 'balmora', tier = 'town', faction = 'hlaalu', cells = { '#12,0' } },
             },
         })
-    end, 'duplicate power center', 'duplicate centre id across packs')
+    end, 'already registered', 'duplicate settlement id across packs')
 end
 
 --------------------------------------------------------------------------

@@ -117,6 +117,8 @@ never learns what a "Small City" is; that vocabulary stays in the pack's own
 - Generation runs at load, not offline, so it can never go stale.
 - Only ground within reach of a power center becomes territory.
 - Minor holdings (farms, shacks, mines) are power centers but not settlements.
+  *(Reversed in phase 3b — there is one category now, and a farm is a
+  settlement of the smallest tier.)*
 - Solstheim is a separate landmass registered by the same pack, at its
   **Anthology / Tamriel Rebuilt** position rather than vanilla Bloodmoon's.
 
@@ -184,6 +186,50 @@ only at first claim: a cell nobody can hold is released rather than staying on
 the books, and a roll now requires the challenger to be above the threshold.
 `classify()` became a four-way partition where `unclaimed` means exactly "no
 owner".
+
+---
+
+## Phase 3b — One category, one ladder
+
+Also not originally a phase. The split between a **power center** (a thing that
+projects) and a **settlement** (a thing that can be owned) was two registration
+paths, two tier vocabularies and two entries per holding in the content pack —
+and every holding above the minor tier was declared as both, with the same id,
+the same cells and the same coordinates written twice.
+
+**The decision:** there is one category. A settlement projects influence and is
+ownable ground, and nothing else projects at all. A farm is a settlement of the
+smallest tier.
+
+**The tier ladder,** smallest to largest, replacing both vocabularies:
+
+`minor location` · `outpost` · `village` · `town` · `small city` ·
+`large city` · `metropolis` · `megalopolis`
+
+One tier now sets weight, influence range and cooldown together. The previous
+split collapsed `Metropolis` and `Small City` onto a single `capital` power
+tier, so Vivec and Balmora projected identically and no amount of tuning could
+tell them apart; the ladder is what makes the ranking real.
+
+**What it removed:** `powerCenters` on a faction, `POWER_CENTER_DEFAULTS`,
+`DEFAULT_POWER_CENTER_TIER`, the pack's own centroid arithmetic, and the
+`extend` machinery for merging power centers across packs. A faction has no
+geography of its own — it holds whatever settlements name it, handed to it as
+`seats`. A faction spanning two landmasses now needs nothing merged.
+
+**Projection still follows the founding faction, not the current owner.** A
+settlement names whose seat it is and goes on projecting for them however the
+map around it moves. Making projection follow ownership was considered and
+rejected for now: it is a feedback loop where each capture makes the next one
+easier, and `SEAT_FLOOR` would be the only brake.
+
+**What it cost.** Two holdings in the Morrowind pack stood inside another
+holding's cell and had been ducking the collision by being power centers rather
+than settlements. With one category they collide for real, and both are dropped
+— Arvs-Drelen loses the Telvanni their West Gash foothold. The generated
+frontier also shrank from ~560 cells to ~418, because `small city` and `village`
+no longer inherit the reach of `capital` and `regional`. Both are consequences
+of the ranking rather than faults in it, and both are `config.lua` knobs.
 
 ---
 

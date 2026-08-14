@@ -10,7 +10,7 @@
 --   2. Solstheim extends the ones it shares (the Empire garrisons Fort
 --      Frostmoth as well as half of Vvardenfell) and defines its own.
 --   3. Frontier generation runs last, because it works outward from the
---      power centers registered in the steps above.
+--      settlements registered in the steps above.
 --
 -- There is no authored ownership anywhere in this pack. The whole map,
 -- including Red Mountain, falls out of where the seats of power are.
@@ -27,11 +27,7 @@ local build = require('scripts.BalanceOfPowerMorrowind.data.build')
 local factionDefs = require('scripts.BalanceOfPowerMorrowind.data.factions')
 local settlements = require('scripts.BalanceOfPowerMorrowind.data.settlements')
 
--- The cell size comes from the framework rather than from a constant
--- here. It is an engine fact, not a Morrowind one, and the settlement
--- centroids computed from it have to agree with the grid the frontier
--- generator lays down.
-local plan = build.plan(settlements, BoP.CELL_SIZE)
+local plan = build.plan(settlements)
 local defined = {}
 
 --------------------------------------------------------------------------
@@ -41,14 +37,14 @@ local defined = {}
 BoP.registerLandmass({
     id = 'vvardenfell',
     displayName = 'Vvardenfell',
-    factions = build.factionsFor(factionDefs, plan.vvardenfell.centers, defined, 'vvardenfell'),
+    factions = build.factionsFor(factionDefs, build.holdersIn(plan.vvardenfell), defined, 'vvardenfell'),
     territories = plan.vvardenfell.territories,
 })
 
 BoP.registerLandmass({
     id = 'solstheim',
     displayName = 'Solstheim',
-    factions = build.factionsFor(factionDefs, plan.solstheim.centers, defined, 'solstheim'),
+    factions = build.factionsFor(factionDefs, build.holdersIn(plan.solstheim), defined, 'solstheim'),
     territories = plan.solstheim.territories,
 })
 

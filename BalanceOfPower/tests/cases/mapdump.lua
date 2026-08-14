@@ -14,10 +14,6 @@ local M = {}
 
 local CELL = 8192
 
-local function cellCentre(gridX, gridY)
-    return { x = gridX * CELL + CELL / 2, y = gridY * CELL + CELL / 2 }
-end
-
 --- Two factions with settlements close enough that their influence
 -- genuinely overlaps, so there is a contested band between them. Set
 -- them any further apart and the discs are tangent, nothing is
@@ -32,10 +28,6 @@ local function twoRealms()
                 id = 'alpha',
                 displayName = 'Alpha',
                 basePower = 50,
-                powerCenters = {
-                    { id = 'alpha_seat', tier = 'capital',
-                      coords = cellCentre(-2, 0), influenceRange = 3 * CELL },
-                },
             },
             {
                 id = 'beta',
@@ -44,10 +36,6 @@ local function twoRealms()
                 -- and boosting alpha later would change nothing.
                 displayName = 'Beta',
                 basePower = 80,
-                powerCenters = {
-                    { id = 'beta_seat', tier = 'capital',
-                      coords = cellCentre(2, 0), influenceRange = 3 * CELL },
-                },
             },
             -- Power-only: has standing, holds nothing, must never appear.
             {
@@ -56,12 +44,21 @@ local function twoRealms()
                 territorial = false,
                 basePower = 90,
             },
+            -- Territorial, but holds no settlement yet. It projects
+            -- nowhere and so is drawn nowhere -- the case that used to be
+            -- reachable by zeroing a faction's power, which no longer
+            -- works now that a seat holds itself whatever its power.
+            {
+                id = 'landless',
+                displayName = 'Landless',
+                basePower = 70,
+            },
         },
         territories = {
             { id = 'alphatown', displayName = 'Alphatown', tier = 'town',
-              cells = { '#-2,0' }, centroid = cellCentre(-2, 0) },
+              faction = 'alpha', cells = { '#-2,0' }, influenceRange = 3 * CELL },
             { id = 'betatown', displayName = 'Betatown', tier = 'town',
-              cells = { '#2,0' }, centroid = cellCentre(2, 0) },
+              faction = 'beta', cells = { '#2,0' }, influenceRange = 3 * CELL },
         },
     })
     state.fillDefaults(registry)
@@ -132,13 +129,23 @@ end
 -- Solstheim's legend.
 function M.legendListsOnlyWhatIsDrawn()
     twoRealms()
-    -- Strip beta from the map by removing its power entirely.
+
+    local text = joined(mapdump.render({ landmass = 'testland', mode = 'projection' }))
+    expect.truthy(string.find(text, 'Alpha', 1, true), 'Alpha is drawn and listed')
+    expect.falsy(string.find(text, 'Landless', 1, true),
+        'a faction with no settlement projects nothing, so is not listed')
+end
+
+--- A faction cannot be zeroed off the map, because the garrison floor is
+-- a share of its settlement's weight rather than of its power. Stripping
+-- Beta's standing entirely still leaves it holding Betatown.
+function M.aSeatHoldsItselfAtAnyPower()
+    twoRealms()
     power.set('beta', 0)
     resolve.invalidateProjections()
 
     local text = joined(mapdump.render({ landmass = 'testland', mode = 'projection' }))
-    expect.truthy(string.find(text, 'Alpha', 1, true), 'Alpha is drawn and listed')
-    expect.falsy(string.find(text, 'Beta', 1, true), 'Beta projects nothing, so is not listed')
+    expect.truthy(string.find(text, 'Beta', 1, true), 'Beta still holds its own town')
 end
 
 --- The view for tuning: where projection disagrees with ownership, the

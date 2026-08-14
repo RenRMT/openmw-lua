@@ -28,27 +28,24 @@ local RANGE = 40000
 --
 -- so alpha holds the near cells, beta the far ones, and 20000 is an
 -- exact tie that the sorted-id rule has to break the same way each time.
+--
+-- Each seat is a settlement, since that is the only thing that projects.
+-- Both carry an explicit centroid: the arithmetic above wants a seat at
+-- exactly x=0 and one at exactly x=40000, where a derived centroid would
+-- land in the middle of whichever cell contains it.
 local function twoFactionLine(overrides)
     overrides = overrides or {}
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            {
-                id = 'alpha',
-                basePower = overrides.alphaPower or 50,
-                powerCenters = {
-                    { id = 'alpha_seat', tier = 'capital',
-                      coords = { x = 0, y = 0 }, influenceRange = RANGE },
-                },
-            },
-            {
-                id = 'beta',
-                basePower = overrides.betaPower or 50,
-                powerCenters = {
-                    { id = 'beta_seat', tier = 'capital',
-                      coords = { x = RANGE, y = 0 }, influenceRange = RANGE },
-                },
-            },
+            { id = 'alpha', basePower = overrides.alphaPower or 50 },
+            { id = 'beta', basePower = overrides.betaPower or 50 },
+        },
+        territories = {
+            { id = 'alpha_seat', tier = 'large city', faction = 'alpha',
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
+            { id = 'beta_seat', tier = 'large city', faction = 'beta',
+              cells = { '#4,0' }, centroid = { x = RANGE, y = 0 }, influenceRange = RANGE },
         },
         frontier = {
             { id = 'cell_0', centroid = { x = 0, y = 0 } },
@@ -90,19 +87,14 @@ end
 function M.effectivePowerTakesStrongestNotSum()
     registry.registerLandmass({
         id = 'testland',
-        factions = {
-            {
-                id = 'alpha',
-                basePower = 50,
-                powerCenters = {
-                    { id = 'near', tier = 'capital',
-                      coords = { x = 0, y = 0 }, influenceRange = RANGE },
-                    { id = 'also_near', tier = 'capital',
-                      coords = { x = 1000, y = 0 }, influenceRange = RANGE },
-                    { id = 'third', tier = 'capital',
-                      coords = { x = 2000, y = 0 }, influenceRange = RANGE },
-                },
-            },
+        factions = { { id = 'alpha', basePower = 50 } },
+        territories = {
+            { id = 'near', tier = 'large city', faction = 'alpha',
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
+            { id = 'also_near', tier = 'large city', faction = 'alpha',
+              cells = { '#1,0' }, centroid = { x = 1000, y = 0 }, influenceRange = RANGE },
+            { id = 'third', tier = 'large city', faction = 'alpha',
+              cells = { '#2,0' }, centroid = { x = 2000, y = 0 }, influenceRange = RANGE },
         },
         frontier = { { id = 'cell', centroid = { x = 0, y = 0 } } },
     })
@@ -122,15 +114,11 @@ function M.nonTerritorialFactionsProjectNothing()
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            {
-                id = 'blades',
-                basePower = 100,
-                territorial = false,
-                powerCenters = {
-                    { id = 'seat', tier = 'capital',
-                      coords = { x = 0, y = 0 }, influenceRange = RANGE },
-                },
-            },
+            { id = 'blades', basePower = 100, territorial = false },
+        },
+        territories = {
+            { id = 'seat', tier = 'large city', faction = 'blades',
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
         },
         frontier = { { id = 'cell', centroid = { x = 0, y = 0 } } },
     })
@@ -167,14 +155,11 @@ function M.leavesGroundNobodyReachesUnclaimed()
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            {
-                id = 'alpha',
-                basePower = 50,
-                powerCenters = {
-                    { id = 'seat', tier = 'capital',
-                      coords = { x = 0, y = 0 }, influenceRange = RANGE },
-                },
-            },
+            { id = 'alpha', basePower = 50 },
+        },
+        territories = {
+            { id = 'seat', tier = 'large city', faction = 'alpha',
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
         },
         frontier = {
             { id = 'near', centroid = { x = 0, y = 0 } },
@@ -208,15 +193,12 @@ function M.authoredOwnerSurvivesInitialAssignment()
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            {
-                id = 'alpha',
-                basePower = 500,
-                powerCenters = {
-                    { id = 'seat', tier = 'capital',
-                      coords = { x = 0, y = 0 }, influenceRange = RANGE },
-                },
-            },
+            { id = 'alpha', basePower = 500 },
             { id = 'sixth house', basePower = 10 },
+        },
+        territories = {
+            { id = 'seat', tier = 'large city', faction = 'alpha',
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
         },
         frontier = {
             { id = 'homeland', centroid = { x = 0, y = 0 }, defaultOwner = 'sixth house' },
@@ -316,35 +298,30 @@ local function settlementRinged()
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            {
-                id = 'alpha',
-                basePower = 50,
-                powerCenters = {
-                    { id = 'alpha_seat', tier = 'capital',
-                      coords = { x = 0, y = 0 }, influenceRange = RANGE },
-                    -- Standing in the town itself. This is what makes the
-                    -- town alpha's and keeps it that way.
-                    { id = 'town', tier = 'capital', coords = { x = 20480, y = 0 },
-                      influenceRange = RANGE, cells = { '#2,0' } },
-                },
-            },
-            {
-                id = 'beta',
-                basePower = 50,
-                powerCenters = {
-                    { id = 'beta_seat', tier = 'capital',
-                      coords = { x = RANGE, y = 0 }, influenceRange = RANGE },
-                },
-            },
+            { id = 'alpha', basePower = 50 },
+            { id = 'beta', basePower = 50 },
         },
         territories = {
+            { id = 'alpha_seat', tier = 'large city', faction = 'alpha',
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
+            { id = 'beta_seat', tier = 'large city', faction = 'beta',
+              cells = { '#4,0' }, centroid = { x = RANGE, y = 0 }, influenceRange = RANGE },
             {
+                -- The town is alpha's seat and alpha's ground in one
+                -- entry, which is the whole point of the merge: standing
+                -- in it is what makes it alpha's and keeps it that way.
                 id = 'town',
                 tier = 'town',
+                faction = 'alpha',
                 -- Cell #2,0 spans 16384..24576, so its middle is 20480 --
                 -- close enough to the midpoint between the two seats that
                 -- projection alone would be a near tie here.
                 cells = { '#2,0' },
+                -- A city's reach and weight on a town-tier place, so the
+                -- geometry stays exactly what these tests were written
+                -- against while the tier still sets the cooldown.
+                weight = 1.0,
+                influenceRange = RANGE,
                 defaultOwner = 'alpha',
                 adjacentFrontier = { 'ring_1', 'ring_2', 'ring_3', 'ring_4' },
             },

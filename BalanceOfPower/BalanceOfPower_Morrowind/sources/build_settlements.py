@@ -11,10 +11,9 @@ Rows are grouped by (name, landmass) into a single entry with a cell list,
 which is what lets Vivec be one fifteen-cell settlement rather than fifteen
 separate ones.
 
-Note the vocabulary, since the file names invite the wrong reading: the CSV
-lists every *holding*, and only those above the minor tier become settlements
-in the sense glossary.md uses. Farms, shacks and mines are power centers and
-nothing else.
+Every row becomes a settlement. There is one kind of holding: a farm is a
+settlement of the smallest tier, projecting a little and holding its own cell,
+rather than a separate sort of thing that projects without being ownable.
 """
 
 from __future__ import annotations
@@ -53,17 +52,21 @@ FACTION_IDS = {
     "Velothi/Unaffiliated": None,
 }
 
-# CSV tier -> (settlement tier, power center tier). A nil settlement tier means the
-# location projects influence but is not itself contestable territory --
-# farms, shacks and mines shape who a region belongs to without any single
-# one of them being worth a war.
+# CSV tier -> the framework's tier. One ladder, smallest to largest, and
+# every holding sits on it: a farm is a settlement of the smallest kind
+# rather than a different sort of thing.
+#
+# The CSV's vocabulary is Morrowind's and stays in this pack. What crosses
+# into the framework is a tier name from its own ladder, which is why this
+# mapping exists at all rather than the CSV naming framework tiers
+# directly.
 TIERS = {
-    "Metropolis": ("metropolis", "capital"),
-    "Small City": ("city", "capital"),
-    "Town": ("town", "regional"),
-    "Village": ("village", "regional"),
-    "Outpost/Fortress/Camp": ("outpost", "outpost"),
-    "Minor location": (None, "minor"),
+    "Metropolis": "metropolis",
+    "Small City": "small city",
+    "Town": "town",
+    "Village": "village",
+    "Outpost/Fortress/Camp": "outpost",
+    "Minor location": "minor location",
 }
 
 # Individual corrections to the source data, applied on load. Keeping them
@@ -72,10 +75,25 @@ TIER_OVERRIDES = {
     # A mead hall with its own warrior population and a faction behind it,
     # not a farmstead.
     ("Thirsk", "Solstheim"): "Village",
-    # Shares cell -11,11 with Gnisis, which holds it. Left as a power
-    # center so the Telvanni presence in the West Gash still registers
-    # without two settlements claiming one cell.
-    ("Arvs-Drelen", "Vvardenfell"): "Minor location",
+}
+
+# Holdings dropped outright, because two of them stand in one exterior cell
+# and the simulation has room for one owner per cell.
+#
+# There is no tier that fixes this. A holding used to be able to duck the
+# collision by being a power center and not a settlement, projecting into
+# the cell without claiming it; now that every holding is a settlement,
+# something has to give and it may as well be visible here.
+EXCLUDED = {
+    # Shares cell -11,11 with Gnisis. A Redoran town outranks a Telvanni
+    # tower standing in it, so Gnisis takes the cell and the Telvanni lose
+    # their foothold in the West Gash -- the one real casualty of the
+    # merge, and the place to look if Telvanni influence there reads thin.
+    ("Arvs-Drelen", "Vvardenfell"): "shares Gnisis' cell",
+    # Shares cell 4,-8 with Piernette's Farm. Both are Hlaalu holdings of
+    # the same tier, so which one survives changes nothing: projection
+    # takes the strongest single seat, never the sum.
+    ("Nilera's Farm", "Vvardenfell"): "shares Piernette's Farm's cell",
 }
 
 LANDMASS_IDS = {"Vvardenfell": "vvardenfell", "Solstheim": "solstheim"}
@@ -95,6 +113,8 @@ def main() -> int:
     for line, row in enumerate(rows, start=2):
         name = row["settlement"].strip()
         landmass = row["landmass"].strip()
+        if (name, landmass) in EXCLUDED:
+            continue
         tier = TIER_OVERRIDES.get((name, landmass), row["tier"].strip())
         faction_name = row["faction"].strip()
 
@@ -133,8 +153,6 @@ def main() -> int:
     # which is a poor way to find out.
     seen_cells: dict[tuple[str, int, int], str] = {}
     for entry in grouped.values():
-        if entry["tier"] == "Minor location":
-            continue  # power centers only; they claim no cells
         for cell in entry["cells"]:
             token = (entry["landmass"], *cell)
             if token in seen_cells:
@@ -160,15 +178,11 @@ def main() -> int:
     ]
 
     for entry in grouped.values():
-        settlement_tier, centre_tier = TIERS[entry["tier"]]
         lines.append("    {")
         lines.append(f"        name = {lua_string(entry['name'])},")
         lines.append(f"        landmass = {lua_string(entry['landmass'])},")
         lines.append(f"        region = {lua_string(entry['region'])},")
-        lines.append(
-            f"        settlementTier = {lua_string(settlement_tier) if settlement_tier else 'nil'},"
-        )
-        lines.append(f"        centerTier = {lua_string(centre_tier)},")
+        lines.append(f"        tier = {lua_string(TIERS[entry['tier']])},")
         lines.append(
             f"        faction = {lua_string(entry['faction']) if entry['faction'] else 'nil'},"
         )
@@ -190,10 +204,8 @@ def main() -> int:
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     OUT_PATH.write_text("\n".join(lines), encoding="utf-8")
 
-    settlements = sum(1 for e in grouped.values() if TIERS[e["tier"]][0])
-    centres = len(grouped)
     print(f"wrote {OUT_PATH.relative_to(PACK.parent)}")
-    print(f"  {centres} holdings, {settlements} of them settlements")
+    print(f"  {len(grouped)} settlements")
     for landmass in LANDMASS_IDS.values():
         count = sum(1 for e in grouped.values() if e["landmass"] == landmass)
         print(f"  {landmass}: {count}")
