@@ -40,10 +40,18 @@ and keep their own state. See [glossary.md](../glossary.md).
 
 ## How territory works
 
-Every settlement projects influence that decays linearly to zero at its
-`influenceRange`. A faction's strength at a place is its **strongest single
+Every settlement projects influence that **halves every `influenceRange`** and
+never reaches zero. A faction's strength at a place is its **strongest single
 projection** there, never the sum — so a faction can't out-project a rival by
 accumulating farms.
+
+Because the decay has no floor, how far a faction reaches is decided by how much
+power it has rather than by a boundary drawn per settlement. Ground it cannot
+claim today becomes claimable if it grows, and **no cell is permanently beyond
+everybody**. The growth is deliberately slow: distance costs a fixed fraction
+per unit, so *every doubling of a faction's power pushes its border out by
+exactly one `influenceRange`* — ten times the power buys a bit over three, not
+ten.
 
 Whoever projects most at a territory is who ends up holding it. Not instantly:
 taking ground off an existing owner is a daily roll whose odds are the two
@@ -104,9 +112,14 @@ resolves one, to its settlement's first exterior cell.
 Influence ranges are in world units, and **an exterior cell is 8192 units
 across**. That is the ESM3 grid the engine works in, not a Morrowind-specific
 number — it is the same for Tamriel Rebuilt, Project Cyrodiil and Skyrim Home
-of the Nords. Ranges below it project onto nothing but their own cell. The tier
-defaults are sized in cells, from a bit over one (`minor location`) to seven
-(`megalopolis`).
+of the Nords.
+
+The tier defaults are halving distances from 2500 (`minor location`) to 14000
+(`megalopolis`), which at the default base power put a farm's claim at its own
+cell and a metropolis's at about five. Since the range is what a doubling of
+power buys, it is also the knob for *how fast* a growing faction expands: short
+ranges make a faction's borders tight and hard to push, long ones make power
+translate quickly into ground.
 
 A pack that places anything by grid coordinate should read the constant from
 the interface as `BoP.CELL_SIZE` rather than writing 8192 down again — its
@@ -198,6 +211,30 @@ do — and it differs from Vivec by the numbers behind its tier, not by kind.
 
 **Frontier cell** (`frontier`) — `id` (required), `centroid` (required),
 `cells`, `adjacentFrontier`, `adjacentSettlements`, `defaultOwner`, `cooldownDays`.
+
+### How much frontier gets generated
+
+Projection has no cut-off, so "everywhere a settlement reaches" is not a
+finite answer. `generateFrontier` instead plans for a power —
+`FRONTIER_GENERATION_POWER`, defaulting to twice the base — and gives each
+settlement the radius a faction of that power could *claim* from it. That
+leaves the map one doubling of headroom to grow into.
+
+The fraction of the generated map that starts unowned follows from that ratio
+alone, and the tier ranges cancel out of it entirely:
+
+```
+unclaimed ≈ 1 - (log2(base ÷ claim floor) ÷ log2(planned ÷ claim floor))²
+```
+
+At twice base power that is a bit over a third — expansion room. At five times
+it is nearly two thirds, which reads as an empty world. A faction that outgrows
+the figure projects past the edge of the generated map; raise it and regenerate
+rather than capping the projection.
+
+Every settlement is guaranteed frontier immediately around it regardless, since
+`isSurrounded()` is answered from that ring and a settlement without one could
+never be reported surrounded.
 
 ### Factions that span packs
 

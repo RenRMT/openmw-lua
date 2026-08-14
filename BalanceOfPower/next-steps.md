@@ -17,7 +17,7 @@ Near-term and actionable. The full phase breakdown is in
 | 6 — Invasion | **Dissolved.** It was two fields on a faction |
 | 7 — Tuning and UX | Not started |
 
-**162 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
+**165 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
 that loads the real Morrowind pack through its own `main.lua` headlessly. What
 tests cannot cover: whether the faction ids match real ESM records, whether the
 derived map looks right against the actual game world, and first-tick timing
@@ -38,10 +38,12 @@ Territory only moves when the projection ordering changes, which happens when
 faction power moves.
 
 The map is no longer static: the Sixth House carries `growthPerDay = 1.5`, so
-it strengthens every day and its border creeps outward on its own. It cannot
-reach Vvardenfell proper — influence decays to exactly zero at `influenceRange`,
-so Balmora isn't far away, it's unreachable — and nothing pushes it back yet,
-which is phase 5's job.
+it strengthens every day and its border creeps outward on its own. It will not
+reach Vvardenfell proper, though nothing forbids it any more — projection
+halves with distance and never stops. What stops it is the exchange rate: from
+Dagoth Ur, two cells out costs ~880 power and five cells ~258,000, so it creeps
+for an in-game year and a half and then effectively stalls. Nothing pushes it
+back yet either, which is phase 5's job.
 
 ---
 
@@ -56,8 +58,8 @@ At load you should see roughly:
 ```
 [BalanceOfPower] registered landmass "vvardenfell": 22 factions, 57 settlements over 86 cells, 0 frontier cells
 [BalanceOfPower] registered landmass "solstheim": 3 factions, 4 settlements over 7 cells, 0 frontier cells
-[BalanceOfPower] generated ~375 frontier cells for "vvardenfell" from ... settlements
-[BalanceOfPower] initial control assigned by projection: ~337 territories claimed
+[BalanceOfPower] generated ~370 frontier cells for "vvardenfell" from ... settlements
+[BalanceOfPower] initial control assigned by projection: ~245 territories claimed
 ```
 
 Then check, in the log or via `luag`:
@@ -124,29 +126,42 @@ change immediately, where `owner` only catches up after days of rolls. Combine
 with `reloadlua` to edit `config.lua` and see the result without restarting.
 
 The single most important dial is `influenceRange` per tier in the framework's
-`config.lua`, because ownership is derived from projection. The ladder runs
-from ~1.2 cells (`minor location`) to ~7 (`megalopolis`), with `town` at ~3.
+`config.lua`, because ownership is derived from projection. It is now a
+**halving distance**, not a limit: every doubling of a faction's power pushes
+its border out by exactly one of them. The ladder runs from 2500 units
+(`minor location`) to 14000 (`megalopolis`).
 
-The tier merge shrank the generated frontier from ~560 cells to ~418: `small
-city` and `village` no longer inherit the reach of the old `capital` and
-`regional` tiers, which they shared with `metropolis` and `town` respectively.
-Widening those two is the first thing to try if the map now reads too small.
+**The mid tiers are the known weak point.** Projection went from linear to
+exponential, and weight enters logarithmically now, so low- and mid-weight
+settlements lost more reach than large ones did. A `town` claims out to ~1.7
+cells at base power where the linear model gave it ~2.3, which is most of why
+Redoran dropped from 88 cells to 52 and Hlaalu from 68 to 42. Raising `village`,
+`town` and `small city` is the first thing to try.
+
+Scaling the whole ladder was measured rather than guessed: x1.25 gives 609
+territories and 40% unclaimed, x1.5 gives 757 and 36%, x2.0 gives 1032 and 32%.
+The map fills, but the territory count is the performance risk in doc 7, so
+prefer raising the middle of the ladder over all of it.
 
 Things to look for:
 
 - **Regions that read wrong.** If the Ascadian Isles come out Temple rather
   than Hlaalu, Vivec's `metropolis` range is drowning the plantation belt. The
-  Temple now holds 86 cells to Hlaalu's 68, which is worth a look.
-- **Too much unclaimed ground.** 174 cells start unowned. That's expansion
-  room, but if it's mostly interior rather than coastal, ranges are too short.
+  Temple now holds 96 cells to Hlaalu's 42, which is the most suspicious number
+  on the map.
+- **Too much unclaimed ground.** 248 cells of 493 start unowned — half the
+  map. Some of that is deliberate: `FRONTIER_GENERATION_POWER` plans for twice
+  the base power, so the generated map has a doubling of headroom to grow into.
+  Lower it for a tighter map, raise it for more room, and note the fraction
+  follows from that ratio alone — the tier ranges cancel out of it.
 - **Whether `SEAT_FLOOR = 250` is right.** It makes a settlement takeable only
   by roughly ten times a faction's starting standing, and every minor holding
   with a faction behind it — 15 of 15 — keeps its own cell. Raise it for more
   stubborn one-cell islands; lower it to let a strong invader take a city.
-- **Telvanni at 31 cells**, down from 66 before the tier merge. Sadrith Mora is
-  a `small city` where it used to project at what is now `large city` reach.
-  Whether that is a correction or an over-correction is a question for the map,
-  not the table.
+- **Telvanni at 15 cells.** Sadrith Mora is a `small city` where it used to
+  project at what is now `large city` reach, and the exponential decay took
+  another bite out of the mid tiers. Whether that is a correction or an
+  over-correction is a question for the map, not the table.
 - **Ashlanders holding almost nothing** (6 cells). Their camps are
   `outpost` tier, which may be too weak for a faction that nominally roams the
   whole Ashlands.

@@ -14,6 +14,21 @@ local M = {}
 
 local CELL = config.CELL_SIZE
 
+-- The generator plans for FRONTIER_GENERATION_POWER rather than for a
+-- fixed range, so a seat's radius is however many halving distances that
+-- power buys above the claim floor. These fixtures want to talk in cells,
+-- so they convert -- and derive the conversion from the constants rather
+-- than hard-coding it, since tuning either one otherwise silently moves
+-- every expectation in this file.
+local HEADROOM = math.log(config.FRONTIER_GENERATION_POWER / config.MIN_CLAIM_POWER)
+    / math.log(2)
+
+--- The halving distance whose generated radius is `cellsOut` cells, for a
+-- seat of weight 1.0.
+local function halvingFor(cellsOut)
+    return cellsOut * CELL / HEADROOM
+end
+
 --------------------------------------------------------------------------
 -- Fixtures
 --------------------------------------------------------------------------
@@ -22,8 +37,8 @@ local function cellCentre(gridX, gridY)
     return { x = gridX * CELL + CELL / 2, y = gridY * CELL + CELL / 2 }
 end
 
---- One settlement at the origin with a two-cell reach, on a defined
--- 11x11 grid of exterior cells.
+--- One settlement at the origin generating out to two cells, on a
+-- defined 11x11 grid of exterior cells.
 --- The landmass's settlements: whatever the test asked for, or a single
 -- seat at the origin. Either way they are alpha's, and either way they
 -- reach as far as the fixture says -- a settlement is the only thing that
@@ -34,7 +49,7 @@ local function settlements(overrides)
     }
     for _, entry in ipairs(list) do
         entry.faction = entry.faction or 'alpha'
-        entry.influenceRange = entry.influenceRange or overrides.range or (2 * CELL)
+        entry.influenceRange = entry.influenceRange or overrides.range or halvingFor(2)
     end
     return list
 end
@@ -71,25 +86,42 @@ function M.generatesCellsWithinReach()
     expect.equal(#registry.frontierIds, created, 'all registered as frontier')
     expect.truthy(registry.territoryForCell('#0,0'), 'the seat itself')
     expect.truthy(registry.territoryForCell('#1,0'), 'one cell out')
-    -- Two cells out is exactly at the range, where influence is already
-    -- zero -- so it is deliberately not generated. See below.
+    -- Two cells out sits exactly on the planned radius, and the disc test
+    -- is strict, so it is not generated. See below.
 end
 
---- Influence decays to exactly zero at influenceRange, so a cell sitting
--- on the boundary could never be held by anybody. Generating it would
--- add a territory that is carried in every save and iterated every day
--- and ownable by no one; on the Morrowind pack that mistake accounted
--- for 482 of 904 cells.
-function M.generatesNoCellNobodyCanEverHold()
+--- The generated region stops at the planned radius, and everything
+-- inside it is ground somebody can reach.
+--
+-- Note what this is *not* claiming. Nothing is unclaimable any more --
+-- projection decays but never stops, so a faction that grows enough
+-- reaches anywhere. The radius is how much ground the generator thinks
+-- worth carrying, not a wall.
+function M.generatesOnlyGroundWithinThePlannedRadius()
     oneSettlement()
     generate()
 
-    expect.isNil(registry.territoryForCell('#2,0'), 'the zero-influence boundary')
+    expect.isNil(registry.territoryForCell('#2,0'), 'the planned radius')
 
     for _, id in ipairs(registry.frontierIds) do
         local reach = resolve.projectionFactors(registry.territories[id])
         expect.greater(#reach.ids, 0, id .. ' is reachable by somebody')
     end
+end
+
+--- Planning for more power generates more ground. This is the knob that
+-- replaced the old hard range: a pack expecting its factions to grow
+-- raises it rather than widening every tier.
+function M.generatesFurtherWhenPlanningForMorePower()
+    -- Three doublings of the planned power is three more halving
+    -- distances of radius. At this fixture's scale -- two cells bought
+    -- with 5.6 halvings -- that is a bit over one extra cell.
+    config.FRONTIER_GENERATION_POWER = config.FRONTIER_GENERATION_POWER * 8
+    oneSettlement()
+    generate()
+
+    expect.truthy(registry.territoryForCell('#2,0'), 'ground the smaller plan left out')
+    expect.truthy(registry.territoryForCell('#3,0'), 'and one further still')
 end
 
 --- The whole point of generating from settlements rather than a bounding
@@ -101,12 +133,12 @@ function M.leavesUnreachableGroundUngenerated()
     generate()
 
     expect.isNil(registry.territoryForCell('#5,5'), 'far corner not generated')
-    expect.isNil(registry.territoryForCell('#4,0'), 'beyond the influence range')
+    expect.isNil(registry.territoryForCell('#4,0'), 'beyond the planned radius')
 end
 
 --- The region is a disc, not the bounding square of one.
 function M.generatesARoundRegion()
-    oneSettlement({ range = 3 * CELL })
+    oneSettlement({ range = halvingFor(3) })
     generate()
 
     expect.truthy(registry.territoryForCell('#2,0'), 'on the axis, within range')
@@ -286,11 +318,12 @@ end
 -- declares where the seats of power are, and a populated, owned map falls
 -- out of it with no hand-authored ownership anywhere.
 --
--- Note that generated and claimable are not the same set. Influence
--- decays to exactly zero at the edge of a power center's range, and the
--- generation margin deliberately reaches a little further still, so the
--- outermost ring exists but nobody can hold it yet. That's the headroom
--- a growing faction expands into.
+-- Note that generated and claimable are not the same set. Generation
+-- plans for FRONTIER_GENERATION_POWER, which is more than anyone starts
+-- with, so the outer ring exists before anybody can hold it. That is the
+-- headroom a growing faction expands into, and it is deliberate: with no
+-- cap on projection, the alternative to generating it early is a map that
+-- has to grow at runtime.
 function M.generatedCellsAreClaimedByProjection()
     oneSettlement()
     generate()

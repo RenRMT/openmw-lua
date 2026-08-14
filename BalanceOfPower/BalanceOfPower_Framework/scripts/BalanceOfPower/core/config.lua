@@ -117,14 +117,20 @@ M.SETTLEMENT_TIER_ORDER = {
 -- Per-tier fallbacks, so a farm needs an id and a cell and nothing else.
 --
 --   weight          how strongly it projects, and what scales SEAT_FLOOR
---   influenceRange  world units at which its contribution reaches zero
+--   influenceRange  the halving distance: how far projection travels
+--                   before it drops to half strength
 --   cooldownDays    how long its cells are immune after changing hands
 --
+-- **influenceRange is not a limit.** Projection halves every one of them
+-- and never reaches zero, so how far a faction reaches is decided by how
+-- much power it has, not by a boundary drawn here. The number sets the
+-- exchange rate between the two: every doubling of a faction's power
+-- pushes its border out by exactly one influenceRange.
+--
 -- Scale matters more than it looks. An exterior cell is CELL_SIZE units
--- across -- 8192 -- so the design document's illustrative 6000 would not
--- reach even the neighbouring cell: a city would project onto nothing but
--- itself and no frontier cell would ever be contested. These are sized in
--- cells instead, from a bit over one to seven.
+-- across -- 8192 -- so a halving distance of 10000 means a faction at the
+-- default base power claims out to roughly four cells, and needs twice
+-- that power to reach the fifth.
 --
 -- A settlement is the only thing that projects, so the ladder is the
 -- whole of the map's shape. Two tiers sharing a weight makes the two
@@ -132,22 +138,23 @@ M.SETTLEMENT_TIER_ORDER = {
 -- Vivec and Balmora -- both landed on one "capital" tier and projected
 -- identically, and no amount of tuning could tell them apart.
 M.SETTLEMENT_TIERS = {
-    -- Farms, shacks, mines, minor manors. Individually negligible and
-    -- barely reaching past their own cell, but they cluster -- a
-    -- plantation belt is a dozen of these overlapping, which is what
-    -- makes a region read as belonging to somebody without any single
-    -- holding being worth a war.
-    ['minor location'] = { weight = 0.15, influenceRange = 10000, cooldownDays = 5 },
-    outpost            = { weight = 0.25, influenceRange = 12000, cooldownDays = 10 },
-    village            = { weight = 0.35, influenceRange = 16000, cooldownDays = 15 },
-    town               = { weight = 0.50, influenceRange = 24000, cooldownDays = 25 },
-    ['small city']     = { weight = 0.75, influenceRange = 32000, cooldownDays = 40 },
-    ['large city']     = { weight = 1.00, influenceRange = 40000, cooldownDays = 60 },
-    metropolis         = { weight = 1.25, influenceRange = 48000, cooldownDays = 90 },
+    -- Farms, shacks, mines, minor manors. At the default base power one
+    -- of these claims its own cell and very little else -- weight enters
+    -- the reach calculation logarithmically, so a small holding is
+    -- genuinely small. What makes a plantation belt read as somebody's is
+    -- a dozen of them each holding their own ground, not any one of them
+    -- reaching across the region.
+    ['minor location'] = { weight = 0.15, influenceRange = 2500, cooldownDays = 5 },
+    outpost            = { weight = 0.25, influenceRange = 3000, cooldownDays = 10 },
+    village            = { weight = 0.35, influenceRange = 4000, cooldownDays = 15 },
+    town               = { weight = 0.50, influenceRange = 6000, cooldownDays = 25 },
+    ['small city']     = { weight = 0.75, influenceRange = 8000, cooldownDays = 40 },
+    ['large city']     = { weight = 1.00, influenceRange = 10000, cooldownDays = 60 },
+    metropolis         = { weight = 1.25, influenceRange = 12000, cooldownDays = 90 },
     -- Nothing in Morrowind is one. It exists so a pack for a larger
     -- landmass has somewhere to put its imperial capital without having
     -- to redefine what a metropolis means everywhere else.
-    megalopolis        = { weight = 1.50, influenceRange = 56000, cooldownDays = 120 },
+    megalopolis        = { weight = 1.50, influenceRange = 14000, cooldownDays = 120 },
 }
 
 M.DEFAULT_SETTLEMENT_TIER = 'town'
@@ -210,19 +217,18 @@ M.CELL_SIZE = 8192
 -- the main lever on the performance risk in design doc 7.
 M.FRONTIER_CELLS_PER_UNIT = 1
 
--- Extra reach, in world units, beyond each settlement's influence
--- range when deciding which cells to generate.
+-- Extra reach, in world units, beyond the generation radius derived from
+-- FRONTIER_GENERATION_POWER.
 --
--- Zero, and that is the right default. It is tempting to add slack "so a
--- growing faction has room to expand into", but influence decays to
--- exactly zero at influenceRange no matter how powerful the faction is
--- -- so ground beyond that range can never be claimed by anyone, and
--- generating it produces territories that are permanently dead: carried
--- in the save, iterated every day, and ownable by nobody. On the
--- Morrowind pack a one-cell margin alone produced 482 of them.
+-- Flat slack on top of that, for a pack that expects settlements to
+-- appear at runtime in places nothing currently reaches.
 --
--- Raise it only for a pack that expects settlements to appear at
--- runtime, where the reachable region genuinely can grow.
+-- Zero by default, because FRONTIER_GENERATION_POWER is the knob that
+-- actually wants turning. There is no longer such a thing as ground that
+-- can never be claimed -- projection has no cap, so a cell far outside
+-- everybody's reach today is claimable by whoever grows enough -- but
+-- there is still such a thing as generating more territory than the
+-- simulation needs to carry.
 M.FRONTIER_GENERATION_MARGIN = 0
 
 -- Only generate territory for grid positions that the loaded content
@@ -231,18 +237,69 @@ M.FRONTIER_GENERATION_MARGIN = 0
 -- geography with no game data behind it.
 M.FRONTIER_REQUIRE_EXISTING_CELL = true
 
+-- The faction power the frontier generator plans for, and so how much
+-- room the generated map leaves for growth.
+--
+-- Generation needs a radius, and projection no longer supplies one: a
+-- settlement's influence never reaches zero, so "everywhere it reaches"
+-- is everywhere. Instead the generator asks how far a faction *at this
+-- power* could claim from each seat, and generates that.
+--
+-- Twice the default base power: one halving distance of headroom on every
+-- seat, so the map has room for every faction to double its standing
+-- before anyone projects past the edge of the world.
+--
+-- Raising it is how a pack buys more room, and the cost is paid in
+-- unclaimed ground rather than in cells that can never be held. What
+-- fraction of the generated map starts unowned follows from this ratio
+-- alone -- not from the tier ranges, which cancel:
+--
+--   unclaimed ~= 1 - (log2(base / claim floor) / log2(this / claim floor))^2
+--
+-- At 2x base that is a bit over a third, which is expansion room. At 5x
+-- it is nearly two thirds, which reads as an empty world.
+--
+-- A faction that outgrows the figure projects past the edge of the
+-- generated map. The answer is to raise this and regenerate, not to cap
+-- the projection: ground that exists and is out of reach is honest, where
+-- ground that cannot be reached because it was never created is not.
+M.FRONTIER_GENERATION_POWER = 100
+
 --------------------------------------------------------------------------
 -- Resolution
 --------------------------------------------------------------------------
+
+-- The power at which the projection cache stops modelling a faction's
+-- reach, however far the maths would carry it.
+--
+-- An infinite tail means every faction technically reaches every
+-- territory, and caching all of it would turn a reach list of two into
+-- one of twenty-four for no gain: at these distances the faction would
+-- need absurd power for its projection to clear MIN_CLAIM_POWER at all.
+-- So a (territory, faction) pair is only kept if a faction of this power
+-- could claim there.
+--
+-- A hundred times the default base power, which is far past anything the
+-- simulation produces. It is a performance bound and not a game rule --
+-- if a faction ever genuinely approaches it, raise this rather than
+-- wondering why its border stopped.
+M.PROJECTION_HORIZON_POWER = 5000
 
 -- The floor for taking ground nobody holds. An unowned territory has no
 -- defender to roll against, so projection alone decides it -- this stops
 -- a faction claiming distant ground it barely reaches, and is what keeps
 -- the edges of the map empty until someone actually reaches them.
 --
--- For scale: a capital-tier center on a faction at the default base
--- power of 50 projects the full 50 at its own seat, and about 40 one
--- cell away.
+-- It is also, now, the thing that decides how far anybody reaches.
+-- Projection has no cap: a faction claims ground wherever its power,
+-- decayed by distance, still clears this number. Lowering it pushes every
+-- border outward at once; raising it pulls them all in. The per-tier
+-- influenceRange sets how much power it takes to move a given border,
+-- and this sets where the borders start.
+--
+-- For scale: a large-city seat on a faction at the default base power of
+-- 50 clears this out to a bit over four cells, and doubling that power
+-- buys one more halving distance -- another 10000 units.
 M.MIN_CLAIM_POWER = 5
 
 -- What share of a settlement's adjacent frontier rivals must hold before

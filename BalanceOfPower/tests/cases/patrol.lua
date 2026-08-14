@@ -100,16 +100,36 @@ local function firstPlan(territoryId, from)
     return nil
 end
 
+--- The first group `factionId` fields in this cell, and the day of it.
+--
+-- Distinct from firstPlan(): every candidate rolls separately, so the
+-- earliest day anything happens is not necessarily a day this particular
+-- faction turned out. Since projection has no cut-off, a hostile
+-- neighbour can be a candidate on ground well inside its rival's country,
+-- and asking only about the first plan would be asking which of two coins
+-- landed first.
+local function firstGroupFrom(territoryId, factionId)
+    for day = 1, 400 do
+        local plan = patrol.plan(territoryId, day)
+        for _, group in ipairs(plan and plan.groups or {}) do
+            if group.faction == factionId then
+                return group, day
+            end
+        end
+    end
+    return nil
+end
+
 --------------------------------------------------------------------------
 -- Who turns up
 --------------------------------------------------------------------------
 
 function M.theOwnerPatrolsItsOwnGround()
     twoRealms()
-    local plan = firstPlan(at(-2, 0))
+    local group = firstGroupFrom(at(-2, 0), 'house')
 
-    expect.truthy(plan, 'the house fields a patrol in its own town')
-    expect.equal(plan.groups[1].faction, 'house', 'and it is the house')
+    expect.truthy(group, 'the house fields a patrol in its own town')
+    expect.greater(group.count, 0, 'with somebody in it')
 end
 
 --- A faction with an empty roster never appears, and needs no flag to

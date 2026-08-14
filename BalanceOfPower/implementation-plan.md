@@ -233,6 +233,54 @@ of the ranking rather than faults in it, and both are `config.lua` knobs.
 
 ---
 
+## Phase 3c — Projection without a ceiling
+
+The linear falloff had a hard edge: influence reached exactly zero at
+`influenceRange`, so ground beyond it could not be claimed by anyone at any
+power. That made a faction's reach a property of its settlements alone —
+growing did nothing for the extent of its borders, only for how firmly it held
+what it already had — and it meant the map contained cells nobody could ever
+own.
+
+**The decision:** projection **halves** every `influenceRange` and never
+reaches zero. Reach becomes a consequence of power rather than a separate
+limit, and the diminishing returns come free from the shape:
+
+> Every doubling of a faction's power pushes its border out by exactly one
+> `influenceRange`.
+
+Ten times the power is a bit over three of them, not ten. `influenceRange` is
+now an exchange rate between power and distance, not a boundary, and
+`MIN_CLAIM_POWER` is what actually decides where borders fall.
+
+**What an infinite tail broke, and how.** Two things assumed a finite reach:
+
+- *The projection cache*, which stores the factions that can reach each
+  territory. With no cut-off that is every faction everywhere, and the sparse
+  reach list is what keeps the daily pass cheap. `PROJECTION_HORIZON_POWER`
+  bounds it — a pair is cached only if a faction of that power could claim
+  there. A performance bound, not a game rule.
+- *Frontier generation*, which walked out to `influenceRange`. There is no
+  such distance now, so it plans for a power instead:
+  `FRONTIER_GENERATION_POWER`, at twice the base, giving every settlement one
+  doubling of headroom. How much of the map starts unowned follows from that
+  ratio alone — the tier ranges cancel.
+
+**Also fixed here:** a settlement whose claim radius was under one cell
+generated no frontier around itself at all, which left `isSurrounded()` unable
+to ever fire for it. Seven of the Morrowind pack's remote camps were in that
+state. Generation now guarantees every settlement its immediate ring whatever
+the planning power says.
+
+**What it cost.** The ladder was recalibrated into halving distances against
+the large-city anchor, and weight enters logarithmically now, so mid- and
+low-weight settlements lost more reach than large ones. Redoran fell from 88
+cells to 52 and Hlaalu from 68 to 42, while the Temple rose to 96. That is a
+tuning debt, recorded in next-steps.md rather than papered over: the map is
+the only place to settle it.
+
+---
+
 ## Phase 4 — Patrols
 
 Un-parked, and the framework's remit widened to take it. Phase 3a's rule was

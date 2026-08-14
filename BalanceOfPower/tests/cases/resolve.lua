@@ -17,17 +17,25 @@ local M = {}
 -- Fixtures
 --------------------------------------------------------------------------
 
-local RANGE = 40000
+-- The halving distance, chosen so the line below lands on exact powers
+-- of two and the arithmetic can be read rather than computed.
+local HALVING = 10000
+local SPAN = 40000
 
 -- Two equal factions facing each other across 40000 units, with frontier
 -- cells strung along the line between them. Projection at each cell:
 --
 --   x        0      10000    20000    30000    40000
---   alpha   50.0     37.5     25.0     12.5      0.0
---   beta     0.0     12.5     25.0     37.5     50.0
+--   alpha   50.0     25.0     12.5      6.25     3.125
+--   beta     3.125    6.25    12.5     25.0     50.0
 --
 -- so alpha holds the near cells, beta the far ones, and 20000 is an
 -- exact tie that the sorted-id rule has to break the same way each time.
+--
+-- Note the far column. Alpha's projection at beta's doorstep is small but
+-- **not zero**, which is the property this whole model turns on: there is
+-- no distance at which a faction is shut out, only a distance at which it
+-- would need more power than it has.
 --
 -- Each seat is a settlement, since that is the only thing that projects.
 -- Both carry an explicit centroid: the arithmetic above wants a seat at
@@ -43,16 +51,16 @@ local function twoFactionLine(overrides)
         },
         territories = {
             { id = 'alpha_seat', tier = 'large city', faction = 'alpha',
-              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = HALVING },
             { id = 'beta_seat', tier = 'large city', faction = 'beta',
-              cells = { '#4,0' }, centroid = { x = RANGE, y = 0 }, influenceRange = RANGE },
+              cells = { '#4,0' }, centroid = { x = SPAN, y = 0 }, influenceRange = HALVING },
         },
         frontier = {
             { id = 'cell_0', centroid = { x = 0, y = 0 } },
             { id = 'cell_10k', centroid = { x = 10000, y = 0 } },
             { id = 'cell_20k', centroid = { x = 20000, y = 0 } },
             { id = 'cell_30k', centroid = { x = 30000, y = 0 } },
-            { id = 'cell_40k', centroid = { x = RANGE, y = 0 } },
+            { id = 'cell_40k', centroid = { x = SPAN, y = 0 } },
         },
     })
     state.fillDefaults(registry)
@@ -66,19 +74,61 @@ end
 -- Projection maths
 --------------------------------------------------------------------------
 
-function M.proximityDecaysLinearlyToZero()
+--- Halving per influenceRange, and the thing worth pinning: it never
+-- reaches zero. A factor of zero anywhere would be ground that no amount
+-- of power could ever claim.
+function M.proximityHalvesPerInfluenceRange()
     expect.equal(resolve.proximityFactor(0, 1000), 1, 'at the seat')
-    expect.equal(resolve.proximityFactor(500, 1000), 0.5, 'halfway')
-    expect.equal(resolve.proximityFactor(1000, 1000), 0, 'at the edge')
-    expect.equal(resolve.proximityFactor(5000, 1000), 0, 'beyond the edge')
+    expect.equal(resolve.proximityFactor(1000, 1000), 0.5, 'one halving out')
+    expect.equal(resolve.proximityFactor(2000, 1000), 0.25, 'two')
+    expect.equal(resolve.proximityFactor(3000, 1000), 0.125, 'three')
+end
+
+--- Far away is small, not nothing. Twenty halvings is a factor of about a
+-- millionth -- unreachable in practice at any sane power, and still not a
+-- wall.
+function M.proximityNeverReachesZero()
+    expect.greater(resolve.proximityFactor(20000, 1000), 0, 'still positive at 20 halvings')
+    expect.greater(1e-5, resolve.proximityFactor(20000, 1000), 'but negligible')
 end
 
 function M.effectivePowerFallsOffWithDistance()
     twoFactionLine()
     expect.near(resolve.effectivePower('alpha', registry.territories.cell_0), 50, 1e-6, 'at seat')
-    expect.near(resolve.effectivePower('alpha', registry.territories.cell_10k), 37.5, 1e-6, 'near')
-    expect.near(resolve.effectivePower('alpha', registry.territories.cell_30k), 12.5, 1e-6, 'far')
-    expect.equal(resolve.effectivePower('alpha', registry.territories.cell_40k), 0, 'out of range')
+    expect.near(resolve.effectivePower('alpha', registry.territories.cell_10k), 25, 1e-6, 'one halving')
+    expect.near(resolve.effectivePower('alpha', registry.territories.cell_30k), 6.25, 1e-6, 'three')
+    -- Four halvings out, on beta's doorstep, and still projecting.
+    expect.near(resolve.effectivePower('alpha', registry.territories.cell_40k), 3.125, 1e-6,
+        'small, but never nothing')
+end
+
+--- The property the whole model exists for: a faction that grows reaches
+-- further, and does so with diminishing returns. Each doubling of power
+-- buys exactly one more halving distance of ground, so ten times the
+-- power is a bit over three of them, not ten.
+function M.reachGrowsWithPowerAndDiminishes()
+    twoFactionLine()
+
+    -- The furthest cell alpha projects above the claim floor.
+    local line = { 'cell_0', 'cell_10k', 'cell_20k', 'cell_30k', 'cell_40k' }
+    local function edge()
+        local furthest = nil
+        for _, id in ipairs(line) do
+            local at = resolve.effectivePower('alpha', registry.territories[id])
+            if at >= config.MIN_CLAIM_POWER then
+                furthest = id
+            end
+        end
+        return furthest
+    end
+
+    power.set('alpha', 50)
+    expect.equal(edge(), 'cell_30k', 'at base power alpha reaches three halvings out')
+
+    -- One doubling, one more halving distance -- and 10000 units is
+    -- exactly the gap between these cells.
+    power.set('alpha', 100)
+    expect.equal(edge(), 'cell_40k', 'doubling its power buys exactly one cell more')
 end
 
 --- Doc 3.2: a faction's strength somewhere is its strongest single
@@ -90,11 +140,11 @@ function M.effectivePowerTakesStrongestNotSum()
         factions = { { id = 'alpha', basePower = 50 } },
         territories = {
             { id = 'near', tier = 'large city', faction = 'alpha',
-              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = HALVING },
             { id = 'also_near', tier = 'large city', faction = 'alpha',
-              cells = { '#1,0' }, centroid = { x = 1000, y = 0 }, influenceRange = RANGE },
+              cells = { '#1,0' }, centroid = { x = 1000, y = 0 }, influenceRange = HALVING },
             { id = 'third', tier = 'large city', faction = 'alpha',
-              cells = { '#2,0' }, centroid = { x = 2000, y = 0 }, influenceRange = RANGE },
+              cells = { '#2,0' }, centroid = { x = 2000, y = 0 }, influenceRange = HALVING },
         },
         frontier = { { id = 'cell', centroid = { x = 0, y = 0 } } },
     })
@@ -107,7 +157,7 @@ end
 function M.effectivePowerScalesWithFactionPower()
     twoFactionLine()
     power.set('alpha', 100)
-    expect.near(resolve.effectivePower('alpha', registry.territories.cell_10k), 75, 1e-6, 'doubled')
+    expect.near(resolve.effectivePower('alpha', registry.territories.cell_10k), 50, 1e-6, 'doubled')
 end
 
 function M.nonTerritorialFactionsProjectNothing()
@@ -118,7 +168,7 @@ function M.nonTerritorialFactionsProjectNothing()
         },
         territories = {
             { id = 'seat', tier = 'large city', faction = 'blades',
-              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = HALVING },
         },
         frontier = { { id = 'cell', centroid = { x = 0, y = 0 } } },
     })
@@ -159,7 +209,7 @@ function M.leavesGroundNobodyReachesUnclaimed()
         },
         territories = {
             { id = 'seat', tier = 'large city', faction = 'alpha',
-              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = HALVING },
         },
         frontier = {
             { id = 'near', centroid = { x = 0, y = 0 } },
@@ -177,9 +227,9 @@ end
 -- what keeps the edges of the map empty rather than weakly owned.
 function M.respectsMinimumClaimPower()
     twoFactionLine()
-    -- At 10000 alpha projects 0.75 * power; drop power so that lands
-    -- just under the floor.
-    power.set('alpha', (config.MIN_CLAIM_POWER / 0.75) * 0.9)
+    -- At 10000 -- one halving out -- alpha projects half its power. Drop
+    -- it so that lands just under the floor.
+    power.set('alpha', (config.MIN_CLAIM_POWER / 0.5) * 0.9)
     power.set('beta', 0)
     resolve.assignInitialControl()
 
@@ -198,7 +248,7 @@ function M.authoredOwnerSurvivesInitialAssignment()
         },
         territories = {
             { id = 'seat', tier = 'large city', faction = 'alpha',
-              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = HALVING },
         },
         frontier = {
             { id = 'homeland', centroid = { x = 0, y = 0 }, defaultOwner = 'sixth house' },
@@ -236,9 +286,9 @@ function M.strongerProjectorTakesContestedGround()
     twoFactionLine()
     resolve.assignInitialControl()
 
-    -- Alpha at 200 projects 0.25 * 200 = 50 at cell_30k, against beta's
-    -- 0.75 * 50 = 37.5. Alpha is now the strongest there.
-    power.set('alpha', 200)
+    -- Alpha at 400 projects 0.125 * 400 = 50 at cell_30k, against beta's
+    -- 0.5 * 50 = 25. Alpha is now the strongest there.
+    power.set('alpha', 400)
     resolve.setRandom(always(0))   -- every roll succeeds
     resolve.run(1)
 
@@ -303,9 +353,9 @@ local function settlementRinged()
         },
         territories = {
             { id = 'alpha_seat', tier = 'large city', faction = 'alpha',
-              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = RANGE },
+              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = HALVING },
             { id = 'beta_seat', tier = 'large city', faction = 'beta',
-              cells = { '#4,0' }, centroid = { x = RANGE, y = 0 }, influenceRange = RANGE },
+              cells = { '#4,0' }, centroid = { x = SPAN, y = 0 }, influenceRange = HALVING },
             {
                 -- The town is alpha's seat and alpha's ground in one
                 -- entry, which is the whole point of the merge: standing
@@ -321,7 +371,7 @@ local function settlementRinged()
                 -- geometry stays exactly what these tests were written
                 -- against while the tier still sets the cooldown.
                 weight = 1.0,
-                influenceRange = RANGE,
+                influenceRange = HALVING,
                 defaultOwner = 'alpha',
                 adjacentFrontier = { 'ring_1', 'ring_2', 'ring_3', 'ring_4' },
             },

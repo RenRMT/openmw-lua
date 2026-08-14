@@ -18,13 +18,17 @@
 -- construction instead of by optimization, and keeps the save file
 -- proportional to the inhabited world.
 --
--- Note that the union is bounded by influence range, not by power:
--- influence decays to exactly zero at a settlement's range, so no amount of
--- power reaches past it. That makes the ceiling real but harmless -- the
--- ground left ungenerated is ground nobody could ever have held anyway.
--- FRONTIER_GENERATION_MARGIN exists for packs that add settlements at
--- runtime, where the reachable region genuinely can grow, and defaults
--- to zero for everyone else.
+-- The bound is a planning figure rather than a law. Projection decays but
+-- never stops, so there is no distance past which ground is unclaimable;
+-- what there is instead is a power at which the generator stops planning,
+-- FRONTIER_GENERATION_POWER. Each seat gets the radius a faction of that
+-- power could claim from it, which leaves the map room to grow into
+-- without carrying territory nothing will reach for a very long time.
+--
+-- A faction that outgrows the figure projects past the edge of the
+-- generated world. The fix is to raise it and regenerate, not to cap the
+-- projection: ground that exists and is out of reach is honest, where
+-- ground that cannot be reached because it was never created is not.
 --
 -- GLOBAL context only.
 
@@ -44,6 +48,45 @@ local M = {}
 
 local function key(a, b)
     return a .. ',' .. b
+end
+
+--- How far from a seat the generator lays down territory.
+--
+-- Projection no longer stops anywhere, so "as far as it reaches" is not
+-- an answer. The question the generator can answer is how far a faction
+-- of a given power could *claim* from this seat, which is where its
+-- projection decays past MIN_CLAIM_POWER:
+--
+--   power * weight * 2^(-d / influenceRange) = MIN_CLAIM_POWER
+--
+-- solved for d. FRONTIER_GENERATION_POWER is the power it plans for, so
+-- the generated map has room for factions to grow into rather than being
+-- cut to the starting map's shape.
+local function claimRadius(seat)
+    local strength = config.FRONTIER_GENERATION_POWER * seat.weight
+    if strength <= config.MIN_CLAIM_POWER or seat.influenceRange <= 0 then
+        return 0
+    end
+    -- log2(strength / floor), in halving distances.
+    return seat.influenceRange * math.log(strength / config.MIN_CLAIM_POWER) / math.log(2)
+end
+
+--- Every settlement gets frontier around it, whatever the planning power
+-- says.
+--
+-- A small remote holding -- an Ashlander camp at outpost weight -- can
+-- have a claim radius under one cell, and would otherwise sit on the map
+-- with no wilderness next to it at all. That is not a tuning outcome, it
+-- is a hole: `isSurrounded()` is answered from a settlement's ring of
+-- adjacent frontier, so a settlement with no ring can never be reported
+-- surrounded however completely it is encircled.
+--
+-- So the radius has a floor of one and a half blocks, which reaches the
+-- centre of every neighbouring block including the diagonals. The cells
+-- it adds are ordinary contested ground -- the camp cannot claim them at
+-- its own strength, and whoever can, does.
+local function generationRadius(seat, blockSize)
+    return math.max(claimRadius(seat), 1.5 * blockSize)
 end
 
 -- Grid key -> true for every exterior cell the loaded content defines,
@@ -84,7 +127,7 @@ end
 --   landmass              string, required; only seats on it are used
 --   cellSize              world units per exterior cell
 --   cellsPerUnit          exterior cells per territory, per axis (1 = one each)
---   margin                extra world units beyond each seat's range
+--   margin                extra world units beyond each seat's radius
 --   idPrefix              prefix for generated territory ids
 --   requireExistingCell   skip grid positions with no cell record
 -- @return number of frontier territories created
@@ -153,7 +196,7 @@ function M.generate(def)
             for _, seat in ipairs(faction.seats) do
                 if seat.landmass == landmassId then
                     seatCount = seatCount + 1
-                    local reach = seat.influenceRange + margin
+                    local reach = generationRadius(seat, blockSize) + margin
                     local minX = math.floor((seat.centroid.x - reach) / blockSize)
                     local maxX = math.floor((seat.centroid.x + reach) / blockSize)
                     local minY = math.floor((seat.centroid.y - reach) / blockSize)

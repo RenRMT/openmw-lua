@@ -267,10 +267,13 @@ return {
         -- its own. Dormant, stirring, encroaching -- the stages the
         -- design document enumerated, with no stage table to maintain.
         --
-        -- What it cannot do is take Vvardenfell. Influence decays to
-        -- exactly zero at influenceRange no matter how strong a faction
-        -- becomes, so Balmora is not far away, it is unreachable. The
-        -- Sixth House saturates its own country and stops.
+        -- What it will not do is take Vvardenfell, though nothing
+        -- forbids it: projection halves with distance and never stops.
+        -- What stops it is the exchange rate. Dagoth Ur is an outpost, so
+        -- two cells out costs it about 880 power and five cells about
+        -- 258,000 -- an in-game year and a half for the first, centuries
+        -- for the second. It creeps, decelerating, and never realistically
+        -- leaves the Ashlands.
         --
         -- Both halves of its politics are load-bearing, and they are not
         -- the same half. The row below decides who it attacks -- everyone

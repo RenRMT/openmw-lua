@@ -24,7 +24,7 @@ load **before** this mod.
 |---|---|---|
 | Settlements | 57 | 4 |
 | Settlement cells | 86 | 7 |
-| Generated frontier cells | ~375 | ~43 |
+| Generated frontier cells | ~370 | ~30 |
 
 61 settlements in total. Every holding is one: farms, shacks, mines and minor
 manors are `minor location` settlements, projecting a little and holding their
@@ -93,25 +93,33 @@ Ownership at load, derived:
 
 | Faction | Cells |
 |---|---|
-| Redoran | 88 |
-| Temple | 86 |
-| Hlaalu | 68 |
-| The Empire | 42 |
-| Telvanni | 31 |
-| East Empire Company | 12 |
+| Temple | 96 |
+| Redoran | 52 |
+| Hlaalu | 42 |
+| The Empire | 24 |
+| Telvanni | 15 |
+| East Empire Company | 6 |
 | Ashlanders | 6 |
 | Skaal | 3 |
 | Sixth House | 1 |
-| *unclaimed* | 174 |
+| *unclaimed* | 248 |
 
-511 cells in total — 93 belonging to settlements, 418 frontier. The unclaimed
-ones are within reach of somebody but below the claim threshold: genuine
-expansion room rather than dead ground.
+493 cells in total — 93 belonging to settlements, 400 frontier. The unclaimed
+ones are genuine expansion room: nobody projects above the claim threshold
+there *yet*, and since projection has no cut-off, whoever grows enough takes
+them. Half the map being unowned at the start is the headroom the frontier
+generator plans for, not dead ground.
 
-By cell state at load: 294 consolidated, 43 uncontested, 174 unclaimed and
+By cell state at load: 223 consolidated, 22 uncontested, 248 unclaimed and
 **nothing contested**. That last figure is correct rather than suspicious —
 initial control hands every cell to its strongest projector, so no owner starts
 out being out-projected. The map only develops fronts once power moves.
+
+**These numbers want tuning and are the least settled thing in the pack.** The
+Temple holding nearly twice what Redoran does is Vivec's metropolis reach
+against a scattering of Redoran towns, and mid-tier settlements lost about a
+quarter of their claim radius when projection went exponential. Raising the
+`village`, `town` and `small city` halving distances is the first lever.
 
 Every minor holding with a faction behind it — 15 of 15 — holds its own cell.
 That is the garrison floor working as intended: a farm is a one-cell island of
@@ -231,10 +239,20 @@ reaches barely past Red Mountain and its patrols appear near Ghostgate, and the
 radius grows with its power. There is no stage table because there is nothing
 for one to gate.
 
-**It cannot take Vvardenfell**, and not because a rule forbids it. Influence
-decays to exactly zero at `influenceRange` no matter how strong a faction
-becomes, so Balmora is not far away — it is unreachable. The Sixth House
-saturates its own country and stops.
+**It will not take Vvardenfell**, and not because a rule forbids it. Nothing
+forbids it: projection halves with distance and never stops, so there is no
+ground that is unreachable in principle. What stops it is the exchange rate.
+
+Dagoth Ur is an `outpost`, so its halving distance is 3000 units. Reaching two
+cells out needs about 880 power; five cells needs 258,000; Balmora, twelve
+cells away, needs power in the hundreds of billions. At `growthPerDay = 1.5`
+from a base of 30, that is roughly an in-game year and a half for the first
+two cells and several centuries for the next three.
+
+So the Sixth House creeps outward from Red Mountain at a decelerating rate and
+never realistically leaves the Ashlands — a consequence of arithmetic rather
+than a wall, and one that a content pack can change by giving it a bigger seat
+rather than by editing the framework.
 
 Its enemies come from the reaction table rather than a list: everyone it
 regards at -3, which is every faction except the Ashlanders and the Camonna

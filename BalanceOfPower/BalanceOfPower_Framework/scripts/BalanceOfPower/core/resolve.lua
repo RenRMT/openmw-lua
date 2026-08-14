@@ -61,12 +61,33 @@ local function distanceBetween(a, b)
     return math.sqrt(dx * dx + dy * dy)
 end
 
---- Linear falloff from 1 at the settlement to 0 at influenceRange.
+--- How much of a settlement's projection survives a given distance:
+-- halved once per `influenceRange`, and never reaching zero.
+--
+--   d = 0                  1.0
+--   d = influenceRange     0.5
+--   d = 2 * influenceRange 0.25
+--
+-- The tail matters more than the curve. Because the factor is only ever
+-- small and never zero, how far a faction can *reach* is a consequence of
+-- how much power it has rather than a separate limit: ground it cannot
+-- claim today becomes claimable if it grows enough, and no cell is
+-- permanently beyond everybody.
+--
+-- Halving is what makes that growth well-behaved. Distance costs a fixed
+-- fraction per unit, so power buys distance logarithmically:
+--
+--   **every doubling of a faction's power pushes its border out by
+--   exactly one influenceRange.**
+--
+-- Ten times the power is therefore a bit over three influenceRanges
+-- further, not ten times further, and the diminishing returns need no
+-- special casing to produce -- they are what an exponential is.
 function M.proximityFactor(distance, influenceRange)
     if influenceRange <= 0 then
         return 0
     end
-    return math.max(0, 1 - distance / influenceRange)
+    return 2 ^ (-distance / influenceRange)
 end
 
 --------------------------------------------------------------------------
@@ -134,7 +155,16 @@ local function buildProjections()
                             end
                         end
                     end
-                    if best > 0 or floor > 0 then
+                    -- Only worth caching if a faction of plausible power
+                    -- could ever claim here. Projection never reaches
+                    -- zero, so without this every faction would appear in
+                    -- every territory's reach list -- twenty-four entries
+                    -- where one or two carry the answer, and the sparse
+                    -- reach list is the thing that keeps the daily pass
+                    -- cheap on a map this size.
+                    local reachable =
+                        best * config.PROJECTION_HORIZON_POWER >= config.MIN_CLAIM_POWER
+                    if reachable or floor > 0 then
                         factors[factionId] = best
                         floors[factionId] = floor
                         ids[#ids + 1] = factionId

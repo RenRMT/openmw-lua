@@ -36,10 +36,10 @@ settlement of the smallest tier, not a different sort of thing.
 **Weight** — a settlement's share of its faction's power, by tier. A city
 projects at full weight, a minor location at a fraction of it.
 
-**Influence range** — the distance at which a settlement's contribution decays
-to exactly zero. Beyond it a faction projects nothing there, however powerful
-it is — which is why ground outside every influence range is never generated as
-territory at all.
+**Influence range** — the **halving distance**: how far a settlement's
+projection travels before it drops to half strength. It halves again every
+range after that and never reaches zero, so it is an exchange rate rather than
+a limit — see *reach*.
 
 **Power projection** — a faction's power at a particular place: its raw power
 scaled by distance decay from its nearest seat. A faction's projection
@@ -51,8 +51,24 @@ small. Distinct from projecting *above the claim threshold*. Reach is fixed
 geometry, so it is cached; it is what keeps the daily pass cheap, because only
 the factions that reach a place ever need evaluating there.
 
+Strictly, every faction reaches everywhere: the decay never bottoms out. What
+the cache stores is every faction that could *matter* there, and the horizon
+past which it stops caring is a performance bound, not a rule of the world.
+
 **Claim threshold** — the projection a faction must exceed for its presence
 somewhere to count. Below it, a faction is in reach but not a contender.
+
+This is what decides how far anyone reaches, since nothing else does. **There
+is no distance at which a faction is shut out** — only a distance at which it
+would need more power than it has. So a faction that grows claims further, and
+because distance costs a fixed *fraction* per unit rather than a fixed amount,
+it does so with diminishing returns:
+
+> **Every doubling of a faction's power pushes its border out by exactly one
+> influence range.**
+
+Ten times the power is therefore a bit over three influence ranges further, not
+ten times further.
 
 ---
 
