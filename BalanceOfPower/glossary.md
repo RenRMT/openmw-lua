@@ -18,16 +18,15 @@ propagation spreads between factions, and the only input to the simulation
 that changes from day to day.
 
 **Reaction** — how one faction feels about another, in roughly `[-3, 3]`. Read
-as `reactions[X] = how X feels about the faction whose row this is`, so a row
-answers *"when this faction's power moves, who moves with it?"* Sourced from
-the game's faction records and from authored tables, merged.
+as `reactions[X] = how this faction feels about X`, so a row answers *"whose
+power moves this faction, and which way?"* Sourced from the game's faction
+records and from authored tables, merged.
 
-That **inbound** reading is the framework's own convention and applies to every
-authored table. The game's records are the other way round — a record row is
-how that faction feels about the others — so record data is transposed on the
-way in. Getting this backwards is silent: symmetric pairs behave identically
-either way, and the framework shipped it backwards for three phases before an
-asymmetric pair caught it.
+One convention, everywhere: a row belongs to the faction holding the opinions,
+the same direction the game's own records use. Nothing is transposed and no
+setting selects a direction. Getting it backwards anyway is silent — symmetric
+pairs behave identically either way, and the framework shipped it backwards for
+three phases before an asymmetric pair caught it.
 
 **Power centre** — a point on the map that projects a faction's power outward.
 Every settlement is a power centre; **not every power centre is a settlement.**
@@ -166,8 +165,7 @@ faction it *regards* at or below the hostility threshold — so who it fights
 comes from the reaction table rather than a second list.
 
 Note the direction. Hostility asks how the hostile faction feels about the
-other one, which is the outbound question against inbound storage: the value
-sits on the *other* faction's row.
+other one, which is the aggressor's own row — not the target's.
 
 **Ambient growth** — power a faction gains each day with nobody doing anything
 (`growthPerDay`). It does not propagate through reactions, because a daily drip

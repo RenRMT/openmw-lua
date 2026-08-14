@@ -62,27 +62,25 @@ At load you should see roughly:
 
 Then check, in the log or via `luag`:
 
-1. ~~**Which way round do record reactions read?**~~ **Settled 2026-08-13:
-   outbound.** Verified against the asymmetric Telvanni / Twin Lamps pair.
-   `RECORD_REACTIONS_ARE_INBOUND` is now `false`; it shipped `true` — the
-   reading OpenMW's own documentation gives — and propagated every asymmetric
-   vanilla pair backwards for three phases.
+1. ~~**Which way round do reactions read?**~~ **Settled: a row is the
+   faction's own opinions**, the same direction the game's records use.
+   Verified in-game on 2026-08-13 against the asymmetric Telvanni / Twin Lamps
+   pair; the documented reading, which the framework shipped through phases
+   1–3, is the reverse and propagated every asymmetric vanilla pair backwards.
 
-   Worth an audit while playing: the pack's authored rows are inbound by
-   convention, and hostility now reads the same table. An author writing
-   Hlaalu's row and typing `['sixth house'] = -3` may have meant "Hlaalu hates
-   them" where the convention says the reverse. The values are near-symmetric
-   so it mostly won't show, which is exactly why it needs checking rather than
-   assuming.
+   The flag that selected a direction is gone, and the pack's authored tables
+   were transposed onto the one convention, so `hlaalu` carrying
+   `['sixth house'] = -3` now means what it looks like it means: Hlaalu hate
+   them. Values are unchanged — only which row each sits on.
 
 2. **Run `luag require('openmw.interfaces').BalanceOfPower.dumpReactions()`.**
-   Every faction should have a non-zero `moves` *and* `movedBy`. A zero in
-   either column means a faction is outside the politics in that direction.
-   The suite asserts this against an empty record stub, so a zero appearing
-   in-game means a record id doesn't match — most likely `temple`, whose exact
-   id wasn't verifiable outside the game. Fix by correcting the id in
-   `sources/build_settlements.py` / `data/factions.lua`, or by authoring the
-   missing side of the relationship.
+   Every faction should have a non-zero `moves` *and* `movedBy`, except the
+   four vanilla leaves outside its politics — the Morag Tong, the Talos Cult,
+   the Nerevarine and the Twin Lamps. A zero anywhere else means a faction is
+   unwired in that direction. The suite asserts exactly this against an empty
+   record stub, so a *new* zero in-game means a record id doesn't match — most
+   likely `temple`, whose exact id wasn't verifiable outside the game. Fix by
+   correcting the id in `sources/build_settlements.py` / `data/factions.lua`.
 3. **Any cell-collision warnings?** The build script rejects collisions between
    settlements, but a generated cell overlapping something unexpected would
    show up here.

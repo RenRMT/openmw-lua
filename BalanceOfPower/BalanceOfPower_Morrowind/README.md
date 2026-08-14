@@ -37,37 +37,45 @@ without being a place on the map.
 Temple, the Empire, the Ashlanders, and on Solstheim the East Empire Company
 and the Skaal.
 
-**Power-only** — the Fighters, Mages and Thieves Guilds, the Imperial Cult, the
-Camonna Tong and the Morag Tong. They have standing that rises and falls with
-their allies through the reaction table, and other systems can read it, but
-they hold no ground. The Fighters Guild is a real political force in
-Vvardenfell; it just doesn't own Balmora.
+**Power-only** — the Fighters, Mages and Thieves Guilds, the Imperial Cult,
+Knights, Blades and Census and Excise, the Camonna Tong and the Morag Tong, the
+Talos Cult, the Twin Lamps, the Nerevarine and the three vampire clans. They
+have standing that rises and falls with their allies through the reaction
+table, and other systems can read it, but they hold no ground. The Fighters
+Guild is a real political force in Vvardenfell; it just doesn't own Balmora.
 
-Two notes on ids:
+Every faction in the vanilla reaction matrix is registered, whether or not it
+has any political weight — the Nerevarine and the Talos Cult are here because
+the game has them, not because the simulation does anything with them.
+
+Three notes on the data:
 
 - **The Empire is registered as `imperial legion`.** Design doc 5.1 merges the
   Legion, Cult and Knights into one umbrella for the MVP. Mapping that onto the
   Legion's own record id means its reaction row is the game's data rather than
   something invented here — and every Imperial holding in the settlement list
   is a fort or a Legion-garrisoned town, so it isn't much of a stretch. The
-  Imperial Cult is kept separate, as a power-only faction.
-- **Four factions have no ESM record: the East Empire Company, the Skaal, the
-  Ashlanders and the Sixth House.** Their own reaction tables are authored in
-  full. Everyone else reads theirs from `core.factions.records`.
+  Imperial Cult and the Knights are kept separate, as power-only factions.
+- **The reaction rows are vanilla's, transcribed**, with zeros omitted (an
+  absent entry already reads as zero) and three classes of exception marked in
+  the file: Bloodmoon's East Empire Company and Skaal, which the base game's
+  matrix does not contain and whose pairs are therefore guesswork; one
+  deliberate override on Redoran's regard for the Sixth House, which vanilla
+  puts at 0 alone among the Houses; and `basePower`, which is guesswork
+  throughout and the first number to reach for when the starting map looks
+  wrong.
 
-  Because nothing in Morrowind.esm can name those four, the *other* half of
-  each relationship is authored too — every vanilla faction here carries a
-  short `reactions` table naming them. Authored values merge over the record
-  rather than replacing it, so those additions cost the vanilla rows nothing.
-
-  Without them, all four would move other factions perfectly well and never
-  move themselves: their standing could only change through a direct award.
-  Nothing about that reads as an error, which is why
-  `BoP.dumpReactions()` reports a `movedBy` column, and why the test suite
-  asserts no faction sits at zero in either direction.
-
-  The numbers in those added rows are guesswork, like `basePower`. They are
-  the second thing to reach for when the politics feel wrong.
+  Transcribing costs nothing — the same value merged over the same value — and
+  means the pack does not depend on every record id resolving in game, while
+  the test suite (which runs against an empty record stub) exercises real
+  numbers rather than an empty world.
+- **Four factions sit outside the politics, and vanilla says so.** The Morag
+  Tong and the Talos Cult have no reactions in either direction; the Nerevarine
+  reacts to nobody, though Redoran and the Temple react to it; the Twin Lamps
+  hate House Telvanni and are beneath everyone else's notice. `BoP.dumpReactions()`
+  reports each as a zero column, which is normally the sign of a mistake — here
+  it is the data, and the suite asserts exactly this list so that a *fifth*
+  faction arriving in that state fails.
 
 ## The starting map is derived, not authored
 
@@ -233,7 +241,8 @@ grows:
 Lower tiers stay in the pool at every tier above, so a strong Sixth House
 fields an ash ghoul leading a knot of slaves rather than four ghouls together.
 
-**The eight vanilla factions have no rosters yet**, so they field no patrols —
+**Every vanilla faction but the Sixth House has no roster yet**, so they field
+no patrols —
 that is the empty-roster rule, not an oversight, but it is the pack's main
 remaining content job. It needs real NPC record ids verified against the game:
 the framework never inspects a record id, so a wrong one fails silently.

@@ -273,9 +273,9 @@ local function defineFaction(def, context, fallbackLandmass)
         landmass = landmass,
         powerCenters = normalizePowerCenters(def.powerCenters, ctx, nil, landmass),
         patrolRoster = normalizeRoster(def.patrolRoster, ctx),
-        -- Authored reaction table, for factions with no ESM faction
-        -- record to read reactions from. nil means "look the faction up
-        -- in the game data instead" -- see power.reactionsFor.
+        -- Authored reactions: how this faction feels about others, the
+        -- same direction the game's own records use. Merged over the
+        -- record row where there is one -- see core/power.lua.
         reactions = def.reactions and checkTable(def.reactions, ctx, 'reactions') or nil,
     }
 end

@@ -5,10 +5,9 @@
 --
 -- 1. Reaction propagation. A faction's power change drags every other
 --    faction along with it, scaled by how that *other* faction feels
---    about the one that moved. Reading the direction the right way round
---    is what makes an invader's story work for free: everyone hates
---    them, so an award in their favour is everyone else's loss, with
---    nothing anywhere special-casing them.
+--    about the one that moved. That is what makes an invader's story work
+--    for free: everyone hates them, so an award in their favour is
+--    everyone else's loss, with nothing anywhere special-casing them.
 --
 --    Ambient growth is the deliberate exception -- see applyDailyGrowth,
 --    and the arithmetic on GROWTH_PROPAGATES for why a daily drip
@@ -40,19 +39,26 @@ local snapshot = nil
 -- Queued deltas for the duration of a batch, or nil outside one.
 local pending = nil
 
--- The propagation table: who moves when a faction moves.
+-- Every faction's reactions, from both sources, merged.
 --
---   propagation[A][B] = how B feels about A, in roughly [-3, 3]
+--   reactions[A][B] = how A feels about B, in roughly [-3, 3]
 --
--- Built once per registry generation. Reaction data is static for a
--- session, the record lookup involves a protected call into the game
--- data, and one of the two sources may need transposing -- none of which
--- is worth repeating on every propagation.
-local propagation = nil
--- factionId -> how many other factions have an opinion about it, which
--- is the count the row-shaped table above can't answer directly.
+-- One convention, everywhere: a row belongs to the faction that holds the
+-- opinions, so reactions[A][B] is how far A moves when B's power changes.
+-- This is the shape the game's own faction records use -- a reaction row
+-- adjusts an NPC's disposition according to which faction the player
+-- belongs to -- and authored tables in a content pack mean the same
+-- thing. Nothing here transposes anything.
+--
+-- Built once per registry generation: the data is static for a session
+-- and the record lookup is a protected call into the game data, neither
+-- of which is worth repeating on every propagation.
+local reactions = nil
+-- Audit counts, both derived in one pass over the rows above:
+-- how many factions each one can push, and how many can push it.
+local movesCount = nil
 local movedByCount = nil
-local propagationGeneration = -1
+local reactionsGeneration = -1
 
 local EMPTY = {}
 
@@ -75,49 +81,47 @@ local function recordReactions(factionId)
     return nil
 end
 
---- Resolve every faction's reaction row into one propagation table.
+--- Merge every faction's reactions into one table of rows.
 --
 -- Two sources, combined rather than one shadowing the other (doc 3.5).
 -- The game's records supply the vanilla politics; an authored table
--- supplies whatever the records can't express. Authored values win where
--- both name the same pair, so a pack can correct a specific relationship
--- without discarding a faction's entire vanilla row -- and, more to the
--- point, can teach a vanilla faction how to feel about a faction that
--- has no ESM record at all. That direction is otherwise unreachable: the
--- Empire's record cannot name the East Empire Company, because the
--- Company does not exist as far as Morrowind.esm is concerned.
-local function buildPropagation()
-    propagation, movedByCount = {}, {}
+-- supplies whatever the records can't express. Both are rows in the same
+-- direction, so merging them is a plain overlay. Authored values win
+-- where both name the same pair, so a pack can correct a specific
+-- relationship without discarding a faction's entire vanilla row -- and,
+-- more to the point, can give a faction an opinion about one that has no
+-- ESM record at all. That is otherwise unreachable: the Empire's record
+-- cannot name the East Empire Company, because the Company does not
+-- exist as far as Morrowind.esm is concerned.
+local function buildReactions()
+    reactions, movesCount, movedByCount = {}, {}, {}
     local ids = registry.sortedFactionIds()
 
     for _, id in ipairs(ids) do
-        propagation[id] = {}
+        reactions[id] = {}
+        movesCount[id] = 0
+        movedByCount[id] = 0
     end
 
-    -- 1. Record data, normalized to "how everyone else feels about me".
-    -- Rows are filtered to registered factions either way: a vanilla
-    -- record names dozens of factions this simulation doesn't model.
-    local inbound = config.RECORD_REACTIONS_ARE_INBOUND
+    -- 1. The game's records. Filtered to registered factions: a vanilla
+    -- record names dozens this simulation doesn't model.
     for _, id in ipairs(ids) do
         for otherId, value in pairs(recordReactions(id) or EMPTY) do
-            if inbound then
-                if registry.factions[otherId] then
-                    propagation[id][otherId] = value
-                end
-            elseif propagation[otherId] then
-                -- Each row is that faction's opinion *of* the others, so
-                -- the table we want is its transpose.
-                propagation[otherId][id] = value
+            if registry.factions[otherId] and otherId ~= id then
+                reactions[id][otherId] = value
             end
         end
     end
 
-    -- 2. Authored tables on top, always read as inbound.
+    -- 2. Authored tables on top.
     for _, id in ipairs(ids) do
         for otherId, value in pairs(registry.factions[id].reactions or EMPTY) do
             if registry.factions[otherId] then
-                propagation[id][otherId] = value
-            elseif otherId ~= id then
+                -- A faction's opinion of itself moves nothing.
+                if otherId ~= id then
+                    reactions[id][otherId] = value
+                end
+            else
                 -- A reaction naming a faction nobody registered is dead
                 -- weight, and is far more often a typo than an
                 -- intentional forward reference.
@@ -128,93 +132,94 @@ local function buildPropagation()
         end
     end
 
-    -- 3. Diagnostics, in both directions.
+    -- 3. Diagnostics, in both directions. A faction's row is everyone
+    -- who can move it; its column is everyone it moves.
+    --
+    -- A reaction of zero doesn't count in either. It propagates nothing,
+    -- so it wires nobody to anybody -- but it is still stored, because an
+    -- authored zero has to be able to cancel a value the record supplies.
+    -- Vanilla rows are mostly zeros, so counting entries rather than
+    -- relationships would report every faction as fully wired and this
+    -- whole diagnostic would go quiet at exactly the wrong moment.
     local mute, deaf = {}, {}
     for _, id in ipairs(ids) do
-        movedByCount[id] = 0
-    end
-    for _, id in ipairs(ids) do
-        if next(propagation[id]) == nil then
-            mute[#mute + 1] = id
-        end
-        for otherId in pairs(propagation[id]) do
-            movedByCount[otherId] = movedByCount[otherId] + 1
+        for otherId, value in pairs(reactions[id]) do
+            if value ~= 0 then
+                movedByCount[id] = movedByCount[id] + 1
+                movesCount[otherId] = movesCount[otherId] + 1
+            end
         end
     end
     for _, id in ipairs(ids) do
         if movedByCount[id] == 0 then
             deaf[#deaf + 1] = id
         end
+        if movesCount[id] == 0 then
+            mute[#mute + 1] = id
+        end
     end
 
-    -- A faction nobody reacts to. This is the failure that hides: the
-    -- faction looks fine, has a reaction table of its own, moves other
-    -- people around -- and never moves itself, because no other row can
-    -- name it. It is what happens to any faction with no ESM record
-    -- until some pack authors the other side of the relationship.
+    -- A faction with nothing it reacts to. This is the failure that
+    -- hides: it looks fine, appears in the standings, moves other
+    -- factions around -- and never moves itself, because nothing it could
+    -- react to is written down. It is what happens to any faction with no
+    -- ESM record until its pack authors the row by hand.
+    --
+    -- It is also, sometimes, just true. Some factions really do sit
+    -- outside the politics of a setting, and a pack that models one is
+    -- expected to see its name here and leave it alone.
     if #deaf > 0 then
-        log.warn('no faction has an opinion about: %s. Their power will only ever '
-            .. 'change through a direct award -- nothing in the simulation moves them. '
-            .. 'Author the reverse side of the relationship on the factions that '
-            .. 'should react to them.', table.concat(deaf, ', '))
+        log.warn('these factions react to nothing, so nothing in the simulation moves '
+            .. 'them: %s. Their power will only ever change through a direct award. '
+            .. 'A faction with no ESM record behind it has no row until its pack '
+            .. 'authors one.', table.concat(deaf, ', '))
     end
 
-    -- The other direction, and the one that was already caught: a
-    -- faction that moves nobody. A mistyped id, or a faction assumed to
-    -- exist as an ESM record that doesn't.
+    -- The other direction: a faction nobody has an opinion about, whose
+    -- power therefore moves nobody. A mistyped id, or a faction assumed
+    -- to be named in the records that isn't.
     if #mute > 0 then
-        log.warn('these factions have no reactions at all, from records or authored, '
-            .. 'so they propagate power to nobody: %s', table.concat(mute, ', '))
+        log.warn('no faction has an opinion about: %s, so a change to their power '
+            .. 'propagates to nobody', table.concat(mute, ', '))
     end
 
-    propagationGeneration = registry.generation
+    reactionsGeneration = registry.generation
 end
 
-local function ensurePropagation()
-    if propagation == nil or propagationGeneration ~= registry.generation then
-        buildPropagation()
+local function ensureReactions()
+    if reactions == nil or reactionsGeneration ~= registry.generation then
+        buildReactions()
     end
 end
 
---- Who moves when this faction moves: a map of other faction id -> how
--- that other faction feels about this one, in roughly [-3, 3].
-function M.reactionsFor(factionId)
-    ensurePropagation()
-    return propagation[factionId] or EMPTY
-end
-
---- How `factionId` feels about `towardId`, in roughly [-3, 3]. 0 if it
--- has no opinion, or for a faction's regard for itself.
---
--- The inverse question to reactionsFor(), and worth a named function
--- rather than an index because the storage is inbound and this is an
--- outbound question: the value lives on *towardId's* row. Reading it the
--- wrong way round is silent -- most pairs are near-symmetric -- and this
--- framework has already shipped that bug once.
+--- How `factionId` feels about `towardId`, in roughly [-3, 3], and so how
+-- far it moves when towardId's power does. 0 if it has no opinion, or for
+-- a faction's regard for itself.
 function M.regardOf(factionId, towardId)
     if factionId == towardId then
         return 0
     end
-    ensurePropagation()
-    local row = propagation[towardId]
-    return row and row[factionId] or 0
+    ensureReactions()
+    local row = reactions[factionId]
+    return row and row[towardId] or 0
 end
 
 --- How the reaction wiring actually resolved, per faction: `moves` is
--- how many factions it can push, `movedBy` how many can push it. A zero
--- in either column is a faction sitting outside the politics in one
--- direction, which is exactly the thing that's invisible in play.
+-- how many factions it can push, `movedBy` how many can push it, counting
+-- only opinions that aren't zero. A zero in either column is a faction
+-- sitting outside the politics in one direction, which is exactly the
+-- thing that's invisible in play.
 -- @return list of { id, moves, movedBy }, in stable order
 function M.reactionAudit()
-    ensurePropagation()
+    ensureReactions()
 
     local rows = {}
     for _, id in ipairs(registry.sortedFactionIds()) do
-        local moves = 0
-        for _ in pairs(propagation[id]) do
-            moves = moves + 1
-        end
-        rows[#rows + 1] = { id = id, moves = moves, movedBy = movedByCount[id] or 0 }
+        rows[#rows + 1] = {
+            id = id,
+            moves = movesCount[id] or 0,
+            movedBy = movedByCount[id] or 0,
+        }
     end
     return rows
 end
@@ -288,20 +293,19 @@ function M.apply(factionId, delta, opts)
     local changes = { [factionId] = delta }
 
     if not opts.noPropagate then
-        -- Every registered faction reacts, land-holding or not. A guild
-        -- that can't own a single cell still gains or loses standing
-        -- when a Great House does, and that standing is the input other
-        -- systems read. Whether a faction appears on the map is a
-        -- separate question, answered by `territorial`.
-        -- The propagation table is already filtered to registered
-        -- factions, so the only case left to skip is a faction with an
-        -- opinion about itself.
-        for otherId, reactionValue in pairs(M.reactionsFor(factionId)) do
-            if otherId ~= factionId then
-                local coefficient = allyCoefficient(reactionValue)
-                if coefficient ~= 0 then
-                    changes[otherId] = (changes[otherId] or 0) + delta * coefficient
-                end
+        -- Who reacts is the column, not the row: every faction whose own
+        -- row has an opinion about the one that moved.
+        --
+        -- Every registered faction is considered, land-holding or not. A
+        -- guild that can't own a single cell still gains or loses
+        -- standing when a Great House does, and that standing is the
+        -- input other systems read. Whether a faction appears on the map
+        -- is a separate question, answered by `territorial`.
+        ensureReactions()
+        for otherId, row in pairs(reactions) do
+            local coefficient = allyCoefficient(row[factionId])
+            if coefficient ~= 0 then
+                changes[otherId] = (changes[otherId] or 0) + delta * coefficient
             end
         end
     end

@@ -135,12 +135,14 @@ end
 --------------------------------------------------------------------------
 
 --- Every faction must be wired into the reaction table in both
--- directions. The outbound half was always visible -- a faction that
--- moves nobody produces a warning. The inbound half is the one that
--- hides: four factions here (the Company, the Skaal, the Ashlanders and
--- the Sixth House) have no ESM record, so nothing in the game's own data
--- can name them, and without an authored row on the other side their
--- standing would never move for any reason but a direct award.
+-- directions -- with the four exceptions vanilla itself leaves out.
+--
+-- Being unwired is silent in play: a faction with no row of its own is
+-- never moved by anything, and a faction nobody names moves nobody, and
+-- neither shows up as an error. The check is therefore against a named
+-- list rather than a count, so that a faction *arriving* in this state
+-- fails, while the four the game genuinely leaves outside its politics
+-- go on passing.
 --
 -- This runs against an empty record stub, which is the worst case: if it
 -- passes here, the authored rows alone are enough, and whatever the
@@ -148,12 +150,19 @@ end
 function M.wiresEveryFactionIntoThePoliticsBothWays()
     loadPack()
 
+    -- Vanilla's own gaps. The Morag Tong and the Talos Cult have an
+    -- empty reaction row and an empty column; the Nerevarine reacts to
+    -- nobody though Redoran and the Temple react to it; the Twin Lamps
+    -- hate House Telvanni and are beneath everyone else's notice.
+    local movesNobody = { ['morag tong'] = true, ['talos cult'] = true, ['twin lamps'] = true }
+    local movedByNobody = { ['morag tong'] = true, ['talos cult'] = true, nerevarine = true }
+
     local mute, deaf = {}, {}
     for _, row in ipairs(power.reactionAudit()) do
-        if row.moves == 0 then
+        if row.moves == 0 and not movesNobody[row.id] then
             mute[#mute + 1] = row.id
         end
-        if row.movedBy == 0 then
+        if row.movedBy == 0 and not movedByNobody[row.id] then
             deaf[#deaf + 1] = row.id
         end
     end
@@ -163,29 +172,42 @@ function M.wiresEveryFactionIntoThePoliticsBothWays()
 end
 
 --- The invasion's whole economy, and the reason it needs no special
--- casing: everyone hates the Sixth House, so its growth is automatically
--- everyone else's loss.
+-- casing: nearly everyone hates the Sixth House, so its growth is
+-- automatically their loss.
+--
+-- Driven off each faction's own regard rather than a list, which makes
+-- this a test of the wiring instead of a restatement of the data: every
+-- faction that has an opinion must move by it, and the handful vanilla
+-- leaves indifferent must not move at all. It also pins the direction --
+-- were the table read backwards, what moved here would be the factions
+-- the Sixth House has opinions *about*, which is very nearly but not
+-- quite the same set.
 function M.makesTheSixthHouseEveryonesProblem()
     loadPack()
 
-    local others = {}
+    local others, before = {}, {}
     for _, id in ipairs(registry.sortedFactionIds()) do
         if id ~= 'sixth house' then
             others[#others + 1] = id
+            before[id] = power.getLive(id)
         end
-    end
-
-    local before = {}
-    for _, id in ipairs(others) do
-        before[id] = power.getLive(id)
     end
 
     power.apply('sixth house', 20)
 
+    local moved = 0
     for _, id in ipairs(others) do
-        expect.greater(before[id], power.getLive(id),
-            id .. ' loses standing when the Sixth House grows')
+        if power.regardOf(id, 'sixth house') < 0 then
+            expect.greater(before[id], power.getLive(id),
+                id .. ' loses standing when the Sixth House grows')
+            moved = moved + 1
+        else
+            expect.equal(power.getLive(id), before[id],
+                id .. ' has no opinion, so it does not move')
+        end
     end
+
+    expect.greater(moved, 15, 'and it is most of the world, not a handful')
 end
 
 --- Authored faction fields have to survive the trip through build.lua,
@@ -211,9 +233,8 @@ end
 -- patrols stroll past a rival's. So the enemy list is pinned to the real
 -- data rather than assumed from the flag.
 --
--- Hostility reads outbound -- how the Sixth House feels about each
--- faction -- which under the inbound authoring convention lives on
--- *their* rows, not its own. Reading the wrong row here would produce a
+-- Hostility reads how the Sixth House feels about each faction, which is
+-- its own row. Reading the other faction's row instead would produce a
 -- list of the same length made of nearly the same factions, which is why
 -- the two -2 entries below are worth having in the fixture at all.
 function M.theSixthHouseFightsEveryoneItHates()
@@ -231,12 +252,16 @@ function M.theSixthHouseFightsEveryoneItHates()
     expect.truthy(enemies.telvanni, 'the houses')
     expect.truthy(enemies.temple, 'and the Temple')
     expect.truthy(enemies['imperial legion'], 'and the Empire')
+    expect.truthy(enemies.ashlanders, 'and the Ashlanders, who fight it in the ash')
 
-    -- Authored at -2: disliked, not hated. Dagoth Ur wants back a
-    -- Morrowind the Ashlanders were never part of, and has no quarrel
-    -- with a smuggling ring.
-    expect.falsy(enemies.ashlanders, 'the Ashlanders are spared')
-    expect.falsy(enemies['camonna tong'], 'and so is the Camonna Tong')
+    -- Vanilla puts the Camonna Tong at -1, alone on a row of -3s: a
+    -- smuggling ring is no threat to what Dagoth Ur wants back. It is
+    -- the only faction on Vvardenfell the Sixth House walks past, and
+    -- the one entry here that would vanish if the threshold moved.
+    expect.falsy(enemies['camonna tong'], 'the Camonna Tong are beneath its notice')
+    -- Not because it likes them -- because vanilla never gave it an
+    -- opinion. The distinction matters: an absent pair reads as 0.
+    expect.falsy(enemies['morag tong'], 'and it has no opinion of the Morag Tong')
 end
 
 --- Nobody else is flagged, so the Great Houses go on tolerating each

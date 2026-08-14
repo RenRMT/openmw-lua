@@ -1,8 +1,4 @@
--- Every tunable number in the framework lives here, named and in one
--- place. Design doc section 7 calls this out explicitly as a risk: none
--- of these values are known to be right until the thing has been
--- played, so none of them should be buried inside logic.
---
+-- Every tunable number in the framework lives here.
 -- Data packs never edit this file -- per-faction and per-territory
 -- overrides are authored in the pack's own definitions, and the values
 -- here are only the fallbacks used when a definition leaves a field out.
@@ -53,28 +49,6 @@ M.INFLUENCE_STRENGTH = 0.15
 -- scaling. Also the divisor that normalizes a reaction to [-1, 1].
 M.REACTION_CLAMP = 3
 
--- Which way round `core.factions.records[id].reactions` reads.
---
--- **Outbound**, settled in-game on 2026-08-13 against the asymmetric
--- Telvanni / Twin Lamps pair: a record row is "how I feel about everyone
--- else", matching the underlying ESM3 FACT record, where the ANAM/INTV
--- pairs live on the faction's own record. OpenMW's own documentation
--- describes it the other way round, and the documentation is wrong.
---
--- This shipped as `true` -- the documented reading -- through phases 1-3,
--- which propagated every asymmetric vanilla pair backwards. It failed
--- exactly as quietly as predicted: symmetric pairs behave identically
--- either way, so the world was subtly off rather than obviously broken.
---
--- The flag stays because it is not free knowledge for other content.
--- ESM4 records are a different format read through a different code
--- path, so a future Skyrim pack may well need the other setting.
---
--- Only record data is governed by this. Authored `reactions` tables in a
--- pack always mean "how everyone else feels about me", because that
--- convention is ours to define and there is no reason to leave it open.
-M.RECORD_REACTIONS_ARE_INBOUND = false
-
 -- Power changes smaller than this neither fire BoP_PowerChanged nor get
 -- logged. Propagation to a barely-interested faction otherwise produces
 -- a lot of events carrying a delta of 0.0003.
@@ -87,65 +61,39 @@ M.POWER_EVENT_EPSILON = 0.01
 -- Power a faction gains every resolved day with no player involvement,
 -- when its definition doesn't say otherwise.
 --
--- Zero for everyone is the right default: a faction that grows on its
--- own is making a claim about the world that only its own content pack
--- can justify. What it exists for is the faction whose whole story is
--- that it is getting stronger whether or not anyone is paying attention
--- -- the Sixth House being the obvious one -- and that is a number in a
--- pack's faction table, not a subsystem.
+-- Zero by default: factions growing on their own should be defined by
+-- content packs. The Sixth House is an obvious contender and that
+-- can be defined in a pack's faction table.
 M.DEFAULT_GROWTH_PER_DAY = 0
 
 -- Whether ambient growth drags other factions along the reaction table
--- the way an awarded change does.
---
--- **No, and this is not a small default.** Propagation models other
--- factions reacting to something that happened; a daily internal
--- build-up is not an event anyone witnesses. More practically, it
--- compounds in a way one-off awards never do. Every faction in Morrowind
--- sits at -3 toward the Sixth House, so at growthPerDay = 1.5 and
--- INFLUENCE_STRENGTH = 0.15 each of them bleeds 0.225 power per day
--- against starting standings of 25 to 50: the entire political map is at
--- MIN_POWER inside four to seven in-game months, every projection falls
--- under MIN_CLAIM_POWER, and the world empties.
---
--- The invader gains nothing from that, either, because its reach is
--- bounded by influenceRange rather than by power. The end state is an
--- empty map with one small red patch, reached quietly, with nothing in
--- the log to say what went wrong.
---
--- The Sixth House still costs everyone something -- that comes from
--- awardPower when the player or the world acts on its behalf, which is
--- an event, and where it belonged all along.
+-- the way an awarded change does. Should almost always be false.
+-- With propagation turned on, a faction with negative relations to all
+-- others like the sixth house will bleed out other factions passively.
+-- Factions with ambient growth are better considered an outside threat
+-- instead of a contended in the balance of power between factions.
 M.GROWTH_PROPAGATES = false
 
 --------------------------------------------------------------------------
 -- Hostility
 --------------------------------------------------------------------------
 
--- Whether factions fight each other on sight, and whom.
---
 -- Hostility is opt-in per faction (`hostile = true` in a pack's faction
--- definition) and defaults to nobody, because vanilla Morrowind's Great
--- Houses do not brawl in the street and a framework that made them do so
--- would be wrong about the game it is modelling.
+-- definition) and defaults to nobody.
 --
 -- A flagged faction is hostile to the player, and fights any faction it
--- regards at or below this threshold. -3 is vanilla's "sworn enemies"
+-- regards at or below this threshold. -3 is vanilla's "hated enemy"
 -- value, so the rule reads as: a hostile faction attacks the people it
 -- genuinely hates, and tolerates everyone else.
---
--- Note the direction. This asks how the *hostile* faction feels about
--- the other one, which is an outbound question against inbound storage
--- -- use power.regardOf rather than indexing a reaction row directly.
 M.HOSTILITY_REACTION_THRESHOLD = -3
 
 -- Treat every faction as though it carried `hostile = true`.
 --
--- Off by default. Switching it on is less dramatic than it sounds: -3 is
--- rare between vanilla factions, so what emerges is the Camonna Tong and
--- the Thieves Guild going at each other rather than a general war. That
--- is the point -- the setting produces the fights that make sense, not
--- all of them.
+-- Off by default, and not a small switch. Against Morrowind's full
+-- reaction matrix -3 is commoner than it looks -- the vampire clans
+-- alone bring a dozen, and Telvanni/Mages Guild and Thieves Guild/Camonna
+-- Tong are mutual -- so this is closer to a general war than to a handful
+-- of feuds.
 M.ALL_FACTIONS_HOSTILE = false
 
 --------------------------------------------------------------------------

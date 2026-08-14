@@ -21,20 +21,15 @@ local M = {}
 --- Three ordinary houses that dislike each other the way vanilla's do,
 -- and an invader everyone hates.
 --
--- **Read the rows carefully.** Authored reactions are inbound: an entry
--- on a faction's row is how the *named* faction feels about the one
--- whose row it is. So "the invader hates Hlaalu" is written on Hlaalu's
--- row, not the invader's.
---
--- The relationships below, stated plainly:
+-- A row is the faction's own opinions, so the asymmetry the fixture
+-- exists for reads straight off it:
 --
 --   invader -> hlaalu, redoran   -3   it attacks them
 --   invader -> telvanni          -1   it walks past them
 --   telvanni -> invader          -3   they attack it
 --
--- That last asymmetry is the fixture's whole purpose. A hostility rule
--- reading the wrong direction would spare Hlaalu and attack Telvanni,
--- and every symmetric pair in the table would go on passing.
+-- A hostility rule reading the wrong direction would spare Hlaalu and
+-- attack Telvanni, and every symmetric pair here would go on passing.
 local function morrowind(overrides)
     local factions = {
         {
@@ -50,12 +45,12 @@ local function morrowind(overrides)
         {
             id = 'telvanni',
             basePower = 50,
-            reactions = { hlaalu = -1, redoran = -1, invader = -1 },
+            reactions = { hlaalu = -1, redoran = -1, invader = -3 },
         },
         {
             id = 'invader',
             basePower = 30,
-            reactions = { hlaalu = -3, redoran = -3, telvanni = -3 },
+            reactions = { hlaalu = -3, redoran = -3, telvanni = -1 },
         },
     }
     for _, faction in ipairs(factions) do
@@ -101,9 +96,9 @@ function M.aFlaggedFactionToleratesWhatItMerelyDislikes()
 end
 
 --- The direction trap, pinned. Hostility asks how the *aggressor* feels
--- about the target, which is stored on the target's row. Reading the
--- aggressor's row instead would spare Hlaalu and Redoran -- who feel -3
--- about the invader -- and attack Telvanni, who does not.
+-- about the target, which is the aggressor's own row. Reading the
+-- target's row instead would spare Hlaalu and Redoran -- whom the
+-- invader hates -- and attack Telvanni, whom it does not.
 function M.readsRegardInTheOutboundDirection()
     morrowind({ invader = { hostile = true }, telvanni = { hostile = true } })
 

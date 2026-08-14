@@ -246,12 +246,17 @@ lever), `cellSize`, `margin`, `idPrefix`, `requireExistingCell`.
 
 ### Reactions, and which way round they read
 
-A faction's reaction row answers one question: **when this faction's power
-moves, who moves with it?** Both sources are read as
+A faction's reaction row is **its own opinions**:
 
 ```lua
-reactions[otherFactionId] = how that other faction feels about this one
+reactions[otherFactionId] = how this faction feels about that one
 ```
+
+which is also how far it moves when that other faction's power changes. This
+is the direction the game's own faction records use — a reaction row adjusts
+an NPC's disposition according to which faction the player belongs to — and
+there is only the one convention. Nothing is transposed anywhere, and no
+setting selects a direction.
 
 Values come from `core.factions.records` where a faction has an ESM record,
 and from an authored `reactions` table in the faction definition otherwise —
@@ -266,10 +271,11 @@ cost the Empire every real relationship it has.
 
 #### Both directions have to be wired
 
-A faction with no ESM record is invisible to every other faction's record row.
-Authoring its own table makes it move other factions; it does **not** make
-anything move *it*. That half has to be authored on the other side, as an
-entry on each faction that should react to it.
+A faction with no ESM record has no row of its own *and* is invisible to every
+other faction's record row, so both halves have to be authored. Its own table
+is what lets anything move **it**; an entry on each faction that should react
+to it is what lets it move **them**. Either half alone looks like a working
+faction.
 
 The framework warns at load about both failures, and `dumpReactions()` shows
 the wiring:
@@ -279,29 +285,22 @@ luag require('openmw.interfaces').BalanceOfPower.dumpReactions()
 ```
 
 `moves` is how many factions this one can push; `movedBy` is how many can push
-it. **A zero in either column is a faction standing outside the politics**,
-which produces no error and is close to invisible in play.
+it, counting only opinions that aren't zero. **A zero in either column is a
+faction standing outside the politics**, which produces no error and is close
+to invisible in play — though for some factions that is simply true, and a
+pack modelling one is expected to see it there and leave it alone.
 
-#### Records read outbound, and the documentation says otherwise
+A reaction of zero propagates nothing, so it never counts as wiring. It is
+still stored, because overriding a record's value with zero is the only way a
+pack can cancel a relationship the game's own data asserts.
 
-Settled in-game on 2026-08-13 against the asymmetric Telvanni / Twin Lamps
-pair. `core.factions.records[id].reactions` is **"how I feel about everyone
-else"**, matching the ESM3 `FACT` record, whose ANAM/INTV pairs live on the
-faction's own record. OpenMW's documentation describes it the other way round.
+#### The one thing worth checking twice
 
-The framework shipped the documented reading through phases 1–3 and propagated
-every asymmetric vanilla pair backwards. Nothing looked wrong: symmetric pairs
-behave identically either way, so only the magnitude of a handful of
-relationships was off.
-
-Record data is transposed on the way in, so everything downstream — including
-authored tables — uses the inbound convention above.
-`config.RECORD_REACTIONS_ARE_INBOUND` still selects it, because ESM4 content is
-read through a different code path and may not share ESM3's convention.
-
-**Reading it back out is the direction to be careful about.** Asking "how does
-A feel about B" means looking at *B's* row, which is why `regardOf(a, b)` is a
-function rather than a table you index. Getting it backwards never errors.
+Asymmetry is the whole point of the table and the reason a wrong reading is so
+hard to spot: most pairs are near-symmetric, so getting the direction backwards
+changes the magnitude of a handful of relationships and never errors. When in
+doubt, `regardOf(a, b)` answers "how does A feel about B" — merged from both
+sources, which is why it is a function and not a table you index.
 
 ### Patrols
 

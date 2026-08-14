@@ -1,11 +1,10 @@
 -- The public interface, exposed to other mods as
 -- require('openmw.interfaces').BalanceOfPower from any global script.
 --
--- This is the whole contract. A content pack should never need to
--- require a file under scripts/BalanceOfPower/core/ -- the merged VFS
--- would technically let it, but reaching past this file couples a pack
--- to internals that are expected to change between phases. Anything a
--- pack legitimately needs and can't get here is a gap in this file.
+-- This is the whole contract. A content pack should never require a file
+-- under scripts/BalanceOfPower/core/ -- the merged VFS would let it, but
+-- internals change without notice, and during alpha so does this file
+-- (see `version`). Anything a pack needs and can't get here is a gap.
 
 local config = require('scripts.BalanceOfPower.core.config')
 local driver = require('scripts.BalanceOfPower.core.driver')
@@ -21,42 +20,27 @@ local resolve = require('scripts.BalanceOfPower.core.resolve')
 local state = require('scripts.BalanceOfPower.core.state')
 
 local M = {
-    -- Bumped when this interface changes in a way a pack could notice.
-    -- Packs should check it rather than assuming a function exists.
-    --
-    -- v2 added CELL_SIZE, reactionAudit and dumpReactions.
-    -- v3 removed registerInvasion, getInvasion, getInvasionStage and
-    --    isCorrupted, and added isSurrounded, surroundedSince and the
-    --    BoP_DayResolved event. Invasion, corruption and sieges are
-    --    extension territory now; see ../../README.md.
-    -- v4 made every territory exactly one cell. A settlement's cells are
-    --    ownable individually and grouped by a settlement record --
-    --    getSettlement, settlementIds, getSettlementOwner. classify()
-    --    returns a four-way partition and isSurrounded takes a
-    --    settlement id.
-    -- v5 added ambient growth (growthPerDay on a faction definition),
-    --    hostility (hostile on a faction definition; isHostile,
-    --    willFight, isHostileToPlayer, enemiesOf, regardOf) and patrol
-    --    planning (planPatrol; patrolRoster entries may now carry a
-    --    tier).
-    version = 5,
+    -- Zero for the whole of closed alpha: nothing here is stable, and
+    -- there is no deprecation window or compatibility shim. Pin the
+    -- framework build you were written against rather than checking this.
+    -- It becomes 1 when the interface is frozen for a public release.
+    version = 0,
 
     -- Event name constants, so listeners don't hardcode the strings.
     events = events,
 
     -- World units per exterior cell, as the engine defines it.
     --
-    -- Exposed because a pack that places anything by grid coordinate has
-    -- to agree with the frontier generator about where a cell is, and
-    -- the only alternative is for the pack to write 8192 down a second
-    -- time. Two copies of a constant that must match is exactly the kind
-    -- of drift that produces a map subtly out of register with its own
-    -- settlements, with nothing to catch it.
+    -- Exposed so a pack placing anything by grid coordinate agrees with
+    -- the frontier generator about where a cell is, instead of writing
+    -- 8192 down a second time. Two copies of a constant that must match
+    -- drift into a map subtly out of register with its own settlements,
+    -- with nothing to catch it.
     CELL_SIZE = config.CELL_SIZE,
 }
 
 --------------------------------------------------------------------------
--- Registration (design doc 3.8)
+-- Registration
 --------------------------------------------------------------------------
 
 function M.registerLandmass(def)
@@ -65,12 +49,12 @@ function M.registerLandmass(def)
     return landmass
 end
 
---- Derive a landmass's frontier grid from the power centers registered
--- on it. Call after registerLandmass, once the settlements are in.
+--- Derive a landmass's frontier grid from its registered power centers.
+-- Call after registerLandmass, once the settlements are in.
 --
--- Only ground within reach of some power center becomes territory, so
--- the size of the resulting map follows from the content rather than
--- from a bounding box. See core/frontier.lua for the options.
+-- Only ground within reach of some power center becomes territory, so the
+-- map's size follows from the content rather than from a bounding box.
+-- See core/frontier.lua for the options.
 -- @return number of frontier territories created
 function M.generateFrontier(def)
     local created = frontier.generate(def)
@@ -82,10 +66,10 @@ end
 -- Power
 --------------------------------------------------------------------------
 
---- Award (or subtract) power on behalf of the player's actions.
--- The one entry point content is expected to call: a quest mod, a
--- dialogue hook or a future combat hook can move a faction's standing
--- without knowing anything about propagation, batching or reactions.
+--- Award (or subtract) power on behalf of the player's actions. The one
+-- entry point content is expected to call: a quest mod, a dialogue hook
+-- or a future combat hook moves a faction's standing without knowing
+-- anything about propagation, batching or reactions.
 -- @param factionId string
 -- @param baseDelta number the unscaled change
 -- @param playerRankMultiplier number|nil scales baseDelta; defaults to 1
@@ -106,12 +90,10 @@ function M.setPower(factionId, value)
 end
 
 --- How `factionId` feels about `towardId`, in roughly [-3, 3]; 0 if it
--- has no opinion. Merged from the game's records and authored tables.
+-- has no opinion. Merged from the game's records and authored tables,
+-- which is why it is a function and not a table a pack can read.
 --
--- Note the direction: this is the *outbound* question, "what does this
--- faction think of that one". It is a function rather than a table
--- because the underlying storage is inbound, and reading it directly
--- gets the answer backwards without ever erroring.
+-- This is also how far `factionId` moves when `towardId`'s power does.
 function M.regardOf(factionId, towardId)
     return power.regardOf(factionId, towardId)
 end
@@ -147,8 +129,7 @@ end
 
 --- Registered territory ids -- one per exterior cell. `kind` is
 -- 'settlement', 'frontier', or nil for both. Registration order, copied.
---
--- A settlement's cells appear individually here. For the named places
+-- A settlement's cells appear individually; for the named places
 -- themselves, use settlementIds().
 function M.territoryIds(kind)
     local out = {}
@@ -209,10 +190,9 @@ end
 --- A named place: { id, displayName, tier, region, landmass, cells,
 -- territoryIds, interiors, centroid, adjacentFrontier }.
 --
--- A settlement is a group, not a territory. Its cells are ownable
--- individually and appear in territoryIds('settlement'); the settlement
--- itself is what holds them together and what carries the name, the
--- tier, and the ring used by isSurrounded().
+-- A settlement is a group, not a territory: its cells are ownable
+-- individually and appear in territoryIds('settlement'), while the
+-- settlement carries the name, the tier and the ring isSurrounded() uses.
 function M.getSettlement(settlementId)
     return registry.settlements[settlementId]
 end
@@ -237,9 +217,8 @@ end
 -- frontier. Takes a settlement id, not a territory id.
 --
 -- The framework observes this and does nothing about it. It is here
--- because answering it needs the frontier ownership map, and because
--- every extension that cares would otherwise derive the same fact from
--- the same data.
+-- because answering it needs the frontier ownership map, and every
+-- extension that cares would otherwise derive it from the same data.
 function M.isSurrounded(settlementId)
     local settlement = registry.settlements[settlementId]
     return settlement ~= nil and resolve.isSurrounded(settlement)
@@ -256,11 +235,11 @@ end
 -- Hostility
 --------------------------------------------------------------------------
 --
--- One rule, at three settings: a faction fights nobody unless its pack
+-- One rule at three settings: a faction fights nobody unless its pack
 -- flagged it hostile, and a flagged faction fights whoever it regards at
 -- or below HOSTILITY_REACTION_THRESHOLD. The framework starts no fights
--- of its own -- it answers the question so that everything spawning
--- actors answers it the same way.
+-- of its own -- it answers the question so everything spawning actors
+-- answers it the same way.
 
 --- Whether `factionId` attacks `towardId` on sight. Asymmetric: a
 -- peaceful faction does not go looking for the fight it ends up in.
@@ -280,8 +259,8 @@ function M.isHostileToPlayer(factionId)
 end
 
 --- Every registered faction `factionId` attacks on sight, sorted. Empty
--- for a peaceful faction, and empty for a hostile one with nobody it
--- hates enough -- which is worth checking after flagging one.
+-- for a peaceful faction, and for a hostile one with nobody it hates
+-- enough -- worth checking after flagging one.
 function M.enemiesOf(factionId)
     return hostility.enemiesOf(factionId)
 end
@@ -300,13 +279,12 @@ end
 --   }, ... } }
 --
 -- Decisions only: this creates nothing and touches no actor. `records`
--- are the ids the faction's pack authored, in whatever vocabulary its
--- content files use, and the framework has never looked inside them.
+-- are the ids the faction's pack authored, in its own vocabulary; the
+-- framework has never looked inside them.
 --
--- The answer is stable for a given territory and day rather than rolled
--- fresh, so re-entering a cell gives the same patrol back instead of a
--- new one -- without which every patrol would be a renewable source of
--- whatever its records happen to carry.
+-- Stable for a given territory and day rather than rolled fresh, so
+-- re-entering a cell gives the same patrol back instead of making every
+-- patrol a renewable source of whatever its records carry.
 --
 -- @param opts table|nil { lastSpawnedDay = number } to apply the
 --        per-cell cooldown; omit if nothing has spawned here
@@ -327,10 +305,9 @@ end
 -- factions it can push, `movedBy` how many can push it.
 --
 -- Worth reading after adding a faction. A zero in either column is a
--- faction standing outside the politics in one direction, which never
--- shows up as an error and is close to invisible in play -- a faction
--- with no ESM record behind it sits at movedBy = 0 until some pack
--- authors the other side of the relationship.
+-- faction standing outside the politics in one direction -- never an
+-- error, close to invisible in play. A faction with no ESM record behind
+-- it sits at movedBy = 0 until its pack authors its reaction row.
 -- @return list of { id, moves, movedBy }, sorted by id
 function M.reactionAudit()
     return power.reactionAudit()
@@ -352,9 +329,9 @@ function M.getCurrentDay()
     return state.get().lastResolvedDay
 end
 
---- Resolve `count` in-game days immediately instead of waiting for the
--- calendar. Testing aid: this runs the simulation ahead of game time,
--- so the scheduled tick then idles until real time catches up.
+--- Resolve `count` in-game days immediately. Testing aid: this runs the
+-- simulation ahead of game time, so the scheduled tick then idles until
+-- real time catches up.
 function M.forceDay(count)
     return driver.forceDays(count)
 end
@@ -391,8 +368,8 @@ function M.dump()
         end
         if hostility.isBelligerent(id) then
             -- The enemy list, not just the flag: a hostile faction with
-            -- nobody it hates enough is indistinguishable from a working
-            -- one until you watch it walk past a rival patrol.
+            -- nobody it hates enough looks like a working one until you
+            -- watch it walk past a rival patrol.
             local enemies = hostility.enemiesOf(id)
             tags = tags .. ' [hostile: '
                 .. (#enemies > 0 and table.concat(enemies, ', ') or 'player only') .. ']'
@@ -411,7 +388,7 @@ end
 --   dumpMap({ mode = 'contest' })              where the fronts are
 --
 -- 'projection' is the one to read while tuning influence ranges: where it
--- disagrees with the ownership map, the front is moving.
+-- disagrees with ownership, the front is moving.
 function M.dumpMap(opts)
     mapdump.dump(opts)
 end

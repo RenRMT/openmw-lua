@@ -25,9 +25,8 @@ end
 --------------------------------------------------------------------------
 
 --- A house holding a town, and an invader two cells east of it whose
--- reach overlaps the house's ground. Reactions are authored, so they
--- read inbound -- the invader's hostility toward the house is written on
--- the *house's* row.
+-- reach overlaps the house's ground. Each hates the other, written on
+-- its own row.
 local function twoRealms(overrides)
     world._test.defineExteriorGrid(-6, 6, -6, 6)
 

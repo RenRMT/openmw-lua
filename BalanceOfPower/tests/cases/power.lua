@@ -59,11 +59,13 @@ end
 -- Propagation
 --------------------------------------------------------------------------
 
---- The direction that matters: reactions[X] is how X feels about the
--- faction whose row it is. An ally moves with it, an enemy against it.
+--- The direction that matters: a row is the faction's own opinions, so
+-- "redoran moves when hlaalu moves" is written on redoran. An ally moves
+-- with it, an enemy against it.
 function M.propagatesAlongAuthoredReactions()
     threeFactions({
-        hlaalu = { reactions = { redoran = 3, telvanni = -3 } },
+        redoran = { reactions = { hlaalu = 3 } },
+        telvanni = { reactions = { hlaalu = -3 } },
     })
 
     power.apply('hlaalu', 10)
@@ -75,13 +77,9 @@ function M.propagatesAlongAuthoredReactions()
 end
 
 --- Factions with no authored table fall back to the game's own faction
--- records. Same maths either way -- that fallback is the seam that lets
--- a Tamriel Rebuilt house or a Lua-only invader behave like a vanilla
--- faction without one.
---
--- Note where the record row sits: records read *outbound*, so "redoran
--- moves when hlaalu moves" is stored on redoran's record as its opinion
--- of hlaalu, not on hlaalu's.
+-- records, which are rows in the same direction. That fallback is the
+-- seam that lets a Tamriel Rebuilt house or a Lua-only invader behave
+-- like a vanilla faction without one.
 function M.propagatesAlongRecordReactions()
     core.factions.records.redoran = { reactions = { hlaalu = 3 } }
     threeFactions()
@@ -92,63 +90,60 @@ function M.propagatesAlongRecordReactions()
     expect.equal(power.getLive('telvanni'), 50, 'faction with no opinion')
 end
 
---- Both sources naming the same ordered pair, from the opposite ends
--- their conventions put it: the record on redoran (outbound), the
--- authored table on hlaalu (inbound). Authored wins.
+--- Both sources naming the same pair. Same row, same direction, so the
+-- overlay is unambiguous: authored wins.
 function M.authoredReactionsBeatRecords()
     core.factions.records.redoran = { reactions = { hlaalu = 3 } }
-    threeFactions({ hlaalu = { reactions = { redoran = -3 } } })
+    threeFactions({ redoran = { reactions = { hlaalu = -3 } } })
 
     power.apply('hlaalu', 10)
 
     expect.near(power.getLive('redoran'), 50 - 10 * config.INFLUENCE_STRENGTH, 1e-6, 'authored wins')
 end
 
---- Authored values merge over the record instead of replacing it. This
--- is what lets a pack teach a vanilla faction about a faction that has
--- no ESM record, without discarding the vanilla row to do it -- the
--- Empire's record cannot name the East Empire Company, and before the
--- merge there was no way to say so that didn't cost the Empire every
--- real relationship it has.
+--- Authored values merge into the record row instead of replacing it.
+-- This is what lets a pack give a vanilla faction an opinion about a
+-- faction that has no ESM record, without discarding the vanilla row to
+-- do it -- the Empire's record cannot name the East Empire Company, and
+-- without the merge there would be no way to say so that didn't cost the
+-- Empire every real relationship it has.
 function M.authoredReactionsMergeOverRecordsRatherThanReplacingThem()
-    core.factions.records.redoran = { reactions = { hlaalu = 3 } }
-    threeFactions({ hlaalu = { reactions = { telvanni = -3 } } })
-
-    power.apply('hlaalu', 10)
+    core.factions.records.redoran = { reactions = { hlaalu = 3, telvanni = 3 } }
+    threeFactions({ redoran = { reactions = { telvanni = -3 } } })
 
     local step = 10 * config.INFLUENCE_STRENGTH
-    expect.near(power.getLive('redoran'), 50 + step, 1e-6, 'the record row survived')
-    expect.near(power.getLive('telvanni'), 50 - step, 1e-6, 'and the authored row was added')
+
+    power.apply('hlaalu', 10)
+    expect.near(power.getLive('redoran'), 50 + step, 1e-6, 'the untouched record entry survived')
+
+    local before = power.getLive('redoran')
+    power.apply('telvanni', 10)
+    expect.near(power.getLive('redoran'), before - step, 1e-6, 'and the authored one replaced its pair')
 end
 
 --- A reaction naming a faction nobody registered is dead weight and far
--- more often a typo. It must not reach the propagation table.
+-- more often a typo. It must not reach the reaction table.
 function M.ignoresReactionsTowardUnregisteredFactions()
     threeFactions({ hlaalu = { reactions = { redoran = 3, ['no such house'] = 3 } } })
 
-    local row = power.reactionsFor('hlaalu')
-    expect.equal(row.redoran, 3, 'the registered one survived')
-    expect.isNil(row['no such house'], 'the unregistered one was dropped')
+    expect.equal(power.regardOf('hlaalu', 'redoran'), 3, 'the registered one survived')
+    expect.equal(power.regardOf('hlaalu', 'no such house'), 0, 'the unregistered one was dropped')
     -- And it must not throw on the way past.
-    power.apply('hlaalu', 10)
-    expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6, 'still works')
+    power.apply('redoran', 10)
+    expect.near(power.getLive('hlaalu'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6, 'still works')
 end
 
 --------------------------------------------------------------------------
--- Which way round the record data reads
+-- Which way round the data reads
 --------------------------------------------------------------------------
 
---- Settled in-game on 2026-08-13 against the Telvanni / Twin Lamps pair:
--- a record row is "how I feel about everyone else", so the propagation
--- table is its transpose. This shipped the other way round for three
--- phases, propagating every asymmetric vanilla pair backwards, which is
--- why the direction is asserted here rather than left implied by the
--- behavioural tests.
-function M.readsRecordRowsAsOutboundByDefault()
-    expect.falsy(config.RECORD_REACTIONS_ARE_INBOUND, 'settled: records read outbound')
-
+--- One convention for both sources, asserted rather than left implied by
+-- the behavioural tests: a row belongs to the faction holding the
+-- opinions. Reading it the other way round is silent, because most pairs
+-- are near-symmetric, and this framework has shipped that bug once.
+function M.readsRecordRowsAsTheFactionsOwnOpinions()
     -- This says hlaalu feels +3 about redoran, which tells us nothing
-    -- about how redoran responds to hlaalu...
+    -- about how redoran responds when hlaalu moves...
     core.factions.records.hlaalu = { reactions = { redoran = 3 } }
     -- ...and this says telvanni feels -3 about hlaalu, which does.
     core.factions.records.telvanni = { reactions = { hlaalu = -3 } }
@@ -161,31 +156,52 @@ function M.readsRecordRowsAsOutboundByDefault()
         'the faction with an opinion about hlaalu is the one that moves')
 end
 
---- The flag survives because ESM4 content is read through a different
--- code path and may not share ESM3's convention. Setting it uses each
--- row as-is instead of transposing.
-function M.readsRecordRowsAsInboundWhenTheFlagIsSet()
-    config.RECORD_REACTIONS_ARE_INBOUND = true
-
-    core.factions.records.hlaalu = { reactions = { redoran = 3 } }
+--- The pair the convention was settled against, kept as a fixture. The
+-- Twin Lamps run slaves out of Telvanni holdings and the vanilla records
+-- carry that asymmetrically: -3 on the Twin Lamps' own row, and nothing
+-- at all on House Telvanni's, who do not think about them.
+--
+-- Telvanni still gets a row here, naming somebody else. That is the
+-- point of the fixture: the zero has to come from the *pair* being
+-- absent, not from the faction having no data at all, and only a
+-- genuinely asymmetric pair can tell those two apart.
+function M.readsTheTwinLampsPairTheWayTheGameStoresIt()
+    core.factions.records['twin lamps'] = { reactions = { telvanni = -3 } }
+    core.factions.records.telvanni = { reactions = { hlaalu = -1 } }
     threeFactions()
+    registry.registerLandmass({
+        id = 'solstheim',
+        factions = { { id = 'twin lamps', basePower = 50, territorial = false } },
+    })
+    state.fillDefaults(registry)
 
-    power.apply('hlaalu', 10)
-    expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6,
-        'the row now reads as redoran feeling +3 about hlaalu')
+    expect.equal(power.regardOf('twin lamps', 'telvanni'), -3, 'the twin lamps hate the slavers')
+    expect.equal(power.regardOf('telvanni', 'twin lamps'), 0, 'telvanni have no opinion back')
+    expect.equal(power.regardOf('telvanni', 'hlaalu'), -1, 'though telvanni do have a row')
+
+    -- And the propagation that follows, which is the half that shows in play.
+    local step = 10 * config.INFLUENCE_STRENGTH
+    power.apply('telvanni', 10)
+    expect.near(power.getLive('twin lamps'), 50 - step, 1e-6,
+        'a good day for the slavers is a bad one for the twin lamps')
+
+    local telvanniBefore = power.getLive('telvanni')
+    power.apply('twin lamps', 10)
+    expect.equal(power.getLive('telvanni'), telvanniBefore, 'and it does not come back the other way')
 end
 
---- Authored tables mean one fixed thing regardless of the flag. The
--- record convention is the engine's and varies by format; ours is not,
--- and making both configurable would mean every pack's data changed
--- meaning when the flag moved.
-function M.authoredTablesAreAlwaysInbound()
-    config.RECORD_REACTIONS_ARE_INBOUND = true
-    threeFactions({ hlaalu = { reactions = { redoran = 3 } } })
+--- And an authored row means the same thing a record row does. If the
+-- two conventions ever diverged, a pack's data would change meaning
+-- depending on whether the faction happened to have an ESM record.
+function M.authoredRowsReadTheSameWayAsRecords()
+    core.factions.records.redoran = { reactions = { hlaalu = 3 } }
+    threeFactions({ telvanni = { reactions = { hlaalu = 3 } } })
 
     power.apply('hlaalu', 10)
-    expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6,
-        'authored rows are unaffected by the record flag')
+
+    local step = 10 * config.INFLUENCE_STRENGTH
+    expect.near(power.getLive('redoran'), 50 + step, 1e-6, 'from the record')
+    expect.near(power.getLive('telvanni'), 50 + step, 1e-6, 'from the authored table')
 end
 
 --------------------------------------------------------------------------
@@ -198,7 +214,8 @@ end
 -- and its power can only ever change through a direct award.
 function M.auditReportsFactionsNobodyReactsTo()
     threeFactions({
-        hlaalu = { reactions = { redoran = 3, telvanni = -3 } },
+        redoran = { reactions = { hlaalu = 3 } },
+        telvanni = { reactions = { hlaalu = -3 } },
     })
 
     local byId = {}
@@ -217,8 +234,40 @@ function M.auditCoversEveryRegisteredFaction()
     expect.count(power.reactionAudit(), 3, 'one row per faction')
 end
 
+--- A reaction of zero is the absence of a relationship, not a quiet one,
+-- and the audit has to agree. Vanilla reaction rows are mostly zeros, so
+-- counting entries rather than opinions would report every faction as
+-- fully wired in both directions and the diagnostic would go silent at
+-- exactly the moment it is worth reading.
+function M.auditIgnoresZeroReactions()
+    threeFactions({
+        redoran = { reactions = { hlaalu = 0 } },
+        telvanni = { reactions = { hlaalu = -3 } },
+    })
+
+    local byId = {}
+    for _, row in ipairs(power.reactionAudit()) do
+        byId[row.id] = row
+    end
+
+    expect.equal(byId.redoran.movedBy, 0, 'an opinion of zero is not an opinion')
+    expect.equal(byId.hlaalu.moves, 1, 'so hlaalu moves telvanni and nobody else')
+end
+
+--- The zero is still stored, though, and this is why: overriding a
+-- record's value with nothing is the only way a pack can say "these two
+-- have no quarrel" about a pair the game insists on.
+function M.anAuthoredZeroCancelsARecordReaction()
+    core.factions.records.redoran = { reactions = { hlaalu = 3 } }
+    threeFactions({ redoran = { reactions = { hlaalu = 0 } } })
+
+    power.apply('hlaalu', 10)
+
+    expect.equal(power.getLive('redoran'), 50, 'the record value was cancelled, not merged')
+end
+
 function M.clampsExtremeReactionValues()
-    threeFactions({ hlaalu = { reactions = { redoran = 99 } } })
+    threeFactions({ redoran = { reactions = { hlaalu = 99 } } })
 
     power.apply('hlaalu', 10)
 
@@ -231,8 +280,7 @@ end
 -- allies -- that standing is the whole reason to track it.
 function M.propagatesToPowerOnlyFactions()
     threeFactions({
-        hlaalu = { reactions = { redoran = 3 } },
-        redoran = { territorial = false },
+        redoran = { reactions = { hlaalu = 3 }, territorial = false },
     })
 
     power.apply('hlaalu', 10)
@@ -242,7 +290,7 @@ function M.propagatesToPowerOnlyFactions()
 end
 
 function M.noPropagateMovesOneFactionAlone()
-    threeFactions({ hlaalu = { reactions = { redoran = 3 } } })
+    threeFactions({ redoran = { reactions = { hlaalu = 3 } } })
 
     power.apply('hlaalu', 10, { noPropagate = true })
 

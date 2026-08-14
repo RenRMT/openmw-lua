@@ -126,9 +126,9 @@ Checked directly against the docs while building the framework, so these no long
 
 - **Faction record reactions read OUTBOUND** *(verified in-game 2026-08-13)*. `core.factions.records[id].reactions` is a map of *how this faction feels about the named ones*, not how they feel about it. Verified against the asymmetric Telvanni / Twin Lamps pair, where the two directions carry different values and so cannot both be read the same way.
 
-  **The documentation says inbound, and is wrong** for ESM3 content. Anyone building on the docs alone will get this backwards, as this project did: `config.RECORD_REACTIONS_ARE_INBOUND` shipped at `true` through phases 1–3 and propagated every asymmetric vanilla pair in the wrong direction. It is now `false`.
+  **The documentation says inbound, and is wrong** for ESM3 content. Anyone building on the docs alone will get this backwards, as this project did: the framework read records as inbound through phases 1–3 and propagated every asymmetric vanilla pair in the wrong direction.
 
-  The flag stays configurable because ESM4 records are read through a different code path and may not share the convention. Authored reaction tables in a content pack are always inbound regardless — that convention is the framework's own.
+  The framework now uses this direction throughout, for record data and authored tables alike, with nothing configurable and nothing transposed. Should an ESM4 game turn out to store the reverse, that is a conversion at the point the records are read, not a second convention downstream.
 
 - **`openmw_aux.time`** — constants `time.second` / `time.minute` / `time.hour` / `time.day`, type constants `time.SimulationTime` / `time.GameTime`, and `time.runRepeatedly(fn, period, options)` where `options` accepts `initialDelay` and `type`, returning a stop function. This covers the once-per-day resolution tick.
 - **`core.getGameTime()`** — returns game time in **seconds**, so an in-game day index is `math.floor(core.getGameTime() / time.day)`.
