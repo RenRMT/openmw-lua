@@ -114,10 +114,15 @@ releases. `openmw-lua-api-notes.md` separates what has been checked against the
 docs from what has only been assumed; add to it rather than trusting memory.
 When a fact is confirmed, move it into the verified section and note the date.
 
-**Comments explain why, not what.** The existing code leans heavily on this —
-particularly around decisions that look arbitrary until you know the reason
-(why projection uses max and not sum, why the generation margin is zero, why
-initial assignment stamps no cooldown). Preserve that when editing.
+**Comments explain why, not what** — and sparingly. A line or two where a
+decision looks arbitrary until you know the reason (why projection uses max and
+not sum, why the generation margin is zero, why initial assignment stamps no
+cooldown). Don't restate the code, work arithmetic out in prose, or narrate
+history the git log holds. Long-form reasoning belongs in
+[implementation-plan.md](BalanceOfPower/implementation-plan.md) and the READMEs.
+
+Some older files still carry paragraph-length blocks; trim them when you touch
+them rather than matching the density.
 
 ## CI
 

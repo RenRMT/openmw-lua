@@ -5,7 +5,9 @@
 -- input-only anyway -- all output lives here.
 
 local expect = require('support.expect')
+local vanillaReactions = require('fixtures.vanilla_reactions')
 
+local core = require('openmw.core')
 local world = require('openmw.world')
 
 local power = require('scripts.BalanceOfPower.core.power')
@@ -30,6 +32,7 @@ end
 --- Load real content, then the overlay on top of it.
 local function loadWithOverlay()
     world._test.defineExteriorGrid(-22, 22, -18, 36)
+    core._test.setFactionRecords(vanillaReactions)
     require('scripts.BalanceOfPowerMorrowind.main')
     state.fillDefaults(registry)
     resolve.assignInitialControl()
@@ -54,6 +57,7 @@ end
 -- fighting them for faction ids.
 function M.registersNothing()
     world._test.defineExteriorGrid(-22, 22, -18, 36)
+    core._test.setFactionRecords(vanillaReactions)
     require('scripts.BalanceOfPowerMorrowind.main')
     state.fillDefaults(registry)
 
@@ -105,7 +109,7 @@ function M.dumpReportsStandings()
     handlers.BoPDebug_Dump()
 
     says('STANDINGS', 'titled block')
-    says('House Hlaalu', 'names a faction')
+    says('Great House Hlaalu', 'names a faction, from the record')
     says('holds no land', 'separates power-only factions')
 end
 

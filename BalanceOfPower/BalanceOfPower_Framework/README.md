@@ -174,19 +174,30 @@ available as long as your pack loads after the framework.
 
 Anything with a default may be omitted.
 
-**Faction** — `id` (required), `displayName`, `territorial` (default `true`,
-see below), `basePower` (default 50), `growthPerDay` (default 0, see below),
-`hostile` (default `false`, see below), `landmass`, `patrolRoster` (see below),
-`reactions` (only for factions with no ESM faction record — see below),
-`extend` (see below).
+**Faction** — `id` (required), `recordId` (defaults to `id`, see below),
+`basePower` (default 50), `growthPerDay` (default 0, see below), `hostile`
+(default `false`, see below), `landmass`, `patrolRoster` (see below).
+
+**A pack does not create factions.** The framework registers every faction the
+game's own records describe (see below), so an entry here is *tuning* — the
+numbers vanilla has no field for. Declaring a faction the records don't cover
+still works; it simply has no politics.
+
+Three fields belong to the game and setting any of them is an error:
+
+| Field | Where it comes from |
+|---|---|
+| `reactions` | the record's reaction row |
+| `displayName` | the record's name |
+| `territorial` | derived — a faction with seats is territorial |
 
 A faction declares no geography of its own. It holds whatever settlements name
 it, which the registry hands it as `seats`.
 
-`growthPerDay` and `hostile` are base configuration like `basePower`: whichever
-pack registers a faction first owns them, and an extending pack setting either
-is ignored with a warning. Which pack won would otherwise depend on load
-order.
+`basePower`, `growthPerDay`, `hostile` and `recordId` are base configuration:
+whichever pack sets one first keeps it, and a later pack setting the same field
+is ignored with a warning. Which pack won would otherwise depend on load order.
+Rosters merge instead, deduplicated by record id.
 
 **Settlement** (`territories`) — `id` (required), `cells` (required — one
 territory is created per exterior cell), `faction` (whose seat it is; omit for
@@ -236,37 +247,53 @@ Every settlement is guaranteed frontier immediately around it regardless, since
 `isSurrounded()` is answered from that ring and a settlement without one could
 never be reported surrounded.
 
+### Where factions come from
+
+The framework enumerates `core.factions.records` on the first registration and
+registers what it finds. A pack supplies ids and tuning; it never supplies the
+roster of who exists.
+
+**Not every record becomes a faction.** One is registered only if it takes part
+in the politics — a non-zero reaction of its own, or somebody's non-zero
+reaction to it. Content files keep dead ids alive so old saves still load:
+Tamriel Data ships a dozen records named `<Deprecated>`, every one with an empty
+row and no column, and without the filter all twelve would appear in the
+standings.
+
+The filter governs only what the *records* contribute. **A pack naming a faction
+registers it regardless**, which is how the Morag Tong and the Talos Cult survive
+— both have no reactions in either direction and both need to exist.
+
 ### Factions that span packs
 
-A faction like Hlaalu holds ground on more than one landmass. The second and
-every later pack marks its entry `extend = true`:
+Nothing special is needed. A faction like Hlaalu holds ground on several
+landmasses because a settlement names its faction, so each pack's holdings
+attach themselves wherever they are registered. No pack owns a faction, so
+there is no first-registrant to defer to and no load-order hazard.
 
 ```lua
-{ id = 'hlaalu', extend = true, patrolRoster = { 'hlaalu councilor' } }
+{ id = 'hlaalu', patrolRoster = { 'hlaalu councilor' } }
 ```
 
-The seats need no help: a settlement names its faction, so the second pack's
-holdings attach themselves wherever they are registered. What `extend` carries
-is the faction's own content — roster entries and reactions are merged in, while
-`basePower`, `displayName` and `territorial` stay owned by whichever pack
-registered the faction first, and an extending pack that tries to set them gets
-a warning. Redefining an id without `extend` is an error rather than a silent
-overwrite.
+> `extend = true` is obsolete. An entry carrying it still registers, with a
+> warning — silently dropping a pack's faction would be worse than ignoring a
+> flag.
 
 ### Land-holding and power-only factions
 
-`territorial` decides whether a faction appears on the map at all:
+`territorial` is **derived, not declared**: a faction is territorial exactly
+when some settlement names it as its seat. It is recomputed after every
+registration, so a later pack's settlements can promote a faction that started
+with nothing.
 
-- `true` (default) — it owns ground, projects influence from its settlements,
-  and can be recorded as a territory's owner.
-- `false` — a **power-only** faction. It has a power score, it reacts to
-  everyone else through the reaction table, and other systems can read its
-  standing — but it holds no ground and projects nothing.
+A faction with no seats is **power-only**. It has a power score, it reacts to
+everyone else through the reaction table, and other systems can read its
+standing — but it holds no ground and projects nothing. That's the split between
+a Great House and a guild: the Fighters Guild is a real political force whose
+fortunes rise and fall with its allies'; it just doesn't own Balmora.
 
-That's the split between a Great House and a guild. The Fighters Guild is a
-real political force whose fortunes rise and fall with its allies'; it just
-doesn't own Balmora. A faction that shouldn't participate at all is simply not
-registered.
+A settlement that should project for nobody omits `faction` rather than naming
+one that isn't meant to hold ground.
 
 ### Deriving the frontier
 
@@ -292,63 +319,80 @@ rectangle full of sea.
 Options: `cellsPerUnit` (cells per territory per axis — the main performance
 lever), `cellSize`, `margin`, `idPrefix`, `requireExistingCell`.
 
-### Reactions, and which way round they read
+### Reactions
 
-A faction's reaction row is **its own opinions**:
+**Every reaction value comes from `core.factions.records`, and there is nowhere
+else to put one.** No mod in this ecosystem creates factions or their opinions
+— the game's content files do, and so does any faction rebalance mod the player
+has loaded. A table transcribed into Lua would be a second copy that silently
+outranks the first, so the registry refuses a faction definition carrying a
+`reactions` field.
+
+A content pack contributes ids. That is the whole of its say in the politics.
+
+#### `recordId`
+
+A faction reads the record its `id` names, matched case-insensitively. Set
+`recordId` when the two differ:
 
 ```lua
-reactions[otherFactionId] = how this faction feels about that one
+{ id = 'empire', recordId = 'Imperial Legion', basePower = 65 }
 ```
 
-which is also how far it moves when that other faction's power changes. This
-is the direction the game's own faction records use — a reaction row adjusts
-an NPC's disposition according to which faction the player belongs to — and
-there is only the one convention. Nothing is transposed anywhere, and no
-setting selects a direction.
+It works in both directions — the faction reads that record's row, and every
+other record naming `Imperial Legion` resolves back to `empire`. Most packs
+never need it, because registering factions under their record ids costs
+nothing.
 
-Values come from `core.factions.records` where a faction has an ESM record,
-and from an authored `reactions` table in the faction definition otherwise —
-a Tamriel Rebuilt House Dres, an invader that only exists in Lua.
+#### Which way round they read
 
-**The two are merged, not swapped.** Authored values win where both name the
-same pair, but the rest of the record survives. That matters more than it
-sounds: a vanilla faction's record can only name factions that exist in the
-ESM, so teaching the Empire how to feel about a Lua-only faction is *only*
-possible from the authored side — and before the merge, doing so would have
-cost the Empire every real relationship it has.
+Two statements that sound contradictory and are both true:
 
-#### Both directions have to be wired
+- **Storage is outbound.** A row is the record owner's own opinions:
+  `reactions[otherFactionId] = how this faction feels about that one`, which is
+  also how far it moves when that other faction's power changes. Nothing is
+  transposed and no setting selects a direction.
+- **The propagation query is inbound.** "Who moves when X moves" is X's
+  *column* — every other faction's row, indexed by X.
 
-A faction with no ESM record has no row of its own *and* is invisible to every
-other faction's record row, so both halves have to be authored. Its own table
-is what lets anything move **it**; an entry on each faction that should react
-to it is what lets it move **them**. Either half alone looks like a working
-faction.
+> **The engine's documentation says the opposite** — it describes
+> `FactionRecord.reactions` as "reactions of other factions to this faction" —
+> and is wrong for ESM3. This framework believed it for three phases and
+> propagated every asymmetric vanilla pair backwards. See
+> `openmw-lua-api-notes.md` for the evidence.
 
-The framework warns at load about both failures, and `dumpReactions()` shows
-the wiring:
+Asymmetry is the whole point of the table and the reason a wrong reading is so
+hard to spot: most pairs are near-symmetric, so getting the direction backwards
+changes the magnitude of a handful of relationships and never errors. When in
+doubt, `regardOf(a, b)` answers "how does A feel about B".
+
+#### When a faction has no politics
+
+Three ways that happens, and only the first is a bug:
+
+| | |
+|---|---|
+| No record found for the id | almost certainly a typo, or a missing `recordId`. Warned loudly |
+| Record found, empty reaction row | the game says this faction has no opinions |
+| Record row names only factions this pack doesn't register | nothing survives the filter |
+
+`dumpReactions()` shows the wiring:
 
 ```
 luag require('openmw.interfaces').BalanceOfPower.dumpReactions()
 ```
 
 `moves` is how many factions this one can push; `movedBy` is how many can push
-it, counting only opinions that aren't zero. **A zero in either column is a
-faction standing outside the politics**, which produces no error and is close
-to invisible in play — though for some factions that is simply true, and a
-pack modelling one is expected to see it there and leave it alone.
+it, counting only opinions that aren't zero — a reaction of zero propagates
+nothing, and vanilla rows carry explicit zeros, so counting entries would report
+every faction as fully wired. **A zero in either column is a faction standing
+outside the politics**, which produces no error and is close to invisible in
+play.
 
-A reaction of zero propagates nothing, so it never counts as wiring. It is
-still stored, because overriding a record's value with zero is the only way a
-pack can cancel a relationship the game's own data asserts.
-
-#### The one thing worth checking twice
-
-Asymmetry is the whole point of the table and the reason a wrong reading is so
-hard to spot: most pairs are near-symmetric, so getting the direction backwards
-changes the magnitude of a handful of relationships and never errors. When in
-doubt, `regardOf(a, b)` answers "how does A feel about B" — merged from both
-sources, which is why it is a function and not a table you index.
+An expansion is where this bites hardest: its factions carry rows of their own,
+but the base game's records were never patched to name them back, so an
+expansion faction often moves nobody. Closing a gap like that means shipping an
+`.esp` that adds the FACT entries — not a table in Lua.
 
 ### Patrols
 

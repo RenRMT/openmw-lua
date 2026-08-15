@@ -3,7 +3,7 @@
 -- The wilderness between settlements is far too fine-grained to author
 -- by hand -- Vvardenfell alone is thousands of exterior cells -- so it's
 -- derived instead. A content pack declares where the seats of power are.
--- This generator reads the settlements in the registry and works outward 
+-- This generator reads the settlements in the registry and works outward
 -- from them.
 --
 -- The union of every settlement's influence radius defines the grid, so

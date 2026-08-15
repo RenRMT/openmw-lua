@@ -1,4 +1,4 @@
--- The public interface, exposed to other mods as 
+-- The public interface, exposed to other mods as
 -- require('openmw.interfaces').BalanceOfPower from any global script.
 --
 -- This is the whole contract. A content pack should never require a file
@@ -81,8 +81,9 @@ function M.setPower(factionId, value)
 end
 
 --- How `factionId` feels about `towardId`, in roughly [-3, 3]; 0 if it
--- has no opinion. Merged from the game's records and authored tables,
--- which is why it is a function and not a table a pack can read.
+-- has no opinion. Read from the game's own faction records, normalized
+-- and filtered to registered factions -- which is why it is a function
+-- and not a table a pack can index.
 --
 -- This is also how far `factionId` moves when `towardId`'s power does.
 function M.regardOf(factionId, towardId)

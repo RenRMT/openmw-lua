@@ -2,6 +2,7 @@
 
 local expect = require('support.expect')
 
+local core = require('openmw.core')
 local world = require('openmw.world')
 
 local mapdump = require('scripts.BalanceOfPower.core.mapdump')
@@ -20,39 +21,26 @@ local CELL = 8192
 -- contested, and several of these tests would pass by accident.
 local function twoRealms()
     world._test.defineExteriorGrid(-6, 6, -6, 6)
+    -- Display names come from the records. No reactions, so none of these
+    -- auto-registers and the pack's own entries below are what land.
+    core._test.setFactionRecords({
+        alpha = { name = 'Alpha', reactions = {} },
+        beta = { name = 'Beta', reactions = {} },
+        guild = { name = 'Guild', reactions = {} },
+        landless = { name = 'Landless', reactions = {} },
+    })
 
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            {
-                id = 'alpha',
-                displayName = 'Alpha',
-                basePower = 50,
-            },
-            {
-                id = 'beta',
-                -- Stronger, so it holds the overlapping band outright.
-                -- At equal power the tie would go to alpha on sorted id,
-                -- and boosting alpha later would change nothing.
-                displayName = 'Beta',
-                basePower = 80,
-            },
-            -- Power-only: has standing, holds nothing, must never appear.
-            {
-                id = 'guild',
-                displayName = 'Guild',
-                territorial = false,
-                basePower = 90,
-            },
-            -- Territorial, but holds no settlement yet. It projects
-            -- nowhere and so is drawn nowhere -- the case that used to be
-            -- reachable by zeroing a faction's power, which no longer
-            -- works now that a seat holds itself whatever its power.
-            {
-                id = 'landless',
-                displayName = 'Landless',
-                basePower = 70,
-            },
+            { id = 'alpha', basePower = 50 },
+            -- Stronger, so it holds the overlapping band outright. At
+            -- equal power the tie would go to alpha on sorted id.
+            { id = 'beta', basePower = 80 },
+            -- Holds nothing, so power-only by derivation. Must never
+            -- appear on the map however much standing it has.
+            { id = 'guild', basePower = 90 },
+            { id = 'landless', basePower = 70 },
         },
         territories = {
             { id = 'alphatown', displayName = 'Alphatown', tier = 'town',

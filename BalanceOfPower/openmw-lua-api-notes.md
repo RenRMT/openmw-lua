@@ -60,10 +60,12 @@ All under `require('openmw.types').NPC` unless noted:
 | `NPC.expel(actor, factionId)` | Expels; NPC keeps rank/reputation, just gets an expelled flag |
 | `NPC.clearExpelled(actor, factionId)` | Clears the expelled flag |
 
-- `core.factions.records[factionId]` — read-only **FactionRecord**, includes `.skills` (list of skill IDs tied to rank advancement) and **`.reactions`** — a read-only map of faction IDs to reaction values. This is the live equivalent of the disposition table used throughout this design.
-- **`.reactions` reads outbound.** Settled in-game — see §9a. A row is *this faction's* reaction toward the named ones, matching the ESM3 `FACT` record, whose ANAM/INTV pairs live on the faction's own record. **The OpenMW documentation states the opposite** (inbound) and is wrong for ESM3.
-- **Confirmed engine quirk:** vanilla Morrowind's actual behavior is that an NPC's reaction to the player is the *minimum* reaction across all factions the player belongs to (when a faction has duplicate reaction entries for the same other faction in the ESM data). OpenMW currently collapses duplicates to whichever value appears *last* in the file rather than the minimum (GitLab #7553, open at time of writing). Rare edge case, but worth knowing if computed numbers ever look off for a specific pair.
-- **Unconfirmed:** whether a *setter* for cross-faction reputation exists as of your target version. Getters are solid; a setter was requested years ago (GitLab #7468: "a way to get/set reputation with given faction") — status at any given release should be checked directly rather than assumed.
+- `core.factions.records` — indexable **both** by record id string and by integer, per the `@usage` lines in the shipped stub. A **FactionRecord** has exactly: `id`, `name`, `ranks` (list of `FactionRank`), `reactions`, `attributes`, `skills`, `hidden`. Nothing else. Not available in load scripts; available in global, menu, local and player.
+- **`.reactions` reads outbound.** Settled — see §9a. A row is *this faction's* reaction toward the named ones, matching the ESM3 `FACT` record, whose ANAM/INTV pairs live on the faction's own record. **The OpenMW documentation states the opposite** (inbound) and is wrong for ESM3.
+- **`FactionRank.factionReaction` is DEPRECATED** as of 0.51.0 in favour of `factionReputation` (GitLab #8789). Same value; it is a rank *requirement*, unrelated to `FactionRecord.reactions`.
+- **Fixed, was #7553.** Earlier notes here described OpenMW collapsing duplicate reaction entries to the last value in the file rather than vanilla's minimum. `Bug #7553: Faction reaction loading is incorrect` is listed in the **0.49.0** changelog — the fix shipped two releases before 0.51.0.
+- **Faction reputation getters *and setters* exist as of 0.51.0** (`Feature #9013: Expose reputation to Lua`): `NPC.getFactionReputation` / `setFactionReputation` / `modifyFactionReputation`, plus `joinFaction`, `leaveFaction`, `isExpelled`. This closes the old #7468 question. There is still **no setter for faction-to-faction `reactions`** — `FactionRecord` is documented read-only throughout.
+- `NpcRecord` exposes **no** faction field. `primaryFaction` / `primaryFactionRank` are on `CreatureRecord` only; for an NPC, go through `NPC.getFactions` / `getFactionRank` on a live GameObject.
 
 ---
 
@@ -124,11 +126,31 @@ Flagging these separately because the design document leans on them, but this se
 
 Checked directly against the docs while building the framework, so these no longer need re-verification:
 
-- **Faction record reactions read OUTBOUND** *(verified in-game 2026-08-13)*. `core.factions.records[id].reactions` is a map of *how this faction feels about the named ones*, not how they feel about it. Verified against the asymmetric Telvanni / Twin Lamps pair, where the two directions carry different values and so cannot both be read the same way.
+- **Faction record reactions read OUTBOUND** *(verified in-game 2026-08-13; re-verified against the raw ESM data 2026-08-15)*. `core.factions.records[id].reactions` is a map of *how this faction feels about the named ones*, not how they feel about it.
 
-  **The documentation says inbound, and is wrong** for ESM3 content. Anyone building on the docs alone will get this backwards, as this project did: the framework read records as inbound through phases 1–3 and propagated every asymmetric vanilla pair in the wrong direction.
+  **The documentation says inbound, and is wrong** for ESM3 content. The exact wording, in the shipped stub at `resources/lua_api/openmw/core.lua` (line 1355 in 0.51.0):
 
-  The framework now uses this direction throughout, for record data and authored tables alike, with nothing configurable and nothing transposed. Should an ESM4 game turn out to store the reverse, that is a conversion at the point the records are read, not a second convention downstream.
+  > `@field #map<#string, #number> reactions A read-only map containing reactions of other factions to this faction.`
+
+  Anyone building on that alone will get it backwards, as this project did: the framework read records as inbound through phases 1–3 and propagated every asymmetric vanilla pair in the wrong direction.
+
+  Three independent lines of evidence, in descending order of how hard they are to argue with:
+
+  1. **The Nerevarine.** `FACT "Nerevarine"` carries **zero** reaction entries — not even the self-reaction every other joinable faction has. Yet `FACT "Temple"` carries `-8 = "Nerevarine"` and `FACT "Redoran"` carries `-4 = "Nerevarine"`. In game, becoming Nerevarine is what makes Temple and Redoran members hate *you*. That effect is stored on their records, naming the Nerevarine. Outbound.
+  2. **Asymmetric pairs.** `FACT "Twin Lamps"` → `-3 = "Telvanni"` while `FACT "Telvanni"` has no Twin Lamps entry. Same shape for `Imperial Knights` → `Imperial Legion` = 2, unreciprocated.
+  3. **OpenMW's own dialogue-condition docs**, in the same stub file, describing the same underlying data unambiguously: *"Lowest faction reaction **from the speaker's primary faction to** the player's factions."*
+
+  Dumped with `esmtool dump --type FACT` over Morrowind.esm, Tribunal.esm and Bloodmoon.esm. `BalanceOfPower_Morrowind/sources/build_reactions_fixture.py` automates that dump for the test suite.
+
+  The framework now reads reactions from the records and from nowhere else, with nothing configurable and nothing transposed. Should an ESM4 game turn out to store the reverse, that is a conversion at the point the records are read, not a second convention downstream.
+
+- **Three more properties of the reaction map**, all of which the framework has to handle and none of which are documented *(verified against the ESM 2026-08-15)*:
+
+  - **Keys are stored case-preserved as authored** — `"Camonna Tong"`, `"Sixth House"`, `"Clan Aundae"`. These are record ids, not display names (id `Redoran`, name `Great House Redoran`). Record *lookup* goes through a `RefId` and is case-insensitive; a reaction map is a plain Lua table, so its keys arrive however the content file wrote them. **Whether the binding lowercases them before handing them to Lua is still unverified** — the framework normalizes both ends defensively, which makes it a non-question either way.
+  - **Rows are sparse, but explicit zeros occur** — `Imperial Cult → Morag Tong = 0`, `Census and Excise → Fighters Guild = 0`. Absence means zero by engine convention, so `reactions[x] ~= nil` is not a test for "has a relationship".
+  - **Every record carries a reaction toward itself**, usually 3 (`Census and Excise` is an oddity at -1). It has to be stripped, and stripped *after* case normalization.
+
+- **Expansion factions carry their reactions on their own new records; base-game records are never patched to point back.** `Bloodmoon.esm` adds `East Empire Company` (14 entries) and `Skaal` (0); `Tribunal.esm` adds `Royal Guard` (12), `Dark Brotherhood` (0), `Hands of Almalexia` (0). This is a direct consequence of the outbound layout, and it means an expansion faction commonly has a row and no column — it reacts to the world and the world does not react to it.
 
 - **`openmw_aux.time`** — constants `time.second` / `time.minute` / `time.hour` / `time.day`, type constants `time.SimulationTime` / `time.GameTime`, and `time.runRepeatedly(fn, period, options)` where `options` accepts `initialDelay` and `type`, returning a stop function. This covers the once-per-day resolution tick.
 - **`core.getGameTime()`** — returns game time in **seconds**, so an in-game day index is `math.floor(core.getGameTime() / time.day)`.
@@ -151,5 +173,6 @@ Checked directly against the docs while building the framework, so these no long
 - `openmw.readthedocs.io/en/latest/reference/lua-scripting/overview.html` — script types, `reloadlua`
 - `openmw.org/2026/openmw-0-51-0-released` and `openmw.org` 0.50 release notes — version-gated feature confirmation
 - `wiki.openmw.org` Research:Disposition and Persuasion — vanilla disposition/reaction formula
-- GitLab issues referenced: #7468 (factions API request), #7553 (reaction dedup bug), #7453 (leveled list spawn position bug), #8015 (barter API request), #8789 (FactionRank field naming)
+- GitLab issues referenced: #7468 (factions API request), #7553 (reaction dedup bug — **fixed in 0.49.0**), #7453 (leveled list spawn position bug), #8015 (barter API request), #8789 (FactionRank field naming), #9013 (expose reputation to Lua — **new in 0.51.0**)
+- **Local, and more authoritative than the readthedocs pages**: `D:\OpenMW 0.51.0\resources\lua_api\openmw\*.lua` — the LDoc stubs the documentation is generated from — and `CHANGELOG.txt` in the install root. `esmtool.exe` ships alongside them and is the way to settle a question about what the content files actually contain.
 - Nexus Mods pages for Night Patrol, Lua NPC Schedule, FactionsPerks, Crafting Framework

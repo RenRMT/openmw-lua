@@ -4,13 +4,10 @@
 -- to derive the wilderness between the settlements. Nothing here is
 -- behaviour: it is data, plus the four API calls that hand the data over.
 --
--- Order matters, and each step depends on the one before:
---
---   1. Vvardenfell defines every faction that appears on it.
---   2. Solstheim extends the ones it shares (the Empire garrisons Fort
---      Frostmoth as well as half of Vvardenfell) and defines its own.
---   3. Frontier generation runs last, because it works outward from the
---      settlements registered in the steps above.
+-- Frontier generation runs last, because it works outward from the
+-- settlements registered before it. Faction order does not matter: the
+-- framework registers factions from the game's own records, and the
+-- entries here only add tuning the game has no field for.
 --
 -- There is no authored ownership anywhere in this pack. The whole map,
 -- including Red Mountain, falls out of where the seats of power are.
@@ -37,14 +34,14 @@ local defined = {}
 BoP.registerLandmass({
     id = 'vvardenfell',
     displayName = 'Vvardenfell',
-    factions = build.factionsFor(factionDefs, build.holdersIn(plan.vvardenfell), defined, 'vvardenfell'),
+    factions = build.factionsFor(factionDefs, defined, 'vvardenfell'),
     territories = plan.vvardenfell.territories,
 })
 
 BoP.registerLandmass({
     id = 'solstheim',
     displayName = 'Solstheim',
-    factions = build.factionsFor(factionDefs, build.holdersIn(plan.solstheim), defined, 'solstheim'),
+    factions = build.factionsFor(factionDefs, defined, 'solstheim'),
     territories = plan.solstheim.territories,
 })
 

@@ -44,38 +44,64 @@ have standing that rises and falls with their allies through the reaction
 table, and other systems can read it, but they hold no ground. The Fighters
 Guild is a real political force in Vvardenfell; it just doesn't own Balmora.
 
-Every faction in the vanilla reaction matrix is registered, whether or not it
-has any political weight — the Nerevarine and the Talos Cult are here because
-the game has them, not because the simulation does anything with them.
+**The framework registers factions from the game's records, not from this
+pack.** `data/factions.lua` is not a faction list — it holds only the numbers
+vanilla has no field for. Two consequences worth knowing:
+
+- Tribunal's **Royal Guard** appears in the standings although nothing here
+  mentions it, because its record takes part in the politics.
+- The **Dark Brotherhood** and the **Hands of Almalexia** do not, because their
+  records carry no reactions in either direction and nothing names them. The
+  Morag Tong and the Talos Cult are equally empty and survive only because this
+  pack declares them.
 
 Three notes on the data:
 
 - **The Empire is registered as `imperial legion`.** Design doc 5.1 merges the
-  Legion, Cult and Knights into one umbrella for the MVP. Mapping that onto the
-  Legion's own record id means its reaction row is the game's data rather than
-  something invented here — and every Imperial holding in the settlement list
-  is a fort or a Legion-garrisoned town, so it isn't much of a stretch. The
+  Legion, Cult and Knights into one umbrella for the MVP. Registering it under
+  the Legion's own record id means its reaction row is the game's data rather
+  than something invented here — and every Imperial holding in the settlement
+  list is a fort or a Legion-garrisoned town, so it isn't much of a stretch. The
   Imperial Cult and the Knights are kept separate, as power-only factions.
-- **The reaction rows are vanilla's, transcribed**, with zeros omitted (an
-  absent entry already reads as zero) and three classes of exception marked in
-  the file: Bloodmoon's East Empire Company and Skaal, which the base game's
-  matrix does not contain and whose pairs are therefore guesswork; one
-  deliberate override on Redoran's regard for the Sixth House, which vanilla
-  puts at 0 alone among the Houses; and `basePower`, which is guesswork
-  throughout and the first number to reach for when the starting map looks
-  wrong.
+- **There are no reaction values in this pack.** Every one comes from the
+  game's own FACT records at runtime, so a faction rebalance mod the player has
+  loaded actually takes effect. All 24 ids above are real record ids — 22 in
+  `Morrowind.esm`, plus the East Empire Company and the Skaal in
+  `Bloodmoon.esm` — so nothing here needs the framework's `recordId` escape
+  hatch.
 
-  Transcribing costs nothing — the same value merged over the same value — and
-  means the pack does not depend on every record id resolving in game, while
-  the test suite (which runs against an empty record stub) exercises real
-  numbers rather than an empty world.
-- **Four factions sit outside the politics, and vanilla says so.** The Morag
+  What is left in `factions.lua` is what vanilla has no field for: `basePower`
+  (guesswork throughout, and the first number to reach for when the starting map
+  looks wrong), `growthPerDay`, `hostile` and `patrolRoster`. Display names come
+  from the records too, so the Empire reads as "Imperial Legion" and Census and
+  Excise as "Census and Excise Office".
+
+  The test suite gets the real records from
+  `tests/fixtures/vanilla_reactions.lua`, dumped from the three content files by
+  `sources/build_reactions_fixture.py`. That is test data; nothing under
+  `scripts/` reads it.
+- **Six factions sit outside the politics, and vanilla says so.** The Morag
   Tong and the Talos Cult have no reactions in either direction; the Nerevarine
   reacts to nobody, though Redoran and the Temple react to it; the Twin Lamps
-  hate House Telvanni and are beneath everyone else's notice. `BoP.dumpReactions()`
-  reports each as a zero column, which is normally the sign of a mistake — here
-  it is the data, and the suite asserts exactly this list so that a *fifth*
-  faction arriving in that state fails.
+  hate House Telvanni and are beneath everyone else's notice; Census and Excise
+  has opinions about smugglers and nobody in the game has an opinion about
+  customs; and the Skaal's Bloodmoon record carries no reactions at all.
+
+  The East Empire Company is a seventh, one-sided: it has a full row of its own
+  from Bloodmoon, but the base game's records were never patched to name it
+  back, so nothing that happens to the Company moves anyone else.
+
+  `BoP.dumpReactions()` reports each as a zero column or row, which is normally
+  the sign of a mistake — here it is the data, and the suite asserts exactly
+  this list so that any *other* faction arriving in that state fails.
+
+  Two consequences of reading the records rather than a transcription are worth
+  knowing, because both changed behaviour from earlier phases: **Redoran carry
+  no regard for the Sixth House at all** (alone among the Houses and the Temple,
+  so the invasion costs them nothing), and the East Empire Company's real row
+  puts Redoran at +1 where the earlier authored guess had −1. Closing a gap like
+  the Redoran one means shipping an `.esp` that adds the FACT entry, not
+  authoring a table.
 
 ## The starting map is derived, not authored
 
@@ -283,11 +309,17 @@ the framework never inspects a record id, so a wrong one fails silently.
 
 ```
 sources/
-  settlements.csv          source of truth, hand-edited
-  build_settlements.py     generates the Lua below
+  settlements.csv             source of truth, hand-edited
+  build_settlements.py        generates data/settlements.lua
+  build_reactions_fixture.py  generates the test fixture from the ESMs
 scripts/BalanceOfPowerMorrowind/
-  main.lua                 GLOBAL: registration + frontier generation
-  data/settlements.lua     GENERATED -- do not edit
-  data/factions.lua        faction list and authored reactions
-  data/build.lua           holdings -> settlements
+  main.lua                    GLOBAL: registration + frontier generation
+  data/settlements.lua        GENERATED -- do not edit
+  data/factions.lua           faction ids and the fields vanilla has no
+                              room for; no reactions, by design
+  data/build.lua              holdings -> settlements
 ```
+
+`build_reactions_fixture.py` writes `../tests/fixtures/vanilla_reactions.lua`,
+which is test data only — it needs `esmtool` and a Morrowind install, and its
+output is checked in so CI needs neither.

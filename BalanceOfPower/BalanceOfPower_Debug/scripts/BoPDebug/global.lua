@@ -347,7 +347,7 @@ end
 -- whichever faction happens to be registered first, so it works against
 -- any content.
 function handlers.BoPDebug_SelfTest()
-    heading('SELF-TEST -- duplicate registration')
+    heading('SELF-TEST -- rejected registration')
 
     local ids = BoP.factionIds()
     if #ids == 0 then
@@ -355,16 +355,19 @@ function handlers.BoPDebug_SelfTest()
         return
     end
 
+    -- Display names come from the game's records, so authoring one is
+    -- rejected. Any invalid field would do; this one needs no content
+    -- knowledge beyond a faction id the framework already gave us.
     local victim = ids[1]
     local ok, err = pcall(function()
         BoP.registerLandmass({
             id = 'bopdebug_should_not_exist',
-            factions = { { id = victim } },   -- already registered, no extend
+            factions = { { id = victim, displayName = 'should be rejected' } },
         })
     end)
 
     if ok then
-        out('  FAIL: a duplicate registration of "%s" was accepted.', victim)
+        out('  FAIL: an authored displayName on "%s" was accepted.', victim)
         return
     end
 

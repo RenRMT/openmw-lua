@@ -5,7 +5,8 @@
 --
 -- 1. Reaction propagation. A faction's power change drags every other
 --    faction along with it, scaled by how that *other* faction feels
---    about the one that moved.
+--    about the one that moved. The numbers come from the game's faction
+--    records and from nowhere else -- see buildReactions.
 --
 --    Ambient growth is the deliberate exception -- see applyDailyGrowth,
 --    and the arithmetic on GROWTH_PROPAGATES for why a daily drip
@@ -22,8 +23,6 @@
 --
 -- GLOBAL context only.
 
-local core = require('openmw.core')
-
 local config = require('scripts.BalanceOfPower.core.config')
 local events = require('scripts.BalanceOfPower.core.events')
 local log = require('scripts.BalanceOfPower.core.log')
@@ -37,61 +36,57 @@ local snapshot = nil
 -- Queued deltas for the duration of a batch, or nil outside one.
 local pending = nil
 
--- Every faction's reactions, from both sources, merged.
+-- Every faction's reactions, read from the game's own faction records.
 --
 --   reactions[A][B] = how A feels about B, in roughly [-3, 3]
 --
--- One convention, everywhere: a row belongs to the faction that holds the
--- opinions, so reactions[A][B] is how far A moves when B's power changes.
--- This is the shape the game's own faction records use -- a reaction row
--- adjusts an NPC's disposition according to which faction the player
--- belongs to -- and authored tables in a content pack mean the same
--- thing. Nothing here transposes anything.
+-- Two statements that sound contradictory and are both true. Separating
+-- them is how this shipped backwards through three phases:
 --
--- Built once per registry generation: the data is static for a session
--- and the record lookup is a protected call into the game data, neither
--- of which is worth repeating on every propagation.
+--   * STORAGE IS OUTBOUND. A row belongs to the faction holding the
+--     opinions, exactly as the ESM stores it. Nothing here transposes.
+--   * THE QUERY IS INBOUND. "Who moves when B moves" is B's *column* --
+--     every other faction's row, indexed by B. See M.apply.
+--
+-- The engine's documentation calls the map inbound and is wrong for ESM3;
+-- openmw-lua-api-notes.md carries the evidence.
+--
+-- Built once per registry generation; the data is static for a session.
 local reactions = nil
--- Audit counts, both derived in one pass over the rows above:
--- how many factions each one can push, and how many can push it.
+-- How many factions each one can push, and how many can push it.
 local movesCount = nil
 local movedByCount = nil
 local reactionsGeneration = -1
-
-local EMPTY = {}
 
 --------------------------------------------------------------------------
 -- Reactions
 --------------------------------------------------------------------------
 
---- A faction's row as the game's own records give it, or nil.
-local function recordReactions(factionId)
-    -- Protected: indexing the record list with an id that has no faction
-    -- record behind it shouldn't be able to take down the daily tick,
-    -- and whether it errors or returns nil isn't something to bet the
-    -- framework on.
-    local ok, record = pcall(function()
-        return core.factions.records[factionId]
-    end)
-    if ok and record and record.reactions and next(record.reactions) ~= nil then
-        return record.reactions
+-- Registered faction ids by their lowercased record id. One index serving
+-- both ends: which record a faction reads, and which faction a name
+-- inside that record resolves to.
+local function indexByRecordId(ids)
+    local index = {}
+    for _, id in ipairs(ids) do
+        local key = string.lower(registry.factions[id].recordId or id)
+        -- Two factions on one record: the loser is wired in one direction
+        -- only, which reads exactly like a faction nobody has heard of.
+        if index[key] then
+            log.warn('factions "%s" and "%s" both read faction record "%s" -- "%s" will be '
+                .. 'named by nobody. Give one of them its own recordId.',
+                index[key], id, key, id)
+        else
+            index[key] = id
+        end
     end
-    return nil
+    return index
 end
 
---- Merge every faction's reactions into one table of rows.
--- The game's records supply the vanilla politics; an authored table
--- supplies whatever the records can't express. Both are rows in the same
--- direction, so merging them is a plain overlay. Authored values win
--- where both name the same pair, so a pack can correct a specific
--- relationship without discarding a faction's entire vanilla row -- and,
--- more to the point, can give a faction an opinion about one that has no
--- ESM record at all. That is otherwise unreachable: the Empire's record
--- cannot name the East Empire Company, because the Company does not
--- exist as far as Morrowind.esm is concerned.
 local function buildReactions()
     reactions, movesCount, movedByCount = {}, {}, {}
     local ids = registry.sortedFactionIds()
+    local byRecordId = indexByRecordId(ids)
+    local rows = registry.recordRows()
 
     for _, id in ipairs(ids) do
         reactions[id] = {}
@@ -99,44 +94,27 @@ local function buildReactions()
         movedByCount[id] = 0
     end
 
-    -- 1. The game's records. Filtered to registered factions: a vanilla
-    -- record names dozens this simulation doesn't model.
+    -- Filtered to registered factions: a vanilla record names dozens this
+    -- simulation doesn't model.
+    local missing = {}
     for _, id in ipairs(ids) do
-        for otherId, value in pairs(recordReactions(id) or EMPTY) do
-            if registry.factions[otherId] and otherId ~= id then
+        local recordId = string.lower(registry.factions[id].recordId or id)
+        local row = rows[recordId]
+        if not row then
+            missing[#missing + 1] = string.format('%s (record "%s")', id, recordId)
+        end
+        for otherRecordId, value in pairs(row or {}) do
+            local otherId = byRecordId[otherRecordId]
+            if otherId and otherId ~= id then
                 reactions[id][otherId] = value
             end
         end
     end
 
-    -- 2. Authored tables on top.
-    for _, id in ipairs(ids) do
-        for otherId, value in pairs(registry.factions[id].reactions or EMPTY) do
-            if registry.factions[otherId] then
-                -- A faction's opinion of itself moves nothing.
-                if otherId ~= id then
-                    reactions[id][otherId] = value
-                end
-            else
-                -- A reaction naming a faction nobody registered is dead
-                -- weight, and is far more often a typo than an
-                -- intentional forward reference.
-                log.warn('faction "%s" has an authored reaction toward "%s", '
-                    .. 'which is not a registered faction -- ignored',
-                    id, tostring(otherId))
-            end
-        end
-    end
-
-    -- 3. Diagnostics, in both directions. A faction's row is everyone
-    -- who can move it; its column is everyone it moves.
-    --
-    -- A reaction of zero doesn't count in either. It propagates nothing,
-    -- so it wires nobody to anybody -- but it is still stored, because an
-    -- authored zero has to be able to cancel a value the record supplies.
-    -- Vanilla rows are mostly zeros, so counting entries rather than
-    -- relationships would report every faction as fully wired and this
-    -- whole diagnostic would go quiet at exactly the wrong moment.
+    -- A reaction of zero wires nobody to anybody, and vanilla rows carry
+    -- explicit zeros -- counting entries instead would report every
+    -- faction as fully wired and this diagnostic would go quiet exactly
+    -- when it matters.
     local mute, deaf = {}, {}
     for _, id in ipairs(ids) do
         for otherId, value in pairs(reactions[id]) do
@@ -155,25 +133,23 @@ local function buildReactions()
         end
     end
 
-    -- A faction with nothing it reacts to. This is the failure that
-    -- hides: it looks fine, appears in the standings, moves other
-    -- factions around -- and never moves itself, because nothing it could
-    -- react to is written down. It is what happens to any faction with no
-    -- ESM record until its pack authors the row by hand.
-    --
-    -- It is also, sometimes, just true. Some factions really do sit
-    -- outside the politics of a setting, and a pack that models one is
-    -- expected to see its name here and leave it alone.
+    -- The whole symptom of a mistyped id: the faction registers, holds
+    -- ground, and sits outside the politics forever.
+    if #missing > 0 then
+        log.warn('no faction record found for: %s. Check the ids against the content '
+            .. 'files, or set recordId if they differ.', table.concat(missing, ', '))
+    end
+
+    -- A faction with nothing it reacts to. The failure that hides: it
+    -- looks fine, moves other factions around -- and never moves itself.
     if #deaf > 0 then
         log.warn('these factions react to nothing, so nothing in the simulation moves '
-            .. 'them: %s. Their power will only ever change through a direct award. '
-            .. 'A faction with no ESM record behind it has no row until its pack '
-            .. 'authors one.', table.concat(deaf, ', '))
+            .. 'them: %s. Their power will only ever change through a direct award.',
+            table.concat(deaf, ', '))
     end
 
     -- The other direction: a faction nobody has an opinion about, whose
-    -- power therefore moves nobody. A mistyped id, or a faction assumed
-    -- to be named in the records that isn't.
+    -- power therefore moves nobody.
     if #mute > 0 then
         log.warn('no faction has an opinion about: %s, so a change to their power '
             .. 'propagates to nobody', table.concat(mute, ', '))

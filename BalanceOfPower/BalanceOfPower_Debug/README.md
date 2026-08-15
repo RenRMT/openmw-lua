@@ -114,9 +114,9 @@ watch the cooldown hold ground that has just changed hands.
 **`Ctrl+4` / `Ctrl+5` — reaction propagation.** Pushing one faction moves every
 other faction too, scaled by how each feels about it. With the event feed on
 (`Ctrl+6`) each one is logged individually; it's off by default because a single
-award produces a dozen lines. Factions with a real faction record
-read their reactions from the game's data; ones without use an authored table —
-both go through identical math, which is the claim in design doc 3.5.
+award produces a dozen lines. Every value behind that comes from the game's own
+faction records, so this is also the quickest way to see whether a faction's
+record id resolves: a faction that never moves has no row.
 
 **`Ctrl+3` — the day tick.** The scheduled tick only fires when the game calendar
 rolls over, so without this you'd have to sleep. It runs the simulation *ahead*

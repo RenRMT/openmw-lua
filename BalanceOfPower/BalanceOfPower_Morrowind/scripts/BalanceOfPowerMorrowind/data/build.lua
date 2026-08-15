@@ -88,53 +88,30 @@ end
 
 --- Build the faction list for one landmass's registerLandmass call.
 --
--- A faction is defined by the first landmass that mentions it and
--- extended by every later one -- the Empire holds forts on Vvardenfell
--- and Fort Frostmoth on Solstheim, and both have to project at once. The
--- seats themselves need no help: they are registered against their own
--- landmass and name the faction, so the second call's settlements find it
--- already there.
+-- Factions come from the game's records, so this emits only the entries
+-- that carry tuning the game has no field for. Each is emitted once, by
+-- the first landmass that mentions it -- the framework merges rosters and
+-- keeps the first pack's scalars either way.
 -- @param definitions the faction table from data/factions.lua
--- @param holders set of faction ids holding a settlement on this landmass
--- @param defined set of faction ids already registered by an earlier call
-function M.factionsFor(definitions, holders, defined, landmassId)
+-- @param defined set of faction ids already emitted by an earlier call
+function M.factionsFor(definitions, defined, landmassId)
     local out = {}
 
     for _, definition in ipairs(definitions) do
         local id = definition.id
-        local isPowerOnly = definition.territorial == false
-
-        -- A land-holding faction is only worth registering here if it
-        -- actually holds something on this landmass. A power-only faction
-        -- has no geography at all, so it belongs to the first call only.
-        local relevant = holders[id] or (isPowerOnly and not defined[id])
-
-        if relevant then
-            if defined[id] then
-                out[#out + 1] = {
-                    id = id,
-                    extend = true,
-                    landmass = landmassId,
-                }
-            else
-                -- Everything the author wrote, with only the one field
-                -- this file is responsible for laid over the top.
-                --
-                -- Deliberately a copy rather than a hand-listed set of
-                -- fields. The list version silently dropped patrolRoster
-                -- for as long as the field has existed: it validated, it
-                -- was documented, and it never arrived. Any field the
-                -- framework grows would have gone the same way, and
-                -- nothing would have said so.
-                local faction = {}
-                for key, value in pairs(definition) do
-                    faction[key] = value
-                end
-                faction.landmass = landmassId
-
-                out[#out + 1] = faction
-                defined[id] = true
+        if not defined[id] then
+            -- A copy rather than a hand-listed set of fields: the list
+            -- version silently dropped patrolRoster for as long as the
+            -- field existed, and any field the framework grows would have
+            -- gone the same way.
+            local faction = {}
+            for key, value in pairs(definition) do
+                faction[key] = value
             end
+            faction.landmass = landmassId
+
+            out[#out + 1] = faction
+            defined[id] = true
         end
     end
 

@@ -30,6 +30,8 @@ else still holds.
 | Frontier cells contestable via adjacency to rival-held ground | Contestable unconditionally. Proximity decay already *is* the adjacency rule — a faction with no foothold nearby projects nothing and cannot win | §3.4 |
 | Commerce as a stretch goal | Dropped. No engine hook exists, and it was judged out of scope for the framework | §3.6, §7 |
 | Homeland "Red Mountain interior + Ghostgate approach" | Dagoth Ur alone, from the settlement list | §5.3 |
+| Reactions come from `core.factions.records` **or** an authored table for factions with no ESM record | **Records only.** A pack authoring reactions is a second copy that outranks the game's data, so any faction rebalance the player loads would do nothing. The registry now refuses a `reactions` field; a pack contributes ids, plus `recordId` where its id differs from the record's. A faction with no record has no politics, and closing that gap means an `.esp`, not Lua | §3.5 |
+| Propagation filtered by `territorial` | Unfiltered. A guild that owns no ground still rises and falls with its allies, and that standing is the whole reason to track it | §3.5 |
 
 Two further decisions the document leaves open, since resolved:
 

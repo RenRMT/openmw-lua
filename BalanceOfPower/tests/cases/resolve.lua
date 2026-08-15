@@ -160,20 +160,18 @@ function M.effectivePowerScalesWithFactionPower()
     expect.near(resolve.effectivePower('alpha', registry.territories.cell_10k), 50, 1e-6, 'doubled')
 end
 
+--- Power without geography projects nothing. A faction is territorial
+-- exactly when a settlement names it, so a guild with all the standing in
+-- the world still reaches nowhere.
 function M.nonTerritorialFactionsProjectNothing()
     registry.registerLandmass({
         id = 'testland',
-        factions = {
-            { id = 'blades', basePower = 100, territorial = false },
-        },
-        territories = {
-            { id = 'seat', tier = 'large city', faction = 'blades',
-              cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = HALVING },
-        },
+        factions = { { id = 'blades', basePower = 100 } },
         frontier = { { id = 'cell', centroid = { x = 0, y = 0 } } },
     })
     state.fillDefaults(registry)
 
+    expect.falsy(registry.factions.blades.territorial, 'no seats')
     expect.equal(resolve.effectivePower('blades', registry.territories.cell), 0, 'flavor faction')
 end
 

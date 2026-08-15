@@ -31,27 +31,17 @@ local M = {}
 -- A hostility rule reading the wrong direction would spare Hlaalu and
 -- attack Telvanni, and every symmetric pair here would go on passing.
 local function morrowind(overrides)
+    core._test.setFactionRecords({
+        hlaalu = { redoran = -2, telvanni = -1, invader = -3 },
+        redoran = { hlaalu = -2, telvanni = -1, invader = -3 },
+        telvanni = { hlaalu = -1, redoran = -1, invader = -3 },
+        invader = { hlaalu = -3, redoran = -3, telvanni = -1 },
+    })
     local factions = {
-        {
-            id = 'hlaalu',
-            basePower = 50,
-            reactions = { redoran = -2, telvanni = -1, invader = -3 },
-        },
-        {
-            id = 'redoran',
-            basePower = 50,
-            reactions = { hlaalu = -2, telvanni = -1, invader = -3 },
-        },
-        {
-            id = 'telvanni',
-            basePower = 50,
-            reactions = { hlaalu = -1, redoran = -1, invader = -3 },
-        },
-        {
-            id = 'invader',
-            basePower = 30,
-            reactions = { hlaalu = -3, redoran = -3, telvanni = -1 },
-        },
+        { id = 'hlaalu', basePower = 50 },
+        { id = 'redoran', basePower = 50 },
+        { id = 'telvanni', basePower = 50 },
+        { id = 'invader', basePower = 30 },
     }
     for _, faction in ipairs(factions) do
         for key, value in pairs(overrides and overrides[faction.id] or {}) do
@@ -220,19 +210,17 @@ function M.rejectsANonNumericGrowthRate()
     end, 'growthPerDay', 'says which field')
 end
 
---- Growth and hostility are base configuration, like basePower: whichever
--- pack registers a faction first owns them. A second pack extending the
--- faction to add power centres must not be able to make it hostile,
--- because which pack won would depend on load order.
-function M.extendingPacksCannotChangeGrowthOrHostility()
-    morrowind()
+--- Whichever pack sets a scalar first keeps it, because which pack won
+-- would otherwise depend on load order.
+function M.aLaterPackCannotOverrideGrowthOrHostility()
+    morrowind({ invader = { hostile = true, growthPerDay = 1.5 } })
     registry.registerLandmass({
         id = 'solstheim',
-        factions = { { id = 'invader', extend = true, hostile = true, growthPerDay = 99 } },
+        factions = { { id = 'invader', hostile = false, growthPerDay = 99 } },
     })
 
-    expect.falsy(registry.factions.invader.hostile, 'flag unchanged')
-    expect.equal(registry.factions.invader.growthPerDay, 0, 'rate unchanged')
+    expect.truthy(registry.factions.invader.hostile, 'flag unchanged')
+    expect.equal(registry.factions.invader.growthPerDay, 1.5, 'rate unchanged')
 end
 
 return M

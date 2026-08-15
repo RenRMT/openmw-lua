@@ -19,14 +19,28 @@ that changes from day to day.
 
 **Reaction** — how one faction feels about another, in roughly `[-3, 3]`. Read
 as `reactions[X] = how this faction feels about X`, so a row answers *"whose
-power moves this faction, and which way?"* Sourced from the game's faction
-records and from authored tables, merged.
+power moves this faction, and which way?"* **Sourced entirely from the game's
+own faction records.** No mod in this ecosystem defines a faction or an opinion;
+the game's content files do, so there is nowhere to author one and the registry
+refuses a pack that tries.
 
-One convention, everywhere: a row belongs to the faction holding the opinions,
-the same direction the game's own records use. Nothing is transposed and no
-setting selects a direction. Getting it backwards anyway is silent — symmetric
-pairs behave identically either way, and the framework shipped it backwards for
-three phases before an asymmetric pair caught it.
+Two statements that sound contradictory and are both true. Keep them together —
+separating them is how this got shipped backwards:
+
+- **Storage is outbound.** A row belongs to the faction holding the opinions,
+  exactly as the ESM stores it. Nothing is transposed and no setting selects a
+  direction.
+- **The propagation query is inbound.** "Who moves when X moves" is X's
+  *column* — every other faction's row, indexed by X.
+
+Getting the storage direction backwards is silent: symmetric pairs behave
+identically either way, and the framework shipped it backwards for three phases
+before an asymmetric pair caught it. The engine's own documentation describes
+the record map as inbound and is wrong for ESM3, which is how it got in.
+
+A faction with no record, or a record with an empty row, sits outside the
+politics — sometimes a mistyped id, often just what the game says. Closing a gap
+means adding the FACT entry in an `.esp`, not a table in Lua.
 
 **Seat** — a settlement, seen from its faction's side. A faction has no
 geography of its own; it holds seats, and a seat is a settlement that names it.

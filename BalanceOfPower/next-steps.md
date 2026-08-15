@@ -65,24 +65,46 @@ At load you should see roughly:
 Then check, in the log or via `luag`:
 
 1. ~~**Which way round do reactions read?**~~ **Settled: a row is the
-   faction's own opinions**, the same direction the game's records use.
-   Verified in-game on 2026-08-13 against the asymmetric Telvanni / Twin Lamps
-   pair; the documented reading, which the framework shipped through phases
-   1–3, is the reverse and propagated every asymmetric vanilla pair backwards.
+   faction's own opinions.** Verified in-game on 2026-08-13 and re-verified
+   against the raw ESM data on 2026-08-15 — the Nerevarine's record carries no
+   reactions at all while Temple and Redoran carry −8 and −4 toward it, which
+   only reads one way. The engine's documentation says the reverse and is wrong
+   for ESM3; the framework shipped that reading through phases 1–3.
 
-   The flag that selected a direction is gone, and the pack's authored tables
-   were transposed onto the one convention, so `hlaalu` carrying
-   `['sixth house'] = -3` now means what it looks like it means: Hlaalu hate
-   them. Values are unchanged — only which row each sits on.
+   ~~**Where do reaction values live?**~~ **Settled: the game's records, and
+   nowhere else.** The pack's transcribed tables are gone and the registry now
+   refuses a `reactions` field, so a faction rebalance mod the player loads
+   actually takes effect. All 24 pack ids were confirmed against the FACT
+   records, which also closes the old doubt about `temple` — the record is
+   `FACT "Temple"` and lookup is case-insensitive.
 
 2. **Run `luag require('openmw.interfaces').BalanceOfPower.dumpReactions()`.**
-   Every faction should have a non-zero `moves` *and* `movedBy`, except the
-   four vanilla leaves outside its politics — the Morag Tong, the Talos Cult,
-   the Nerevarine and the Twin Lamps. A zero anywhere else means a faction is
-   unwired in that direction. The suite asserts exactly this against an empty
-   record stub, so a *new* zero in-game means a record id doesn't match — most
-   likely `temple`, whose exact id wasn't verifiable outside the game. Fix by
-   correcting the id in `sources/build_settlements.py` / `data/factions.lua`.
+   **This is the one check that cannot be done headless**, because it is the
+   only place the reaction-key casing gets a real answer: the ESM stores keys as
+   `"Camonna Tong"` and `"Sixth House"` while the pack registers lowercase ids,
+   and whether the engine lowercases them before Lua sees them is unverified.
+   The framework normalizes both ends, so this should be a non-event — but a
+   *wholesale* collapse of the report means the normalization missed a case.
+
+   Every faction should have a non-zero `moves` *and* `movedBy`, except the ones
+   vanilla leaves outside its politics: the Morag Tong, the Talos Cult, the
+   Nerevarine, the Twin Lamps, Census and Excise, the Skaal, and the East Empire
+   Company (which has a row but no column). The suite asserts exactly that list
+   against the real dumped records, so an *additional* zero in-game means a
+   record id doesn't match — fix the id in `data/factions.lua`, or set
+   `recordId`.
+
+   Then spot-check the direction and the pairs that changed with this rewrite:
+
+   ```
+   luag require('openmw.interfaces').BalanceOfPower.regardOf('twin lamps', 'telvanni')  --> -3
+   luag require('openmw.interfaces').BalanceOfPower.regardOf('telvanni', 'twin lamps')  --> 0
+   luag require('openmw.interfaces').BalanceOfPower.regardOf('redoran', 'sixth house')  --> 0
+   luag require('openmw.interfaces').BalanceOfPower.regardOf('east empire company', 'redoran')  --> 1
+   ```
+
+   The first two are the direction check. If they come back swapped, stop.
+   Record the casing answer in `openmw-lua-api-notes.md` §9a either way.
 3. **Any cell-collision warnings?** The build script rejects collisions between
    settlements, but a generated cell overlapping something unexpected would
    show up here.

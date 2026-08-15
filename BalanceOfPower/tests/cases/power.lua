@@ -16,7 +16,9 @@ local M = {}
 -- Fixtures
 --------------------------------------------------------------------------
 
---- Three factions, no territory. Reaction data is supplied per-test.
+--- Three factions, no territory. Reactions come from the game's records
+-- and only from there, so a test that wants any installs them first with
+-- `records{ ... }` before calling this.
 local function threeFactions(overrides)
     local factions = {
         { id = 'hlaalu', basePower = 50 },
@@ -30,6 +32,10 @@ local function threeFactions(overrides)
     end
     registry.registerLandmass({ id = 'vvardenfell', factions = factions })
     state.fillDefaults(registry)
+end
+
+local function records(rows)
+    core._test.setFactionRecords(rows)
 end
 
 --------------------------------------------------------------------------
@@ -62,11 +68,12 @@ end
 --- The direction that matters: a row is the faction's own opinions, so
 -- "redoran moves when hlaalu moves" is written on redoran. An ally moves
 -- with it, an enemy against it.
-function M.propagatesAlongAuthoredReactions()
-    threeFactions({
-        redoran = { reactions = { hlaalu = 3 } },
-        telvanni = { reactions = { hlaalu = -3 } },
+function M.propagatesAlongRecordReactions()
+    records({
+        redoran = { hlaalu = 3 },
+        telvanni = { hlaalu = -3 },
     })
+    threeFactions()
 
     power.apply('hlaalu', 10)
 
@@ -76,77 +83,132 @@ function M.propagatesAlongAuthoredReactions()
     expect.near(power.getLive('telvanni'), 50 - expected, 1e-6, 'rival moves against it')
 end
 
---- Factions with no authored table fall back to the game's own faction
--- records, which are rows in the same direction. That fallback is the
--- seam that lets a Tamriel Rebuilt house or a Lua-only invader behave
--- like a vanilla faction without one.
-function M.propagatesAlongRecordReactions()
-    core.factions.records.redoran = { reactions = { hlaalu = 3 } }
+--- A faction whose record says nothing about the one that moved stays put.
+function M.aFactionWithNoOpinionDoesNotMove()
+    records({ redoran = { hlaalu = 3 }, telvanni = { redoran = 3 } })
     threeFactions()
 
     power.apply('hlaalu', 10)
 
     expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6, 'ally')
-    expect.equal(power.getLive('telvanni'), 50, 'faction with no opinion')
+    expect.equal(power.getLive('telvanni'), 50, 'faction with no opinion about hlaalu')
 end
 
---- Both sources naming the same pair. Same row, same direction, so the
--- overlay is unambiguous: authored wins.
-function M.authoredReactionsBeatRecords()
-    core.factions.records.redoran = { reactions = { hlaalu = 3 } }
-    threeFactions({ redoran = { reactions = { hlaalu = -3 } } })
+--- Reactions are the game's to define, not a pack's. A table here would
+-- be a second copy outranking the records, so the registry refuses it --
+-- and refuses loudly, because a pack whose politics quietly did nothing
+-- is the exact failure the rule exists to prevent.
+function M.rejectsAuthoredReactions()
+    expect.raises(function()
+        threeFactions({ redoran = { reactions = { hlaalu = 3 } } })
+    end, 'faction records', 'an authored reaction table')
+end
+
+--- The ESM stores record ids as they were authored -- "Sixth House",
+-- "Camonna Tong" -- while a pack registers whatever ids it likes, usually
+-- lowercase. Record lookup is case-insensitive in the engine, but a
+-- reaction row is a plain table whose keys arrive as-is, so both ends get
+-- normalized. Getting this wrong reads as an empty row and nothing else.
+function M.matchesReactionKeysRegardlessOfCase()
+    records({ Redoran = { HLAALU = 3 } })
+    threeFactions()
+
+    expect.equal(power.regardOf('redoran', 'hlaalu'), 3, 'both ends normalized')
 
     power.apply('hlaalu', 10)
-
-    expect.near(power.getLive('redoran'), 50 - 10 * config.INFLUENCE_STRENGTH, 1e-6, 'authored wins')
+    expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6, 'and it propagates')
 end
 
---- Authored values merge into the record row instead of replacing it.
--- This is what lets a pack give a vanilla faction an opinion about a
--- faction that has no ESM record, without discarding the vanilla row to
--- do it -- the Empire's record cannot name the East Empire Company, and
--- without the merge there would be no way to say so that didn't cost the
--- Empire every real relationship it has.
-function M.authoredReactionsMergeOverRecordsRatherThanReplacingThem()
-    core.factions.records.redoran = { reactions = { hlaalu = 3, telvanni = 3 } }
-    threeFactions({ redoran = { reactions = { telvanni = -3 } } })
+--- Every vanilla record carries a reaction toward itself, usually 3. It
+-- is not an opinion about anybody and must not act as one -- and it has
+-- to be dropped after case normalization, or a mismatch smuggles it
+-- through as a relationship with a faction that happens to differ only in
+-- case.
+function M.stripsTheRecordsSelfReaction()
+    records({ Hlaalu = { Hlaalu = 3, Redoran = -1 } })
+    threeFactions()
+
+    expect.equal(power.regardOf('hlaalu', 'hlaalu'), 0, 'no regard for itself')
+
+    power.apply('hlaalu', 10)
+    expect.near(power.getLive('hlaalu'), 60, 1e-6, 'a faction does not amplify its own change')
+end
+
+--- `recordId` is the whole of a pack's contribution to the politics: the
+-- faction whose modelled identity doesn't line up with a single record,
+-- like an Empire that reads the Legion's row. It has to work in both
+-- directions -- the aliased faction reads its record, and everyone else's
+-- rows naming that record resolve back to it.
+function M.resolvesReactionsThroughRecordId()
+    records({
+        ['Imperial Legion'] = { hlaalu = 3 },
+        redoran = { ['Imperial Legion'] = -3 },
+    })
+    registry.registerLandmass({
+        id = 'vvardenfell',
+        factions = {
+            { id = 'hlaalu', basePower = 50 },
+            { id = 'redoran', basePower = 50 },
+            { id = 'empire', basePower = 50, recordId = 'Imperial Legion' },
+        },
+    })
+    state.fillDefaults(registry)
+
+    expect.equal(power.regardOf('empire', 'hlaalu'), 3, 'reads its record row')
+    expect.equal(power.regardOf('redoran', 'empire'), -3,
+        'and is named by everyone else through the same id')
 
     local step = 10 * config.INFLUENCE_STRENGTH
-
-    power.apply('hlaalu', 10)
-    expect.near(power.getLive('redoran'), 50 + step, 1e-6, 'the untouched record entry survived')
-
-    local before = power.getLive('redoran')
-    power.apply('telvanni', 10)
-    expect.near(power.getLive('redoran'), before - step, 1e-6, 'and the authored one replaced its pair')
+    power.apply('empire', 10)
+    expect.near(power.getLive('redoran'), 50 - step, 1e-6, 'so propagation reaches it')
 end
 
---- A reaction naming a faction nobody registered is dead weight and far
--- more often a typo. It must not reach the reaction table.
+--- A record row names dozens of factions this simulation doesn't model.
+-- They must not reach the reaction table, and must not throw on the way
+-- past.
 function M.ignoresReactionsTowardUnregisteredFactions()
-    threeFactions({ hlaalu = { reactions = { redoran = 3, ['no such house'] = 3 } } })
+    records({ hlaalu = { redoran = 3, ['no such house'] = 3 } })
+    threeFactions()
 
     expect.equal(power.regardOf('hlaalu', 'redoran'), 3, 'the registered one survived')
     expect.equal(power.regardOf('hlaalu', 'no such house'), 0, 'the unregistered one was dropped')
-    -- And it must not throw on the way past.
     power.apply('redoran', 10)
     expect.near(power.getLive('hlaalu'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6, 'still works')
+end
+
+--- A registered faction with no record behind it. Almost always a
+-- mistyped id, and the framework's only symptom for it is a warning plus
+-- a faction that sits outside the politics forever -- so at minimum it
+-- must not take the tick down.
+function M.survivesAFactionWithNoRecord()
+    records({ redoran = { hlaalu = 3 } })
+    threeFactions()
+
+    expect.equal(power.regardOf('telvanni', 'hlaalu'), 0, 'no record, no opinions')
+    power.apply('hlaalu', 10)
+    expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6,
+        'and everyone else is unaffected')
 end
 
 --------------------------------------------------------------------------
 -- Which way round the data reads
 --------------------------------------------------------------------------
 
---- One convention for both sources, asserted rather than left implied by
--- the behavioural tests: a row belongs to the faction holding the
--- opinions. Reading it the other way round is silent, because most pairs
--- are near-symmetric, and this framework has shipped that bug once.
+--- The convention, asserted rather than left implied by the behavioural
+-- tests: a row belongs to the faction holding the opinions. Reading it
+-- the other way round is silent, because most pairs are near-symmetric,
+-- and this framework has shipped that bug once.
+--
+-- The engine's own documentation describes the map as inbound and is
+-- wrong for ESM3, which is how the bug got in.
 function M.readsRecordRowsAsTheFactionsOwnOpinions()
-    -- This says hlaalu feels +3 about redoran, which tells us nothing
-    -- about how redoran responds when hlaalu moves...
-    core.factions.records.hlaalu = { reactions = { redoran = 3 } }
-    -- ...and this says telvanni feels -3 about hlaalu, which does.
-    core.factions.records.telvanni = { reactions = { hlaalu = -3 } }
+    records({
+        -- This says hlaalu feels +3 about redoran, which tells us nothing
+        -- about how redoran responds when hlaalu moves...
+        hlaalu = { redoran = 3 },
+        -- ...and this says telvanni feels -3 about hlaalu, which does.
+        telvanni = { hlaalu = -3 },
+    })
     threeFactions()
 
     power.apply('hlaalu', 10)
@@ -166,12 +228,14 @@ end
 -- absent, not from the faction having no data at all, and only a
 -- genuinely asymmetric pair can tell those two apart.
 function M.readsTheTwinLampsPairTheWayTheGameStoresIt()
-    core.factions.records['twin lamps'] = { reactions = { telvanni = -3 } }
-    core.factions.records.telvanni = { reactions = { hlaalu = -1 } }
+    records({
+        ['Twin Lamps'] = { Telvanni = -3 },
+        Telvanni = { Hlaalu = -1 },
+    })
     threeFactions()
     registry.registerLandmass({
         id = 'solstheim',
-        factions = { { id = 'twin lamps', basePower = 50, territorial = false } },
+        factions = { { id = 'twin lamps', basePower = 50 } },
     })
     state.fillDefaults(registry)
 
@@ -190,20 +254,6 @@ function M.readsTheTwinLampsPairTheWayTheGameStoresIt()
     expect.equal(power.getLive('telvanni'), telvanniBefore, 'and it does not come back the other way')
 end
 
---- And an authored row means the same thing a record row does. If the
--- two conventions ever diverged, a pack's data would change meaning
--- depending on whether the faction happened to have an ESM record.
-function M.authoredRowsReadTheSameWayAsRecords()
-    core.factions.records.redoran = { reactions = { hlaalu = 3 } }
-    threeFactions({ telvanni = { reactions = { hlaalu = 3 } } })
-
-    power.apply('hlaalu', 10)
-
-    local step = 10 * config.INFLUENCE_STRENGTH
-    expect.near(power.getLive('redoran'), 50 + step, 1e-6, 'from the record')
-    expect.near(power.getLive('telvanni'), 50 + step, 1e-6, 'from the authored table')
-end
-
 --------------------------------------------------------------------------
 -- The audit
 --------------------------------------------------------------------------
@@ -213,10 +263,11 @@ end
 -- it has a reaction table, it propagates, it appears in the standings --
 -- and its power can only ever change through a direct award.
 function M.auditReportsFactionsNobodyReactsTo()
-    threeFactions({
-        redoran = { reactions = { hlaalu = 3 } },
-        telvanni = { reactions = { hlaalu = -3 } },
+    records({
+        redoran = { hlaalu = 3 },
+        telvanni = { hlaalu = -3 },
     })
+    threeFactions()
 
     local byId = {}
     for _, row in ipairs(power.reactionAudit()) do
@@ -235,15 +286,16 @@ function M.auditCoversEveryRegisteredFaction()
 end
 
 --- A reaction of zero is the absence of a relationship, not a quiet one,
--- and the audit has to agree. Vanilla reaction rows are mostly zeros, so
+-- and the audit has to agree. Vanilla rows carry explicit zeros, so
 -- counting entries rather than opinions would report every faction as
 -- fully wired in both directions and the diagnostic would go silent at
 -- exactly the moment it is worth reading.
 function M.auditIgnoresZeroReactions()
-    threeFactions({
-        redoran = { reactions = { hlaalu = 0 } },
-        telvanni = { reactions = { hlaalu = -3 } },
+    records({
+        redoran = { hlaalu = 0 },
+        telvanni = { hlaalu = -3 },
     })
+    threeFactions()
 
     local byId = {}
     for _, row in ipairs(power.reactionAudit()) do
@@ -254,20 +306,12 @@ function M.auditIgnoresZeroReactions()
     expect.equal(byId.hlaalu.moves, 1, 'so hlaalu moves telvanni and nobody else')
 end
 
---- The zero is still stored, though, and this is why: overriding a
--- record's value with nothing is the only way a pack can say "these two
--- have no quarrel" about a pair the game insists on.
-function M.anAuthoredZeroCancelsARecordReaction()
-    core.factions.records.redoran = { reactions = { hlaalu = 3 } }
-    threeFactions({ redoran = { reactions = { hlaalu = 0 } } })
-
-    power.apply('hlaalu', 10)
-
-    expect.equal(power.getLive('redoran'), 50, 'the record value was cancelled, not merged')
-end
-
+--- Vanilla really does carry values past the nominal range -- the Temple
+-- regards the Nerevarine at -8 -- so the clamp has to hold at use rather
+-- than the data being assumed sane.
 function M.clampsExtremeReactionValues()
-    threeFactions({ redoran = { reactions = { hlaalu = 99 } } })
+    records({ redoran = { hlaalu = 99 } })
+    threeFactions()
 
     power.apply('hlaalu', 10)
 
@@ -275,14 +319,14 @@ function M.clampsExtremeReactionValues()
     expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6, 'clamped')
 end
 
---- `territorial = false` keeps a faction off the map, not out of the
+--- Holding no ground keeps a faction off the map, not out of the
 -- politics. A guild that can't own a cell still rises and falls with its
 -- allies -- that standing is the whole reason to track it.
 function M.propagatesToPowerOnlyFactions()
-    threeFactions({
-        redoran = { reactions = { hlaalu = 3 }, territorial = false },
-    })
+    records({ redoran = { hlaalu = 3 } })
+    threeFactions()
 
+    expect.falsy(registry.factions.redoran.territorial, 'no seats, so power-only')
     power.apply('hlaalu', 10)
 
     expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6,
@@ -290,7 +334,8 @@ function M.propagatesToPowerOnlyFactions()
 end
 
 function M.noPropagateMovesOneFactionAlone()
-    threeFactions({ redoran = { reactions = { hlaalu = 3 } } })
+    records({ redoran = { hlaalu = 3 } })
+    threeFactions()
 
     power.apply('hlaalu', 10, { noPropagate = true })
 

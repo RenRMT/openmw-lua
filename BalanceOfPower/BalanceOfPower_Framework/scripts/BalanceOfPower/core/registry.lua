@@ -23,6 +23,8 @@
 --   on half a landmass that no retry can complete (the retry would trip
 --   over the factions the failed attempt had already inserted).
 
+local core = require('openmw.core')
+
 local cells = require('scripts.BalanceOfPower.core.cells')
 local config = require('scripts.BalanceOfPower.core.config')
 local log = require('scripts.BalanceOfPower.core.log')
@@ -190,136 +192,227 @@ local function tierDefaultsFor(tier, ctx)
 end
 
 --------------------------------------------------------------------------
--- Factions
+-- The game's faction records
 --------------------------------------------------------------------------
 
-local function defineFaction(def, context, fallbackLandmass)
-    local id = def.id
-    local ctx = string.format('%s faction "%s"', context, id)
-    local landmass = def.landmass or fallbackLandmass
+-- Read once per session. Keys are lowercased throughout: the ESM stores
+-- record ids as authored ("Sixth House") while packs register whatever
+-- they like, and a reaction row is a plain table whose key case the
+-- engine does not normalize.
+local recordRows = nil   -- lowered id -> { lowered id -> reaction }
+local recordNames = nil  -- lowered id -> record display name
 
-    local basePower = checkNumber(def.basePower, ctx, 'basePower', config.DEFAULT_BASE_POWER)
-    if basePower < config.MIN_POWER then
-        fail(ctx, string.format('basePower must be at least %d', config.MIN_POWER))
+local EMPTY = {}
+
+local function readRecords()
+    if recordRows then
+        return
+    end
+    recordRows, recordNames = {}, {}
+
+    local ok, records = pcall(function()
+        return core.factions.records
+    end)
+    if not ok or not records then
+        log.warn('no faction records available -- factions must be declared by a content pack')
+        return
     end
 
-    return {
-        id = id,
-        displayName = def.displayName or id,
-        -- Whether this faction appears on the map at all. `false` makes
-        -- it a power-only faction: it has a power score, it reacts to
-        -- everyone else through the reaction table, and other systems
-        -- can read its standing -- but it holds no ground, projects no
-        -- influence, and can never be recorded as owning a territory.
-        --
-        -- That's the split between a Great House and a guild. The
-        -- Fighters Guild is a real political force whose fortunes rise
-        -- and fall with its allies'; it just doesn't own Balmora.
-        --
-        -- A faction that shouldn't participate at all is simply not
-        -- registered.
-        territorial = def.territorial ~= false,
-        basePower = basePower,
-        -- Power gained per resolved day with nobody doing anything. A
-        -- knob on an ordinary faction rather than a mode: the faction
-        -- that grows on its own is the same shape as every other one,
-        -- and differs by a number.
-        growthPerDay = checkNumber(def.growthPerDay, ctx, 'growthPerDay',
-            config.DEFAULT_GROWTH_PER_DAY),
-        -- Opt in to fighting. A hostile faction attacks the player, and
-        -- attacks any faction it regards at or below
-        -- HOSTILITY_REACTION_THRESHOLD. Nothing in the framework acts on
-        -- this -- see core/hostility.lua for what it means and
-        -- core/patrol.lua for who reads it.
-        hostile = def.hostile == true,
-        landmass = landmass,
-        -- Filled in by registerLandmass from the settlements that name
-        -- this faction. A faction has no geography of its own: it holds
-        -- seats, and a seat is a settlement.
-        seats = {},
-        patrolRoster = normalizeRoster(def.patrolRoster, ctx),
-        -- Authored reactions: how this faction feels about others, the
-        -- same direction the game's own records use. Merged over the
-        -- record row where there is one -- see core/power.lua.
-        reactions = def.reactions and checkTable(def.reactions, ctx, 'reactions') or nil,
-    }
+    for _, record in ipairs(records) do
+        local id = string.lower(record.id)
+        recordNames[id] = record.name
+        local row = {}
+        for other, value in pairs(record.reactions or EMPTY) do
+            local key = string.lower(tostring(other))
+            -- Every record carries a reaction toward itself; it is not an
+            -- opinion about anybody.
+            if key ~= id then
+                row[key] = value
+            end
+        end
+        recordRows[id] = row
+    end
 end
 
--- Validate an extension without touching the faction it extends.
---
--- A faction like Hlaalu legitimately spans several packs -- Balmora on
--- Vvardenfell, Bal Foyen once a Tamriel Rebuilt pack loads -- and both
--- seats have to project at once. That now needs nothing merged: the
--- settlements are registered against their own landmass and name the
--- faction, so the second pack's seats arrive on their own. What is left
--- to merge is the faction's own content, its roster and its reactions.
-local function prepareExtension(faction, def, context)
-    local ctx = string.format('%s faction "%s" (extend)', context, faction.id)
+--- Normalized reaction rows from the game's records, keyed lowercase.
+-- core/power.lua reads these; nothing else should need them.
+function M.recordRows()
+    readRecords()
+    return recordRows
+end
 
-    -- Whichever pack registered first owns the base config. Redefining
-    -- it from an extending pack is a load-order-dependent bug, so say so
-    -- rather than silently picking a winner.
-    for _, field in ipairs({ 'basePower', 'displayName', 'territorial',
-                             'growthPerDay', 'hostile' }) do
-        if def[field] ~= nil then
-            log.warn('%s: ignoring %s -- it belongs to the pack that registered this faction first',
-                ctx, field)
+--- Record ids that take part in the politics at all: a non-zero opinion
+-- of somebody, or somebody's non-zero opinion of them.
+--
+-- The filter exists because content files keep dead ids alive. Tamriel
+-- Data ships a dozen records named "<Deprecated>" so old saves still
+-- load; every one has an empty row and no column, and without this they
+-- would all appear in the standings.
+local function participatingRecordIds()
+    readRecords()
+    local moves, movedBy = {}, {}
+    for id, row in pairs(recordRows) do
+        for other, value in pairs(row) do
+            if value ~= 0 then
+                movedBy[id] = true
+                moves[other] = true
+            end
         end
     end
 
+    local ids = {}
+    for id in pairs(recordRows) do
+        if moves[id] or movedBy[id] then
+            ids[#ids + 1] = id
+        end
+    end
+    table.sort(ids)
+    return ids
+end
+
+--------------------------------------------------------------------------
+-- Factions
+--------------------------------------------------------------------------
+
+-- Fields the game's records own. Authoring one is fatal rather than
+-- ignored: a pack whose carefully written value quietly did nothing is
+-- the failure these rules exist to prevent.
+local RECORD_OWNED = {
+    reactions = 'read from the game\'s faction records',
+    displayName = 'read from the faction record\'s name',
+    territorial = 'derived -- a faction with seats is territorial',
+}
+
+local function rejectRecordOwned(def, ctx)
+    for field, why in pairs(RECORD_OWNED) do
+        if def[field] ~= nil then
+            fail(ctx, string.format('%s is %s, and cannot be authored here', field, why))
+        end
+    end
+end
+
+local function newFaction(id, recordId, landmass)
     return {
-        patrolRoster = normalizeRoster(def.patrolRoster, ctx),
-        reactions = def.reactions and checkTable(def.reactions, ctx, 'reactions') or nil,
+        id = id,
+        displayName = recordNames[string.lower(recordId or id)] or id,
+        -- The faction's id in the game's data, where it differs from the
+        -- id registered here. For the faction whose modelled identity
+        -- doesn't line up with a single record.
+        recordId = recordId,
+        -- Derived at the end of every registration from whether any
+        -- settlement names this faction. A faction with no seats is
+        -- power-only: it has standing and reacts to everyone, but holds
+        -- no ground and projects nothing.
+        territorial = false,
+        basePower = config.DEFAULT_BASE_POWER,
+        growthPerDay = config.DEFAULT_GROWTH_PER_DAY,
+        -- Opt in to fighting. See core/hostility.lua for what it means.
+        hostile = false,
+        landmass = landmass,
+        -- Filled in by registerLandmass from the settlements naming this
+        -- faction. A faction holds seats; it has no geography of its own.
+        seats = {},
+        patrolRoster = {},
     }
 end
 
-local function applyExtension(faction, extension)
-    -- Deduplicated by record id: two packs listing the same guard is
-    -- ordinary, and the entry that arrives first keeps its tier.
+--- Register every faction the game's records describe.
+--
+-- Lazy rather than eager because records can only be read once content
+-- files have loaded, and it has to happen before any settlement binds to
+-- a faction. The first registerLandmass triggers it.
+function M.ensureFactions()
+    if M.factionsFromRecords then
+        return 0
+    end
+    M.factionsFromRecords = true
+
+    local added = 0
+    for _, recordId in ipairs(participatingRecordIds()) do
+        if not M.factions[recordId] then
+            M.factions[recordId] = newFaction(recordId, recordId, nil)
+            added = added + 1
+        end
+    end
+    if added > 0 then
+        log.info('registered %d factions from the game\'s faction records', added)
+    end
+    return added
+end
+
+-- Roster entries are deduplicated by record id, and the first arrival
+-- keeps its tier -- two packs listing the same guard is ordinary.
+local function mergeRoster(faction, entries)
     local seen = {}
     for _, entry in ipairs(faction.patrolRoster) do
         seen[entry.id] = true
     end
-    for _, entry in ipairs(extension.patrolRoster) do
+    for _, entry in ipairs(entries) do
         if not seen[entry.id] then
             seen[entry.id] = true
             faction.patrolRoster[#faction.patrolRoster + 1] = entry
         end
     end
-
-    if extension.reactions then
-        faction.reactions = faction.reactions or {}
-        for otherId, value in pairs(extension.reactions) do
-            faction.reactions[otherId] = value
-        end
-    end
 end
 
---- Validate a faction definition into a staged operation.
--- @param staged table ids already staged by this call, so two entries in
---        one definition collide the same way two packs would
+-- Scalars a pack may set. The first pack to set one keeps it, because
+-- which pack won would otherwise depend on load order.
+local TUNABLE = { 'basePower', 'growthPerDay', 'hostile', 'recordId', 'landmass' }
+
+local function applyTuning(faction, tuning, ctx)
+    for _, field in ipairs(TUNABLE) do
+        local value = tuning[field]
+        if value ~= nil then
+            if faction[field .. 'Authored'] then
+                log.warn('%s: ignoring %s -- an earlier pack already set it', ctx, field)
+            else
+                faction[field] = value
+                faction[field .. 'Authored'] = true
+            end
+        end
+    end
+    mergeRoster(faction, tuning.patrolRoster)
+end
+
+--- Validate a faction entry into a staged operation.
+--
+-- A pack does not define a faction so much as tune one: the records
+-- supply the roster of who exists, and an entry here adds the numbers
+-- the game has no field for. A faction with no record behind it is still
+-- registered, which is how a pack models something the game does not.
 local function prepareFaction(def, context, fallbackLandmass, staged)
     checkTable(def, context, 'faction')
     local id = checkString(def.id, context, 'faction.id')
-    local existing = M.factions[id]
+    local ctx = string.format('%s faction "%s"', context, id)
 
-    if def.extend then
-        if not existing then
-            fail(context, string.format(
-                'faction "%s" is marked extend = true but has not been registered yet '
-                .. '-- the pack that defines it must load first', id))
-        end
-        return { id = id, target = existing, extension = prepareExtension(existing, def, context) }
+    if def.extend ~= nil then
+        log.warn('%s: `extend` is obsolete and ignored -- factions come from the game\'s '
+            .. 'records, so no pack owns one', ctx)
     end
+    rejectRecordOwned(def, ctx)
 
-    if existing or staged[id] then
-        fail(context, string.format(
-            'faction "%s" is already registered -- set extend = true to add roster '
-            .. 'entries and reactions to it instead of redefining it', id))
+    if staged[id] then
+        fail(ctx, 'this faction appears twice in the same definition')
     end
     staged[id] = true
 
-    return { id = id, faction = defineFaction(def, context, fallbackLandmass) }
+    local basePower = checkNumber(def.basePower, ctx, 'basePower', nil)
+    if basePower ~= nil and basePower < config.MIN_POWER then
+        fail(ctx, string.format('basePower must be at least %d', config.MIN_POWER))
+    end
+
+    return {
+        id = id,
+        landmass = def.landmass or fallbackLandmass,
+        tuning = {
+            basePower = basePower,
+            growthPerDay = checkNumber(def.growthPerDay, ctx, 'growthPerDay', nil),
+            hostile = def.hostile == true or nil,
+            recordId = def.recordId and checkString(def.recordId, ctx, 'recordId') or nil,
+            patrolRoster = normalizeRoster(def.patrolRoster, ctx),
+        },
+        ctx = ctx,
+    }
 end
 
 --------------------------------------------------------------------------
@@ -506,6 +599,15 @@ end
 -- Public registration
 --------------------------------------------------------------------------
 
+--- Recompute which factions hold ground. Called after every registration,
+-- because a later pack's settlements can make a power-only faction
+-- territorial.
+function M.deriveTerritorial()
+    for _, faction in pairs(M.factions) do
+        faction.territorial = #faction.seats > 0
+    end
+end
+
 --- Register a landmass: its factions, its settlements and its
 -- frontier grid. Called once per content pack at world init.
 function M.registerLandmass(def)
@@ -516,6 +618,9 @@ function M.registerLandmass(def)
     if M.landmasses[id] then
         fail(context, 'this landmass is already registered')
     end
+
+    -- Before anything binds to a faction id.
+    M.ensureFactions()
 
     -- Phase one: validate everything, mutating nothing.
     local factionOps, settlements, territories = {}, {}, {}
@@ -546,11 +651,13 @@ function M.registerLandmass(def)
     }
 
     for _, op in ipairs(factionOps) do
-        if op.faction then
-            M.factions[op.id] = op.faction
-        else
-            applyExtension(op.target, op.extension)
+        local faction = M.factions[op.id]
+        if not faction then
+            faction = newFaction(op.id, op.tuning.recordId, op.landmass)
+            M.factions[op.id] = faction
         end
+        applyTuning(faction, op.tuning, op.ctx)
+        faction.landmass = faction.landmass or op.landmass
         landmass.factionIds[#landmass.factionIds + 1] = op.id
     end
 
@@ -593,6 +700,7 @@ function M.registerLandmass(def)
 
     M.landmasses[id] = landmass
     M.generation = M.generation + 1
+    M.deriveTerritorial()
 
     local settlementCells = 0
     for _, settlement in ipairs(settlements) do

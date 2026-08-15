@@ -3,6 +3,7 @@
 
 local expect = require('support.expect')
 
+local core = require('openmw.core')
 local world = require('openmw.world')
 
 local config = require('scripts.BalanceOfPower.core.config')
@@ -25,19 +26,21 @@ local CELL = 8192
 -- its own row.
 local function twoRealms(overrides)
     world._test.defineExteriorGrid(-6, 6, -6, 6)
+    core._test.setFactionRecords({
+        house = { invader = -3 },
+        invader = { house = -3 },
+    })
 
     local factions = {
         {
             id = 'house',
             basePower = 50,
-            reactions = { invader = -3 },
             patrolRoster = { 'house guard' },
         },
         {
             id = 'invader',
             basePower = 50,
             hostile = true,
-            reactions = { house = -3 },
             patrolRoster = {
                 'cultist',
                 { id = 'ash ghoul', tier = 2 },

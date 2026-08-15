@@ -26,8 +26,9 @@ and composes with any content pack.)
   validation and cross-pack faction merging via `extend = true`.
   `registerInvasion` also shipped here, and was removed in the phase-3
   follow-up that moved invasion out of the framework entirely.
-- Faction power: get/set/apply, reaction-driven propagation with the
-  vanilla-record-or-authored-table indirection.
+- Faction power: get/set/apply, reaction-driven propagation. Shipped with a
+  vanilla-record-or-authored-table indirection; the authored half was removed
+  later — see the reactions entry in the phase 4 decisions.
 - Atomic per-pass batching, so no roll can be influenced by another roll that
   resolved earlier in the same pass.
 - Persistent state with central default-fill, so a content update that adds a
@@ -346,6 +347,47 @@ player-side and creation happens global-side. That is what settles the ocean
 question — spawning only in owned cells excludes almost all water already, and
 a navmesh check covers the coastal remainder without an authored exclusion
 list.
+
+### 4c — reactions from the game data alone
+
+**Ships:** the removal of every authored reaction value in the ecosystem.
+
+Phase 1 built reactions as a merge: `core.factions.records` for factions with an
+ESM record, an authored table for those without, authored winning per pair. The
+merge was the wrong shape. Nothing in this ecosystem *defines* a faction or an
+opinion — the game's content files do, and so does any faction rebalance mod the
+player has loaded — so an authored copy silently outranked the live data and
+made those mods inert.
+
+`core/power.lua` now reads records and nothing else, and `core/registry.lua`
+raises on a `reactions` field rather than ignoring it. A pack contributes ids,
+plus `recordId` where its id and the record's differ.
+
+**Design decisions settled here:**
+
+- **No escape hatch, deliberately.** A narrow override list was considered and
+  rejected: an override is exactly the second copy the change exists to remove,
+  and it would be reached for long before anyone reached for the correct fix,
+  which is an `.esp` that adds the FACT entry.
+- **Storage is outbound; the query is inbound.** Written down together in the
+  glossary and in `power.lua`, because separating them is how the direction bug
+  got in. The engine's documentation says the map is inbound and is wrong for
+  ESM3 — settled a second time, against the raw ESM data, and recorded with the
+  evidence in `openmw-lua-api-notes.md`.
+- **Case is normalized on both ends.** The ESM stores keys as authored
+  (`"Sixth House"`) while a pack registers lowercase ids. Record lookup is
+  case-insensitive in the engine; a reaction map is a plain Lua table and is not.
+- **Vanilla numbers moved into a generated test fixture.**
+  `sources/build_reactions_fixture.py` dumps the real FACT records via `esmtool`
+  into `tests/fixtures/vanilla_reactions.lua`. Test data, generated, checked in
+  so CI needs no game install — no longer the runtime authority.
+
+**What the change revealed**, none of it visible before: Redoran carry no regard
+for the Sixth House at all (the earlier authored −3 was a deliberate override of
+a gap in the data); the East Empire Company's real Bloodmoon row is richer than
+the guess that stood in for it and disagrees with it on Redoran; the Skaal's
+record is empty; and the Mages and Thieves Guild entries toward Census and Excise
+were a transcription that vanilla does not contain.
 
 ---
 

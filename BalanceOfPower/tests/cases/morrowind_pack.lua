@@ -7,7 +7,9 @@
 -- on a live load should blow up here first.
 
 local expect = require('support.expect')
+local vanillaReactions = require('fixtures.vanilla_reactions')
 
+local core = require('openmw.core')
 local world = require('openmw.world')
 
 local api = require('scripts.BalanceOfPower.core.api')
@@ -24,8 +26,15 @@ local M = {}
 -- Anthology position. Real content defines far fewer cells than this --
 -- most of the sea has no cell record at all -- so anything measured
 -- against this grid is a worst case, not an estimate.
+--
+-- The faction records are the real ones, dumped from Morrowind.esm,
+-- Tribunal.esm and Bloodmoon.esm -- capitals, self-reactions, explicit
+-- zeros and all. The pack authors no reactions and has nowhere to put
+-- any, so without these the politics here would be empty and every test
+-- below would pass against a world with no opinions in it.
 local function loadPack()
     world._test.defineExteriorGrid(-22, 22, -18, 36)
+    core._test.setFactionRecords(vanillaReactions)
     require('scripts.BalanceOfPowerMorrowind.main')
     state.fillDefaults(registry)
 end
@@ -39,6 +48,31 @@ function M.loadsWithoutError()
     expect.truthy(registry.landmasses.vvardenfell, 'vvardenfell registered')
     expect.truthy(registry.landmasses.solstheim, 'solstheim registered')
     expect.truthy(registry.factions['sixth house'], 'the Sixth House is an ordinary faction')
+end
+
+--- The pack names no faction into existence: the records do. Tribunal's
+-- Royal Guard is the proof -- nothing in this pack mentions it, and it
+-- arrives anyway because its record takes part in the politics.
+function M.registersFactionsTheRecordsDescribeRatherThanThePackDoes()
+    loadPack()
+
+    expect.truthy(registry.factions['royal guard'], 'a faction the pack never names')
+    expect.equal(registry.factions.hlaalu.displayName, 'Great House Hlaalu',
+        'display name comes from the record, not the pack')
+    expect.equal(registry.factions['census and excise'].displayName,
+        'Census and Excise Office', 'even where it differs from the pack\'s old wording')
+end
+
+--- Vanilla's two empty Tribunal records exist but take part in nothing,
+-- so nothing registers them. The pack's own entries are what keep the
+-- Morag Tong and the Talos Cult, which are equally empty.
+function M.leavesRecordsWithNoPoliticsUnregistered()
+    loadPack()
+
+    expect.isNil(registry.factions['dark brotherhood'], 'no row, no column, no registration')
+    expect.isNil(registry.factions['hands of almalexia'], 'the same')
+    expect.truthy(registry.factions['morag tong'], 'kept by the pack declaring it')
+    expect.truthy(registry.factions['talos cult'], 'the same')
 end
 
 --- Every holding in the source list is a settlement. There is no second
@@ -157,27 +191,45 @@ end
 --------------------------------------------------------------------------
 
 --- Every faction must be wired into the reaction table in both
--- directions -- with the four exceptions vanilla itself leaves out.
+-- directions -- with the exceptions vanilla itself leaves out.
 --
 -- Being unwired is silent in play: a faction with no row of its own is
 -- never moved by anything, and a faction nobody names moves nobody, and
 -- neither shows up as an error. The check is therefore against a named
 -- list rather than a count, so that a faction *arriving* in this state
--- fails, while the four the game genuinely leaves outside its politics
+-- fails, while the ones the game genuinely leaves outside its politics
 -- go on passing.
 --
--- This runs against an empty record stub, which is the worst case: if it
--- passes here, the authored rows alone are enough, and whatever the
--- game's records add in play is a bonus.
+-- Every id below is a gap in the game data, not in this pack. There is
+-- nowhere in the pack to fix one: reactions come from the records, so
+-- closing any of these means shipping an .esp that adds the FACT entry.
 function M.wiresEveryFactionIntoThePoliticsBothWays()
     loadPack()
 
-    -- Vanilla's own gaps. The Morag Tong and the Talos Cult have an
-    -- empty reaction row and an empty column; the Nerevarine reacts to
-    -- nobody though Redoran and the Temple react to it; the Twin Lamps
-    -- hate House Telvanni and are beneath everyone else's notice.
-    local movesNobody = { ['morag tong'] = true, ['talos cult'] = true, ['twin lamps'] = true }
-    local movedByNobody = { ['morag tong'] = true, ['talos cult'] = true, nerevarine = true }
+    -- The Morag Tong and the Talos Cult have an empty row and an empty
+    -- column; the Nerevarine reacts to nobody though Redoran and the
+    -- Temple react to it; the Twin Lamps hate House Telvanni and are
+    -- beneath everyone else's notice.
+    --
+    -- Bloodmoon's two are a different shape of gap. Its records were
+    -- added without patching the base game's, so nothing in Morrowind.esm
+    -- has heard of either: the Company has a full row of its own and an
+    -- empty column, and the Skaal have neither.
+    --
+    -- Census and Excise is the quietest of them: it has opinions about
+    -- the people who bring things ashore without asking, and not one
+    -- faction in the game has an opinion about customs. Tribunal's Royal
+    -- Guard is the same shape -- a full row, added after the base game's
+    -- records were written, so nothing names it back.
+    local movesNobody = {
+        ['morag tong'] = true, ['talos cult'] = true, ['twin lamps'] = true,
+        ['east empire company'] = true, skaal = true, ['census and excise'] = true,
+        ['royal guard'] = true,
+    }
+    local movedByNobody = {
+        ['morag tong'] = true, ['talos cult'] = true, nerevarine = true,
+        skaal = true,
+    }
 
     local mute, deaf = {}, {}
     for _, row in ipairs(power.reactionAudit()) do
