@@ -23,7 +23,6 @@ local function hlaalu(overrides)
     hlaaluRecord()
     local faction = {
         id = 'hlaalu',
-        basePower = 50,
         patrolRoster = { 'hlaalu guard' },
     }
     for key, value in pairs(overrides or {}) do
@@ -157,6 +156,7 @@ end
 function M.treatsOmittedDefaultOwnerAsUnclaimed()
     registry.registerLandmass(minimalLandmass())
     state.fillDefaults(registry)
+    state.seedPower(registry)
 
     expect.equal(state.getOwner('balmora_-3_-2'), 'hlaalu', 'authored owner')
     expect.isNil(state.getOwner('west_gash'), 'omitted owner')
@@ -214,7 +214,7 @@ function M.failedRegistrationCommitsNothing()
     expect.raises(function()
         registry.registerLandmass({
             id = 'broken',
-            factions = { { id = 'telvanni', basePower = 40 } },
+            factions = { { id = 'telvanni' } },
             territories = {
                 { id = 'sadrith_mora', cells = { '#18,4' }, defaultOwner = 'telvanni' },
             },
@@ -262,16 +262,18 @@ end
 
 --- Which pack won would otherwise depend on load order.
 function M.theFirstPackToSetAScalarKeepsIt()
-    registry.registerLandmass(minimalLandmass())
+    registry.registerLandmass(minimalLandmass({
+        factions = { hlaalu({ growthPerDay = 2 }) },
+    }))
     registry.registerLandmass({
         id = 'tamriel_rebuilt',
-        factions = { { id = 'hlaalu', basePower = 999, growthPerDay = 7 } },
+        factions = { { id = 'hlaalu', growthPerDay = 7, hostile = true } },
     })
 
     local faction = registry.factions.hlaalu
-    expect.equal(faction.basePower, 50, 'basePower stays with the first pack')
-    -- Nobody set growthPerDay first, so the second pack's value lands.
-    expect.equal(faction.growthPerDay, 7, 'an unclaimed field is still settable')
+    expect.equal(faction.growthPerDay, 2, 'growthPerDay stays with the first pack')
+    -- Nobody set hostile first, so the second pack's value lands.
+    expect.truthy(faction.hostile, 'an unclaimed field is still settable')
 end
 
 --- `extend` is obsolete. An entry carrying it still registers, because
@@ -343,7 +345,7 @@ function M.anExplicitEntryBeatsTheParticipationFilter()
     })
     registry.registerLandmass({
         id = 'vvardenfell',
-        factions = { { id = 'morag tong', basePower = 20 } },
+        factions = { { id = 'morag tong' } },
     })
 
     expect.truthy(registry.factions['morag tong'], 'the pack registered it anyway')
@@ -356,7 +358,7 @@ function M.registersAFactionWithNoRecordBehindIt()
     core._test.setFactionRecords({})
     registry.registerLandmass({
         id = 'vvardenfell',
-        factions = { { id = 'invented', basePower = 40 } },
+        factions = { { id = 'invented' } },
     })
 
     local faction = registry.factions.invented
@@ -369,7 +371,7 @@ end
 function M.territorialIsDerivedFromSeats()
     registry.registerLandmass({
         id = 'vvardenfell',
-        factions = { { id = 'hlaalu', basePower = 50 } },
+        factions = { { id = 'hlaalu' } },
     })
     expect.falsy(registry.factions.hlaalu.territorial, 'no seats yet')
 
@@ -433,7 +435,7 @@ function M.toleratesForwardReferences()
     }))
     registry.registerLandmass({
         id = 'ashlands',
-        factions = { { id = 'sixth house', basePower = 30 } },
+        factions = { { id = 'sixth house' } },
     })
 
     expect.equal(registry.validateReferences(), 0, 'reference problems')

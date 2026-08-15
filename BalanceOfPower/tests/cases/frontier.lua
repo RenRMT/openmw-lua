@@ -60,10 +60,11 @@ local function oneSettlement(overrides)
 
     registry.registerLandmass({
         id = 'testland',
-        factions = { { id = 'alpha', basePower = 50 } },
+        factions = { { id = 'alpha' } },
         territories = settlements(overrides),
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
 end
 
 local function generate(extra)
@@ -156,7 +157,6 @@ function M.skipsCellsThatDoNotExist()
         factions = {
             {
                 id = 'alpha',
-                basePower = 50,
             },
         },
         territories = {
@@ -165,6 +165,7 @@ function M.skipsCellsThatDoNotExist()
         },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
 
     local created = generate()
 
@@ -190,7 +191,6 @@ function M.respectsGranularity()
         factions = {
             {
                 id = 'beta',
-                basePower = 50,
             },
         },
         territories = {

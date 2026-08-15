@@ -21,6 +21,7 @@
 --     faction works on an existing save.
 
 local config = require('scripts.BalanceOfPower.core.config')
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local log = require('scripts.BalanceOfPower.core.log')
 
 -- Bump only for changes that need actual migration logic, not for
@@ -98,19 +99,14 @@ function M.deserialize(saved)
     data = fresh
 end
 
---- Seed any registered entity that has no state yet, from its static
--- definition. Idempotent and cheap, so the driver just calls it every
--- tick rather than tracking whether a data pack registered late.
+--- Seed ownership for any registered territory that has none yet.
+-- Idempotent and cheap, so the driver just calls it every tick rather
+-- than tracking whether a data pack registered late.
+--
+-- Power is seeded separately, by seedPower -- see there for why.
 -- @return number of keys seeded
 function M.fillDefaults(registry)
     local seeded = 0
-
-    for id, faction in pairs(registry.factions) do
-        if data.power[id] == nil then
-            data.power[id] = math.max(config.MIN_POWER, faction.basePower)
-            seeded = seeded + 1
-        end
-    end
 
     for id, territory in pairs(registry.territories) do
         -- A nil defaultOwner means "unclaimed", which is a legitimate
@@ -128,6 +124,31 @@ function M.fillDefaults(registry)
 
     if seeded > 0 then
         log.debug('seeded %d state entries from static definitions', seeded)
+    end
+    return seeded
+end
+
+--- Seed power for any registered faction that has none yet.
+--
+-- Separate from fillDefaults, and called once from the driver's first
+-- tick, because starting power is derived from the whole world's seats:
+-- the mean it is measured against isn't known until every pack has
+-- registered. Seeding during registration would score pack one against
+-- pack one alone.
+--
+-- Only fills nils, so a loaded save keeps its numbers and a newly
+-- installed pack's factions get a derived starting value.
+-- @return number of factions seeded
+function M.seedPower(registry)
+    local seeded = 0
+    for id in pairs(registry.factions) do
+        if data.power[id] == nil then
+            data.power[id] = math.max(config.MIN_POWER, holdings.basePowerOf(id))
+            seeded = seeded + 1
+        end
+    end
+    if seeded > 0 then
+        log.debug('seeded starting power for %d factions', seeded)
     end
     return seeded
 end

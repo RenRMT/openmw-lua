@@ -30,8 +30,33 @@ M.MAP_WINDOW_RADIUS = 6
 -- Power
 --------------------------------------------------------------------------
 
--- Used when a faction definition omits basePower.
+-- The anchor the derived starting power is expressed against: a faction
+-- with the average holdings starts here.
+--
+-- Only ratios matter mechanically, so this number is arbitrary -- but six
+-- other constants are calibrated against it (SEAT_FLOOR, MIN_CLAIM_POWER,
+-- PROJECTION_HORIZON_POWER, FRONTIER_GENERATION_POWER, and the two patrol
+-- power steps). Changing it means changing all of them.
 M.DEFAULT_BASE_POWER = 50
+
+-- Starting power is derived from a faction's seats rather than authored.
+-- Its score is summed per region, taking the strongest seat there plus a
+-- share of the rest -- the same "strongest single projection, never the
+-- sum" rule the map itself uses, so a plantation belt reads as presence
+-- rather than as a second city.
+--
+--   score = sum over regions( strongest weight + DEPTH_SHARE * the rest )
+--   power = DEFAULT_BASE_POWER * (FLOOR_SHARE + (1 - FLOOR_SHARE) * score / mean)
+--
+-- A second holding in a region you already hold is worth a quarter of a
+-- first one. At 0 the farms count for nothing; at 1 a dozen of them
+-- outweigh a city.
+M.POWER_DEPTH_SHARE = 0.25
+
+-- What a faction with no ground starts with, as a share of an average
+-- landholder. Also the compression knob: raising it narrows the spread
+-- between the strongest faction and the weakest.
+M.POWER_FLOOR_SHARE = 0.30
 
 -- Power is clamped to this floor. powerRoll (phase 2) divides by the sum
 -- of two power scores, so a negative score would silently invert the

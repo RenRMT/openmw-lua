@@ -33,14 +33,14 @@ local function twoRealms()
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            { id = 'alpha', basePower = 50 },
+            { id = 'alpha' },
             -- Stronger, so it holds the overlapping band outright. At
             -- equal power the tie would go to alpha on sorted id.
-            { id = 'beta', basePower = 80 },
+            { id = 'beta' },
             -- Holds nothing, so power-only by derivation. Must never
             -- appear on the map however much standing it has.
-            { id = 'guild', basePower = 90 },
-            { id = 'landless', basePower = 70 },
+            { id = 'guild' },
+            { id = 'landless' },
         },
         territories = {
             { id = 'alphatown', displayName = 'Alphatown', tier = 'town',
@@ -50,6 +50,7 @@ local function twoRealms()
         },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
     require('scripts.BalanceOfPower.core.frontier').generate({
         landmass = 'testland', margin = 0,
     })

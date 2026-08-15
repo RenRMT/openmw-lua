@@ -46,8 +46,8 @@ local function twoFactionLine(overrides)
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            { id = 'alpha', basePower = overrides.alphaPower or 50 },
-            { id = 'beta', basePower = overrides.betaPower or 50 },
+            { id = 'alpha' },
+            { id = 'beta' },
         },
         territories = {
             { id = 'alpha_seat', tier = 'large city', faction = 'alpha',
@@ -64,6 +64,12 @@ local function twoFactionLine(overrides)
         },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
+    -- Both hold one large city, so the derivation gives them the anchor
+    -- exactly. Overrides are applied after seeding, where a test wants
+    -- the two sides unequal.
+    power.set('alpha', overrides.alphaPower or 50)
+    power.set('beta', overrides.betaPower or 50)
 end
 
 local function always(value)
@@ -137,7 +143,7 @@ end
 function M.effectivePowerTakesStrongestNotSum()
     registry.registerLandmass({
         id = 'testland',
-        factions = { { id = 'alpha', basePower = 50 } },
+        factions = { { id = 'alpha' } },
         territories = {
             { id = 'near', tier = 'large city', faction = 'alpha',
               cells = { '#0,0' }, centroid = { x = 0, y = 0 }, influenceRange = HALVING },
@@ -149,6 +155,7 @@ function M.effectivePowerTakesStrongestNotSum()
         frontier = { { id = 'cell', centroid = { x = 0, y = 0 } } },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
 
     -- Sum would be 50 + 48.75 + 47.5 = 146.25.
     expect.near(resolve.effectivePower('alpha', registry.territories.cell), 50, 1e-6, 'max only')
@@ -166,10 +173,11 @@ end
 function M.nonTerritorialFactionsProjectNothing()
     registry.registerLandmass({
         id = 'testland',
-        factions = { { id = 'blades', basePower = 100 } },
+        factions = { { id = 'blades' } },
         frontier = { { id = 'cell', centroid = { x = 0, y = 0 } } },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
 
     expect.falsy(registry.factions.blades.territorial, 'no seats')
     expect.equal(resolve.effectivePower('blades', registry.territories.cell), 0, 'flavor faction')
@@ -203,7 +211,7 @@ function M.leavesGroundNobodyReachesUnclaimed()
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            { id = 'alpha', basePower = 50 },
+            { id = 'alpha' },
         },
         territories = {
             { id = 'seat', tier = 'large city', faction = 'alpha',
@@ -215,6 +223,7 @@ function M.leavesGroundNobodyReachesUnclaimed()
         },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
     resolve.assignInitialControl()
 
     expect.equal(state.getOwner('near'), 'alpha', 'reachable')
@@ -241,8 +250,8 @@ function M.authoredOwnerSurvivesInitialAssignment()
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            { id = 'alpha', basePower = 500 },
-            { id = 'sixth house', basePower = 10 },
+            { id = 'alpha' },
+            { id = 'sixth house' },
         },
         territories = {
             { id = 'seat', tier = 'large city', faction = 'alpha',
@@ -253,6 +262,7 @@ function M.authoredOwnerSurvivesInitialAssignment()
         },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
     resolve.assignInitialControl()
 
     expect.equal(state.getOwner('homeland'), 'sixth house', 'authored owner held')
@@ -346,8 +356,8 @@ local function settlementRinged()
     registry.registerLandmass({
         id = 'testland',
         factions = {
-            { id = 'alpha', basePower = 50 },
-            { id = 'beta', basePower = 50 },
+            { id = 'alpha' },
+            { id = 'beta' },
         },
         territories = {
             { id = 'alpha_seat', tier = 'large city', faction = 'alpha',
@@ -382,6 +392,7 @@ local function settlementRinged()
         },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
 end
 
 local function encircle(count)

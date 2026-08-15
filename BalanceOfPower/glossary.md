@@ -17,6 +17,11 @@ has no location. This is what the player's actions move, what reaction
 propagation spreads between factions, and the only input to the simulation
 that changes from day to day.
 
+Its starting value is **derived from a faction's holdings**, not authored — see
+*seat score*. A faction with average holdings starts at `DEFAULT_BASE_POWER`;
+one with no ground starts at a fixed share of it. Only ratios matter
+mechanically, so the anchor itself is arbitrary.
+
 **Reaction** — how one faction feels about another, in roughly `[-3, 3]`. Read
 as `reactions[X] = how this faction feels about X`, so a row answers *"whose
 power moves this faction, and which way?"* **Sourced entirely from the game's
@@ -46,6 +51,18 @@ means adding the FACT entry in an `.esp`, not a table in Lua.
 geography of its own; it holds seats, and a seat is a settlement that names it.
 There is no such thing as a projector that is not a settlement: a farm is a
 settlement of the smallest tier, not a different sort of thing.
+
+**Breadth** and **depth** — the two axes a faction's holdings are measured on.
+Breadth is how many regions it is present in; depth is how much it holds within
+each one. They are not interchangeable: eleven farms in one region are depth,
+and say something quite different about a faction than eleven holdings spread
+over five regions.
+
+**Seat score** — breadth and depth as one number, taking each region's
+strongest seat plus a share of the rest. The same "strongest single, never the
+sum" rule projection uses, so a farm belt counts as presence in a region rather
+than as a stack of cities. Starting power is derived from it, and nothing else
+reads it.
 
 **Weight** — a settlement's share of its faction's power, by tier. A city
 projects at full weight, a minor location at a fraction of it.

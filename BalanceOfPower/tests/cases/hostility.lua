@@ -38,10 +38,10 @@ local function morrowind(overrides)
         invader = { hlaalu = -3, redoran = -3, telvanni = -1 },
     })
     local factions = {
-        { id = 'hlaalu', basePower = 50 },
-        { id = 'redoran', basePower = 50 },
-        { id = 'telvanni', basePower = 50 },
-        { id = 'invader', basePower = 30 },
+        { id = 'hlaalu' },
+        { id = 'redoran' },
+        { id = 'telvanni' },
+        { id = 'invader' },
     }
     for _, faction in ipairs(factions) do
         for key, value in pairs(overrides and overrides[faction.id] or {}) do
@@ -50,6 +50,13 @@ local function morrowind(overrides)
     end
     registry.registerLandmass({ id = 'vvardenfell', factions = factions })
     state.fillDefaults(registry)
+    state.seedPower(registry)
+    -- None of them holds ground, so the derivation gives them all the
+    -- power-only floor. Set flat, with the invader weaker, so the growth
+    -- arithmetic below reads against round numbers.
+    for _, faction in ipairs(factions) do
+        power.set(faction.id, faction.id == 'invader' and 30 or 50)
+    end
 end
 
 --------------------------------------------------------------------------

@@ -70,11 +70,16 @@ Three notes on the data:
   `Bloodmoon.esm` — so nothing here needs the framework's `recordId` escape
   hatch.
 
-  What is left in `factions.lua` is what vanilla has no field for: `basePower`
-  (guesswork throughout, and the first number to reach for when the starting map
-  looks wrong), `growthPerDay`, `hostile` and `patrolRoster`. Display names come
-  from the records too, so the Empire reads as "Imperial Legion" and Census and
-  Excise as "Census and Excise Office".
+  What is left in `factions.lua` is `growthPerDay`, `hostile` and
+  `patrolRoster` — four entries in total, since starting power is derived from
+  each faction's settlements and display names come from the records. The Empire
+  therefore reads as "Imperial Legion" and Census and Excise as "Census and
+  Excise Office".
+
+  The derived standings put the Empire first on nine holdings across seven
+  regions, ahead of Hlaalu's seventeen concentrated in three, with the Temple
+  third on Vivec's tier alone. A plain weight sum would have Hlaalu leading by
+  half again.
 
   The test suite gets the real records from
   `tests/fixtures/vanilla_reactions.lua`, dumped from the three content files by
@@ -241,8 +246,10 @@ The numbers most worth touching, in order of effect:
    the entire starting map, since ownership is derived from projection. A
    Morrowind exterior cell is 8192 units, so the tier defaults are ~5, ~3 and
    ~1.5 cells of reach.
-2. **`basePower` per faction**, in `data/factions.lua`. Pure guesswork until
-   played.
+2. **`POWER_DEPTH_SHARE` and `POWER_FLOOR_SHARE`**, in the framework's
+   `config.lua`. Starting power is derived from holdings, so these are the two
+   knobs on the whole standings table: how much a repeat holding in a region
+   already held is worth, and where a faction with no ground sits.
 3. **The Sixth House's `growthPerDay`** (1.5), which sets the pace of the only
    thing on the map that moves on its own. At this rate it doubles its standing
    in about three weeks and holds every cell it can reach within a few months.

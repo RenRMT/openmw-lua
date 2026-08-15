@@ -34,12 +34,10 @@ local function twoRealms(overrides)
     local factions = {
         {
             id = 'house',
-            basePower = 50,
             patrolRoster = { 'house guard' },
         },
         {
             id = 'invader',
-            basePower = 50,
             hostile = true,
             patrolRoster = {
                 'cultist',
@@ -50,7 +48,6 @@ local function twoRealms(overrides)
         -- Holds ground, musters nobody. The opt-out, with no flag.
         {
             id = 'quiet',
-            basePower = 50,
         },
     }
     for _, faction in ipairs(factions) do
@@ -76,6 +73,7 @@ local function twoRealms(overrides)
         },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
     require('scripts.BalanceOfPower.core.frontier').generate({
         landmass = 'testland', margin = 0,
     })

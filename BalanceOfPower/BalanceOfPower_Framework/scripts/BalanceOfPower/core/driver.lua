@@ -20,10 +20,10 @@ local state = require('scripts.BalanceOfPower.core.state')
 
 local M = {}
 
--- References can only be checked once every pack has registered, which
--- is any time between load and the first tick, so it happens on the
--- first tick rather than at load.
-local referencesChecked = false
+-- Packs register any time between load and the first tick, so anything
+-- needing the whole world waits for the first poll: reference checking,
+-- and seeding starting power from every faction's holdings.
+local sealed = false
 
 --- The in-game calendar day, as an integer index.
 function M.currentDay()
@@ -74,8 +74,12 @@ function M.poll()
     -- handlers, and this makes that difference not matter.
     state.fillDefaults(registry)
 
-    if not referencesChecked then
-        referencesChecked = true
+    -- The only point at which every pack is known to have registered.
+    -- Starting power is measured against the whole world's holdings, so
+    -- it can only be seeded here.
+    if not sealed then
+        sealed = true
+        state.seedPower(registry)
         registry.validateReferences()
     end
 
@@ -126,7 +130,10 @@ function M.forceDays(count)
     count = math.max(1, math.floor(tonumber(count) or 1))
     local data = state.get()
 
+    -- Running the simulation on demand means sealing the world early, the
+    -- same as the first poll would.
     state.fillDefaults(registry)
+    state.seedPower(registry)
     if data.lastResolvedDay == nil then
         data.lastResolvedDay = M.currentDay()
     end
@@ -141,9 +148,9 @@ function M.forceDays(count)
     return data.lastResolvedDay
 end
 
---- Called on load, so the reference check runs again for the new session.
+--- Called on load, so the first-tick work runs again for the new session.
 function M.reset()
-    referencesChecked = false
+    sealed = false
 end
 
 --- Start the scheduled tick. Called once per session from main.lua.

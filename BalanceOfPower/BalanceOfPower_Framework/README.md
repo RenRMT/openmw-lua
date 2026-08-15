@@ -134,9 +134,7 @@ I.BalanceOfPower.registerLandmass({
     id = 'vvardenfell',
     factions = {
         {
-            id = 'hlaalu',                    -- matches the vanilla faction record id
-            displayName = 'House Hlaalu',
-            basePower = 50,
+            id = 'hlaalu',                       -- matches the vanilla faction record id
             patrolRoster = { 'hlaalu guard' },   -- record ids, never inspected
         },
     },
@@ -175,29 +173,31 @@ available as long as your pack loads after the framework.
 Anything with a default may be omitted.
 
 **Faction** — `id` (required), `recordId` (defaults to `id`, see below),
-`basePower` (default 50), `growthPerDay` (default 0, see below), `hostile`
-(default `false`, see below), `landmass`, `patrolRoster` (see below).
+`growthPerDay` (default 0, see below), `hostile` (default `false`, see below),
+`landmass`, `patrolRoster` (see below).
 
 **A pack does not create factions.** The framework registers every faction the
 game's own records describe (see below), so an entry here is *tuning* — the
-numbers vanilla has no field for. Declaring a faction the records don't cover
-still works; it simply has no politics.
+handful of numbers neither the records nor the map can supply. Most factions
+need no entry at all. Declaring one the records don't cover still works; it
+simply has no politics.
 
-Three fields belong to the game and setting any of them is an error:
+Four fields are derived and setting any of them is an error:
 
 | Field | Where it comes from |
 |---|---|
 | `reactions` | the record's reaction row |
 | `displayName` | the record's name |
-| `territorial` | derived — a faction with seats is territorial |
+| `territorial` | whether any settlement names the faction |
+| `basePower` | the faction's seats — see *Starting power* below |
 
 A faction declares no geography of its own. It holds whatever settlements name
 it, which the registry hands it as `seats`.
 
-`basePower`, `growthPerDay`, `hostile` and `recordId` are base configuration:
-whichever pack sets one first keeps it, and a later pack setting the same field
-is ignored with a warning. Which pack won would otherwise depend on load order.
-Rosters merge instead, deduplicated by record id.
+`growthPerDay`, `hostile` and `recordId` are base configuration: whichever pack
+sets one first keeps it, and a later pack setting the same field is ignored with
+a warning. Which pack won would otherwise depend on load order. Rosters merge
+instead, deduplicated by record id.
 
 **Settlement** (`territories`) — `id` (required), `cells` (required — one
 territory is created per exterior cell), `faction` (whose seat it is; omit for
@@ -295,6 +295,48 @@ fortunes rise and fall with its allies'; it just doesn't own Balmora.
 A settlement that should project for nobody omits `faction` rather than naming
 one that isn't meant to hold ground.
 
+### Starting power
+
+Nobody authors a starting standing. It is derived from what a faction holds,
+along two axes that are not the same thing:
+
+- **Breadth** — how many regions it is present in.
+- **Depth** — how much it holds within each of them.
+
+```
+score = Σ over regions( strongest seat weight + POWER_DEPTH_SHARE × the rest )
+power = DEFAULT_BASE_POWER × ( POWER_FLOOR_SHARE
+                             + (1 − POWER_FLOOR_SHARE) × score ÷ mean score )
+```
+
+A region contributes its **strongest** seat plus a share of the rest — the same
+rule the projection maths uses, so a plantation belt reads as presence in one
+region rather than as several cities. `POWER_DEPTH_SHARE` (0.25) says a second
+holding in a region you already hold is worth a quarter of a first one.
+
+The mean is taken over land-holding factions alone; including the zeros would
+drag the anchor down and compress everyone above it. Two consequences worth
+knowing:
+
+- A faction with **average** holdings gets exactly `DEFAULT_BASE_POWER`.
+- A faction with **no** seats gets `POWER_FLOOR_SHARE` of it — 30% — and stays
+  there whatever else is installed, because a score of zero never touches the
+  mean. `POWER_FLOOR_SHARE` doubles as the compression knob: raise it to narrow
+  the spread between the strongest faction and the weakest.
+
+On the Morrowind pack this puts the Empire first on nine holdings across seven
+regions, ahead of Hlaalu's seventeen concentrated in three — which a plain
+weight sum would invert.
+
+Power is seeded **once, on the driver's first tick**, because the mean is not
+known until every pack has registered. A loaded save keeps its own numbers;
+only factions with no power yet are seeded, so installing a pack mid-game gives
+its factions a derived standing without disturbing the rest.
+
+`region` comes from the game's own cell data and may be missing; a seat without
+one falls back to its landmass rather than to something unique, which would make
+every region-less holding its own region.
+
 ### Deriving the frontier
 
 Wilderness is generated, not authored — a landmass is thousands of cells.
@@ -336,7 +378,7 @@ A faction reads the record its `id` names, matched case-insensitively. Set
 `recordId` when the two differ:
 
 ```lua
-{ id = 'empire', recordId = 'Imperial Legion', basePower = 65 }
+{ id = 'empire', recordId = 'Imperial Legion' }
 ```
 
 It works in both directions — the faction reads that record's row, and every

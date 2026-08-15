@@ -14,6 +14,7 @@ local world = require('openmw.world')
 
 local api = require('scripts.BalanceOfPower.core.api')
 local cells = require('scripts.BalanceOfPower.core.cells')
+local config = require('scripts.BalanceOfPower.core.config')
 local hostility = require('scripts.BalanceOfPower.core.hostility')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
@@ -37,6 +38,7 @@ local function loadPack()
     core._test.setFactionRecords(vanillaReactions)
     require('scripts.BalanceOfPowerMorrowind.main')
     state.fillDefaults(registry)
+    state.seedPower(registry)
 end
 
 --------------------------------------------------------------------------
@@ -92,9 +94,34 @@ function M.hasNoReferenceProblems()
     expect.equal(registry.validateReferences(), 0, 'reference problems')
 end
 
+--- Starting power is derived from holdings, and the ordering it produces
+-- is the whole claim of the seat-scoring model. The Empire leads on
+-- breadth alone -- nine holdings over seven regions -- while Hlaalu has
+-- nearly twice the seats concentrated in three, and the Temple reaches
+-- third on Vivec's tier from only three holdings.
+function M.derivesStandingsFromBreadthAndDepth()
+    loadPack()
+
+    local order = { 'imperial legion', 'hlaalu', 'temple', 'redoran',
+                    'telvanni', 'ashlanders', 'east empire company',
+                    'skaal', 'sixth house' }
+    for index = 2, #order do
+        expect.truthy(power.getLive(order[index - 1]) > power.getLive(order[index]),
+            order[index - 1] .. ' outranks ' .. order[index])
+    end
+
+    -- The Empire holds fewer seats than Hlaalu and still leads: breadth
+    -- over depth is the point, and a plain weight sum would invert this.
+    expect.truthy(#registry.factions['imperial legion'].seats
+        < #registry.factions.hlaalu.seats, 'on fewer holdings')
+
+    expect.near(power.getLive('fighters guild'),
+        config.DEFAULT_BASE_POWER * config.POWER_FLOOR_SHARE, 1e-6,
+        'a guild sits at the floor')
+end
+
 --- The Empire garrisons forts across Vvardenfell and Fort Frostmoth on
--- Solstheim. Both have to project at once, which is the whole reason
--- `extend` exists.
+-- Solstheim, and both project at once with nothing declared to make it so.
 function M.mergesFactionsAcrossLandmasses()
     loadPack()
 

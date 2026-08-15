@@ -19,11 +19,15 @@ local M = {}
 --- Three factions, no territory. Reactions come from the game's records
 -- and only from there, so a test that wants any installs them first with
 -- `records{ ... }` before calling this.
+--
+-- Power is set flat afterwards. None of them holds ground, so the
+-- derivation would give all three the power-only floor -- correct, and
+-- a needlessly awkward number for tests about propagation.
 local function threeFactions(overrides)
     local factions = {
-        { id = 'hlaalu', basePower = 50 },
-        { id = 'redoran', basePower = 50 },
-        { id = 'telvanni', basePower = 50 },
+        { id = 'hlaalu' },
+        { id = 'redoran' },
+        { id = 'telvanni' },
     }
     for _, faction in ipairs(factions) do
         for key, value in pairs(overrides and overrides[faction.id] or {}) do
@@ -32,6 +36,10 @@ local function threeFactions(overrides)
     end
     registry.registerLandmass({ id = 'vvardenfell', factions = factions })
     state.fillDefaults(registry)
+    state.seedPower(registry)
+    for _, faction in ipairs(factions) do
+        power.set(faction.id, 50)
+    end
 end
 
 local function records(rows)
@@ -42,9 +50,16 @@ end
 -- Seeding and clamping
 --------------------------------------------------------------------------
 
-function M.seedsBasePowerFromDefinitions()
-    threeFactions()
-    expect.equal(power.getLive('hlaalu'), 50, 'seeded power')
+--- A faction with no seats gets the power-only floor, whatever else is
+-- in the world -- a score of zero never touches the mean it is measured
+-- against.
+function M.seedsThePowerOnlyFloorForFactionsWithNoSeats()
+    registry.registerLandmass({ id = 'vvardenfell', factions = { { id = 'hlaalu' } } })
+    state.fillDefaults(registry)
+    state.seedPower(registry)
+
+    expect.near(power.getLive('hlaalu'),
+        config.DEFAULT_BASE_POWER * config.POWER_FLOOR_SHARE, 1e-6, 'floor share')
 end
 
 function M.clampsAtMinimum()
@@ -147,12 +162,16 @@ function M.resolvesReactionsThroughRecordId()
     registry.registerLandmass({
         id = 'vvardenfell',
         factions = {
-            { id = 'hlaalu', basePower = 50 },
-            { id = 'redoran', basePower = 50 },
-            { id = 'empire', basePower = 50, recordId = 'Imperial Legion' },
+            { id = 'hlaalu' },
+            { id = 'redoran' },
+            { id = 'empire', recordId = 'Imperial Legion' },
         },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
+    for _, id in ipairs({ 'hlaalu', 'redoran', 'empire' }) do
+        power.set(id, 50)
+    end
 
     expect.equal(power.regardOf('empire', 'hlaalu'), 3, 'reads its record row')
     expect.equal(power.regardOf('redoran', 'empire'), -3,
@@ -235,9 +254,11 @@ function M.readsTheTwinLampsPairTheWayTheGameStoresIt()
     threeFactions()
     registry.registerLandmass({
         id = 'solstheim',
-        factions = { { id = 'twin lamps', basePower = 50 } },
+        factions = { { id = 'twin lamps' } },
     })
     state.fillDefaults(registry)
+    state.seedPower(registry)
+    power.set('twin lamps', 50)
 
     expect.equal(power.regardOf('twin lamps', 'telvanni'), -3, 'the twin lamps hate the slavers')
     expect.equal(power.regardOf('telvanni', 'twin lamps'), 0, 'telvanni have no opinion back')

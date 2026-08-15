@@ -389,6 +389,57 @@ the guess that stood in for it and disagrees with it on Redoran; the Skaal's
 record is empty; and the Mages and Thieves Guild entries toward Census and Excise
 were a transcription that vanilla does not contain.
 
+### 4d — factions and power from the world, not from a pack
+
+**Ships:** the removal of the faction list and of authored starting power.
+
+Two blocks of hardcoded data were left after 4c. Both scaled badly: the pack
+carried 24 faction definitions and 24 guessed `basePower` values, and Tamriel
+Rebuilt, Province Cyrodiil and Skyrim: Home of the Nords would each have needed
+the same again, several times over.
+
+**Factions come from `core.factions.records`.** The framework registers every
+record that takes part in the politics — a non-zero reaction of its own, or
+somebody's non-zero reaction to it. `Tamriel_Data.esm`, the shared dependency of
+all three landmass mods, carries 88 such records across four provinces, so the
+roster arrives free for content nobody has written a pack for yet.
+
+**Starting power comes from holdings**, scored on two axes:
+
+```
+score = Σ over regions( strongest seat weight + DEPTH_SHARE × the rest )
+power = DEFAULT_BASE_POWER × ( FLOOR_SHARE + (1 − FLOOR_SHARE) × score ÷ mean )
+```
+
+**Design decisions settled here:**
+
+- **The participation filter is not optional.** Content files keep dead ids
+  alive so old saves load; Tamriel Data ships twelve records named
+  `<Deprecated>`, each with an empty row and no column. Registering every record
+  would put all twelve in the standings. A pack naming a faction registers it
+  regardless, which is what keeps the Morag Tong and the Talos Cult.
+- **A region contributes its strongest seat plus a share of the rest**, mirroring
+  "strongest single projection, never the sum". Hlaalu's eleven plantations are
+  all in regions it already holds a city in, so counting them linearly collected
+  the same value twice and put Hlaalu half again ahead of the Empire. Under the
+  region rule the Empire leads on breadth, which is both the lore answer and the
+  one the map already implied.
+- **The mean is over land-holding factions only**, and a score of zero never
+  touches it — so the power-only floor is the one value that cannot drift when
+  another pack loads.
+- **`territorial` is derived from seats.** The case it used to express — a
+  faction holding a settlement that should not project — is better said by the
+  settlement naming no faction at all.
+- **`DEFAULT_BASE_POWER` stays at 50.** Only ratios matter, and six other
+  constants are calibrated against it.
+- **Power is seeded at the driver's first tick**, the only point where every pack
+  is known to have registered. `state.fillDefaults` no longer seeds it; the
+  window did not previously exist, because seeding ran inside `registerLandmass`
+  and scored pack one against pack one alone.
+- **No `basePower` override.** Considered and rejected: an override is the
+  second copy the change exists to remove. The Temple lands third rather than
+  first as a result, which is what its three holdings say.
+
 ---
 
 ## Phase 5 — Player influence hooks

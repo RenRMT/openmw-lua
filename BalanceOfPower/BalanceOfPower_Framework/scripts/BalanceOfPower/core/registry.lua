@@ -281,6 +281,7 @@ local RECORD_OWNED = {
     reactions = 'read from the game\'s faction records',
     displayName = 'read from the faction record\'s name',
     territorial = 'derived -- a faction with seats is territorial',
+    basePower = 'derived from the faction\'s seats -- see core/holdings.lua',
 }
 
 local function rejectRecordOwned(def, ctx)
@@ -304,7 +305,6 @@ local function newFaction(id, recordId, landmass)
         -- power-only: it has standing and reacts to everyone, but holds
         -- no ground and projects nothing.
         territorial = false,
-        basePower = config.DEFAULT_BASE_POWER,
         growthPerDay = config.DEFAULT_GROWTH_PER_DAY,
         -- Opt in to fighting. See core/hostility.lua for what it means.
         hostile = false,
@@ -357,7 +357,7 @@ end
 
 -- Scalars a pack may set. The first pack to set one keeps it, because
 -- which pack won would otherwise depend on load order.
-local TUNABLE = { 'basePower', 'growthPerDay', 'hostile', 'recordId', 'landmass' }
+local TUNABLE = { 'growthPerDay', 'hostile', 'recordId', 'landmass' }
 
 local function applyTuning(faction, tuning, ctx)
     for _, field in ipairs(TUNABLE) do
@@ -396,16 +396,10 @@ local function prepareFaction(def, context, fallbackLandmass, staged)
     end
     staged[id] = true
 
-    local basePower = checkNumber(def.basePower, ctx, 'basePower', nil)
-    if basePower ~= nil and basePower < config.MIN_POWER then
-        fail(ctx, string.format('basePower must be at least %d', config.MIN_POWER))
-    end
-
     return {
         id = id,
         landmass = def.landmass or fallbackLandmass,
         tuning = {
-            basePower = basePower,
             growthPerDay = checkNumber(def.growthPerDay, ctx, 'growthPerDay', nil),
             hostile = def.hostile == true or nil,
             recordId = def.recordId and checkString(def.recordId, ctx, 'recordId') or nil,

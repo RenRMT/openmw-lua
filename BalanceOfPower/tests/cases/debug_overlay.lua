@@ -35,6 +35,7 @@ local function loadWithOverlay()
     core._test.setFactionRecords(vanillaReactions)
     require('scripts.BalanceOfPowerMorrowind.main')
     state.fillDefaults(registry)
+    state.seedPower(registry)
     resolve.assignInitialControl()
     return overlayWithCapture()
 end
@@ -60,6 +61,7 @@ function M.registersNothing()
     core._test.setFactionRecords(vanillaReactions)
     require('scripts.BalanceOfPowerMorrowind.main')
     state.fillDefaults(registry)
+    state.seedPower(registry)
 
     local factions = registry.countFactions()
     local settlements = #registry.settlementIds
