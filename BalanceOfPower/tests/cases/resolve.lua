@@ -6,6 +6,7 @@ local expect = require('support.expect')
 local core = require('openmw.core')
 
 local config = require('scripts.BalanceOfPower.core.config')
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -64,7 +65,7 @@ local function twoFactionLine(overrides)
         },
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
     -- Both hold one large city, so the derivation gives them the anchor
     -- exactly. Overrides are applied after seeding, where a test wants
     -- the two sides unequal.
@@ -155,7 +156,7 @@ function M.effectivePowerTakesStrongestNotSum()
         frontier = { { id = 'cell', centroid = { x = 0, y = 0 } } },
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
 
     -- Sum would be 50 + 48.75 + 47.5 = 146.25.
     expect.near(resolve.effectivePower('alpha', registry.territories.cell), 50, 1e-6, 'max only')
@@ -177,7 +178,7 @@ function M.nonTerritorialFactionsProjectNothing()
         frontier = { { id = 'cell', centroid = { x = 0, y = 0 } } },
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
 
     expect.falsy(registry.factions.blades.territorial, 'no seats')
     expect.equal(resolve.effectivePower('blades', registry.territories.cell), 0, 'flavor faction')
@@ -223,7 +224,7 @@ function M.leavesGroundNobodyReachesUnclaimed()
         },
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
     resolve.assignInitialControl()
 
     expect.equal(state.getOwner('near'), 'alpha', 'reachable')
@@ -262,7 +263,7 @@ function M.authoredOwnerSurvivesInitialAssignment()
         },
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
     resolve.assignInitialControl()
 
     expect.equal(state.getOwner('homeland'), 'sixth house', 'authored owner held')
@@ -392,7 +393,7 @@ local function settlementRinged()
         },
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
 end
 
 local function encircle(count)

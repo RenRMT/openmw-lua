@@ -1,10 +1,13 @@
--- Seat scoring: breadth, depth, and the starting power they produce.
+-- Holdings: seat scoring and the starting power it produces, then the
+-- live index over held territory and the standings built on it.
 
 local expect = require('support.expect')
 
 local config = require('scripts.BalanceOfPower.core.config')
 local holdings = require('scripts.BalanceOfPower.core.holdings')
+local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
+local state = require('scripts.BalanceOfPower.core.state')
 
 local M = {}
 
@@ -139,6 +142,170 @@ function M.scoresFollowLaterRegistrations()
 
     expect.truthy(holdings.seatProfile('house').score > before, 'the new seat counted')
     expect.equal(holdings.seatProfile('house').regions, 2, 'in a second region')
+end
+
+--------------------------------------------------------------------------
+-- Held territory
+--------------------------------------------------------------------------
+
+-- Two regions, a two-cell settlement in each, and a frontier cell each
+-- side. Nothing is owned until a test says so.
+local function twoRegionWorld()
+    registry.registerLandmass({
+        id = 'testland',
+        factions = { { id = 'north' }, { id = 'south' } },
+        territories = {
+            { id = 'keep', tier = 'town', region = 'upper', faction = 'north',
+              cells = { '#0,0', '#1,0' } },
+            { id = 'port', tier = 'town', region = 'lower', faction = 'south',
+              cells = { '#0,5' } },
+        },
+        frontier = {
+            { id = 'moor', region = 'upper', centroid = { x = 0, y = 8192 } },
+            { id = 'fen', region = 'lower', centroid = { x = 0, y = 32768 } },
+        },
+    })
+end
+
+--- A settlement is several ownable cells, so a faction holding a city
+-- must not read as holding several places.
+function M.countsTerritoriesRegionsAndSettlements()
+    twoRegionWorld()
+    state.setOwner('keep_0_0', 'north')
+    state.setOwner('keep_1_0', 'north')
+    state.setOwner('moor', 'north')
+
+    local standing = holdings.factionStanding('north')
+    expect.equal(standing.territories, 3, 'three cells')
+    expect.equal(standing.settlements, 1, 'one named place')
+    expect.equal(standing.regions, 1, 'all of it in one region')
+end
+
+function M.unclaimedGroundBelongsToNobody()
+    twoRegionWorld()
+    state.setOwner('moor', 'north')
+    state.setOwner('moor', nil)
+
+    expect.equal(holdings.factionStanding('north').territories, 0, 'given back')
+    expect.isNil(next(holdings.holdersOfRegion('upper')), 'and nobody holds the region')
+end
+
+function M.theIndexFollowsAnOwnershipChange()
+    twoRegionWorld()
+    state.setOwner('moor', 'north')
+    expect.equal(holdings.factionStanding('north').territories, 1, 'held')
+
+    state.setOwner('moor', 'south')
+    expect.equal(holdings.factionStanding('north').territories, 0, 'lost')
+    expect.equal(holdings.factionStanding('south').territories, 1, 'gained')
+end
+
+--- fillDefaults writes ownership without going through setOwner, so an
+-- index keyed off setOwner alone would miss a pack's authored owners.
+function M.theIndexFollowsSeededDefaults()
+    twoRegionWorld()
+    registry.registerLandmass({
+        id = 'claimed',
+        territories = {
+            { id = 'fort', tier = 'town', region = 'upper', faction = 'north',
+              defaultOwner = 'north', cells = { '#9,9' } },
+        },
+    })
+    -- Reads the index into existence before the write below, so this
+    -- tests invalidation rather than a first build.
+    expect.equal(holdings.factionStanding('north').territories, 0, 'not seeded yet')
+
+    state.fillDefaults(registry)
+    expect.equal(holdings.factionStanding('north').territories, 1, 'the authored owner counted')
+end
+
+--- The same hazard on load: deserialize replaces the ownership table
+-- wholesale, and a stale index would report the previous session's map.
+function M.theIndexFollowsALoadedSave()
+    twoRegionWorld()
+    state.setOwner('moor', 'north')
+    expect.equal(holdings.factionStanding('north').territories, 1, 'held before the load')
+
+    state.deserialize({ ownership = { moor = 'south', fen = 'south' } })
+
+    expect.equal(holdings.factionStanding('north').territories, 0, 'gone')
+    expect.equal(holdings.factionStanding('south').territories, 2, 'restored from the save')
+end
+
+--------------------------------------------------------------------------
+-- Standings
+--------------------------------------------------------------------------
+
+--- The bandit hook: broad, thin control reads high. A faction holding
+-- three cells on 50 power is stretched over six cells per 100.
+function M.strainIsTerritoriesPerHundredPower()
+    twoRegionWorld()
+    state.setOwner('keep_0_0', 'north')
+    state.setOwner('moor', 'north')
+    state.setOwner('fen', 'north')
+    power.set('north', 50)
+
+    local standing = holdings.factionStanding('north')
+    expect.near(standing.strain, 6, 1e-6, 'three cells per 50 power')
+    expect.near(standing.concentration, 1.5, 1e-6, 'three cells over two regions')
+end
+
+--- Nothing held is zero rather than a division by zero, and a faction
+-- with no power is not infinitely strained.
+function M.ratiosAreZeroWithNothingToDivide()
+    twoRegionWorld()
+    power.set('north', 0)
+
+    local standing = holdings.factionStanding('north')
+    expect.equal(standing.strain, 0, 'no strain')
+    expect.equal(standing.concentration, 0, 'no concentration')
+end
+
+function M.standingsAreSortedByPower()
+    twoRegionWorld()
+    power.set('north', 10)
+    power.set('south', 90)
+
+    local rows = holdings.standings()
+    expect.count(rows, 2, 'both factions')
+    expect.equal(rows[1].id, 'south', 'strongest first')
+    expect.equal(rows[2].id, 'north', 'then the rest')
+end
+
+function M.anUnregisteredFactionHasNoStanding()
+    twoRegionWorld()
+    expect.isNil(holdings.factionStanding('nobody'), 'nil rather than an empty standing')
+end
+
+--------------------------------------------------------------------------
+-- Region queries
+--------------------------------------------------------------------------
+
+function M.regionsHeldByAreSortedAndDistinct()
+    twoRegionWorld()
+    state.setOwner('keep_0_0', 'north')
+    state.setOwner('keep_1_0', 'north')
+    state.setOwner('fen', 'north')
+
+    local regions = holdings.regionsHeldBy('north')
+    expect.count(regions, 2, 'each region once, however many cells')
+    expect.equal(regions[1], 'lower', 'sorted')
+    expect.equal(regions[2], 'upper', 'sorted')
+    expect.count(holdings.regionsHeldBy('south'), 0, 'holding nothing')
+end
+
+--- The other direction, for a rule that starts from a place rather than
+-- from a faction.
+function M.holdersOfRegionCountsEachFactionsGround()
+    twoRegionWorld()
+    state.setOwner('keep_0_0', 'north')
+    state.setOwner('keep_1_0', 'north')
+    state.setOwner('moor', 'south')
+
+    local holders = holdings.holdersOfRegion('upper')
+    expect.equal(holders.north, 2, 'two cells')
+    expect.equal(holders.south, 1, 'one cell')
+    expect.isNil(next(holdings.holdersOfRegion('nowhere')), 'an unknown region holds nobody')
 end
 
 return M

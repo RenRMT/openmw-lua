@@ -7,6 +7,7 @@ local core = require('openmw.core')
 
 local config = require('scripts.BalanceOfPower.core.config')
 local driver = require('scripts.BalanceOfPower.core.driver')
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local hostility = require('scripts.BalanceOfPower.core.hostility')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
@@ -50,7 +51,7 @@ local function morrowind(overrides)
     end
     registry.registerLandmass({ id = 'vvardenfell', factions = factions })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
     -- None of them holds ground, so the derivation gives them all the
     -- power-only floor. Set flat, with the invader weaker, so the growth
     -- arithmetic below reads against round numbers.

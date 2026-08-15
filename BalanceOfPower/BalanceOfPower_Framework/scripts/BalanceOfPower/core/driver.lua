@@ -12,6 +12,7 @@ local time = require('openmw_aux.time')
 
 local config = require('scripts.BalanceOfPower.core.config')
 local events = require('scripts.BalanceOfPower.core.events')
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local log = require('scripts.BalanceOfPower.core.log')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
@@ -79,7 +80,7 @@ function M.poll()
     -- it can only be seeded here.
     if not sealed then
         sealed = true
-        state.seedPower(registry)
+        holdings.seedPower()
         registry.validateReferences()
     end
 
@@ -133,7 +134,7 @@ function M.forceDays(count)
     -- Running the simulation on demand means sealing the world early, the
     -- same as the first poll would.
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
     if data.lastResolvedDay == nil then
         data.lastResolvedDay = M.currentDay()
     end

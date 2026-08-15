@@ -6,6 +6,7 @@ local world = require('openmw.world')
 
 local config = require('scripts.BalanceOfPower.core.config')
 local frontier = require('scripts.BalanceOfPower.core.frontier')
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
 local state = require('scripts.BalanceOfPower.core.state')
@@ -64,7 +65,7 @@ local function oneSettlement(overrides)
         territories = settlements(overrides),
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
 end
 
 local function generate(extra)
@@ -165,7 +166,7 @@ function M.skipsCellsThatDoNotExist()
         },
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
 
     local created = generate()
 

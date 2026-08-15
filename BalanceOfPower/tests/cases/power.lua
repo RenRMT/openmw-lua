@@ -6,6 +6,7 @@ local core = require('openmw.core')
 local world = require('openmw.world')
 
 local config = require('scripts.BalanceOfPower.core.config')
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local state = require('scripts.BalanceOfPower.core.state')
@@ -36,7 +37,7 @@ local function threeFactions(overrides)
     end
     registry.registerLandmass({ id = 'vvardenfell', factions = factions })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
     for _, faction in ipairs(factions) do
         power.set(faction.id, 50)
     end
@@ -56,7 +57,7 @@ end
 function M.seedsThePowerOnlyFloorForFactionsWithNoSeats()
     registry.registerLandmass({ id = 'vvardenfell', factions = { { id = 'hlaalu' } } })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
 
     expect.near(power.getLive('hlaalu'),
         config.DEFAULT_BASE_POWER * config.POWER_FLOOR_SHARE, 1e-6, 'floor share')
@@ -168,7 +169,7 @@ function M.resolvesReactionsThroughRecordId()
         },
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
     for _, id in ipairs({ 'hlaalu', 'redoran', 'empire' }) do
         power.set(id, 50)
     end
@@ -257,7 +258,7 @@ function M.readsTheTwinLampsPairTheWayTheGameStoresIt()
         factions = { { id = 'twin lamps' } },
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
     power.set('twin lamps', 50)
 
     expect.equal(power.regardOf('twin lamps', 'telvanni'), -3, 'the twin lamps hate the slavers')

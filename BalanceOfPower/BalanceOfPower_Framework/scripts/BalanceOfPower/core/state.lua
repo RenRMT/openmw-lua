@@ -20,8 +20,6 @@
 --     about but the save doesn't, so a content update that adds a
 --     faction works on an existing save.
 
-local config = require('scripts.BalanceOfPower.core.config')
-local holdings = require('scripts.BalanceOfPower.core.holdings')
 local log = require('scripts.BalanceOfPower.core.log')
 
 -- Bump only for changes that need actual migration logic, not for
@@ -58,6 +56,17 @@ end
 
 local data = newState()
 
+-- Bumped on every write to ownership, whole-table replacements included.
+-- Derived views cache against it rather than being invalidated by hand,
+-- the same arrangement registry.generation has -- and for the same
+-- reason: a cache keyed off setOwner alone silently misses a loaded save.
+local ownershipGeneration = 0
+
+--- A counter that changes whenever ownership might have.
+function M.ownershipGeneration()
+    return ownershipGeneration
+end
+
 --- The live state table. Callers may mutate it in place.
 function M.get()
     return data
@@ -66,6 +75,7 @@ end
 --- Drop everything back to an empty world. Called on new game.
 function M.reset()
     data = newState()
+    ownershipGeneration = ownershipGeneration + 1
 end
 
 --- @return table to hand to the engine from onSave
@@ -97,13 +107,14 @@ function M.deserialize(saved)
     end
 
     data = fresh
+    ownershipGeneration = ownershipGeneration + 1
 end
 
 --- Seed ownership for any registered territory that has none yet.
 -- Idempotent and cheap, so the driver just calls it every tick rather
 -- than tracking whether a data pack registered late.
 --
--- Power is seeded separately, by seedPower -- see there for why.
+-- Power is seeded separately, by holdings.seedPower -- see there for why.
 -- @return number of keys seeded
 function M.fillDefaults(registry)
     local seeded = 0
@@ -124,31 +135,7 @@ function M.fillDefaults(registry)
 
     if seeded > 0 then
         log.debug('seeded %d state entries from static definitions', seeded)
-    end
-    return seeded
-end
-
---- Seed power for any registered faction that has none yet.
---
--- Separate from fillDefaults, and called once from the driver's first
--- tick, because starting power is derived from the whole world's seats:
--- the mean it is measured against isn't known until every pack has
--- registered. Seeding during registration would score pack one against
--- pack one alone.
---
--- Only fills nils, so a loaded save keeps its numbers and a newly
--- installed pack's factions get a derived starting value.
--- @return number of factions seeded
-function M.seedPower(registry)
-    local seeded = 0
-    for id in pairs(registry.factions) do
-        if data.power[id] == nil then
-            data.power[id] = math.max(config.MIN_POWER, holdings.basePowerOf(id))
-            seeded = seeded + 1
-        end
-    end
-    if seeded > 0 then
-        log.debug('seeded starting power for %d factions', seeded)
+        ownershipGeneration = ownershipGeneration + 1
     end
     return seeded
 end
@@ -165,6 +152,7 @@ end
 --- Set (or clear, with nil) a territory's owner.
 function M.setOwner(territoryId, factionId)
     data.ownership[territoryId] = factionId or false
+    ownershipGeneration = ownershipGeneration + 1
 end
 
 return M

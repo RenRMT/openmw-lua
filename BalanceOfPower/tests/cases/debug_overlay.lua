@@ -10,6 +10,7 @@ local vanillaReactions = require('fixtures.vanilla_reactions')
 local core = require('openmw.core')
 local world = require('openmw.world')
 
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -35,7 +36,7 @@ local function loadWithOverlay()
     core._test.setFactionRecords(vanillaReactions)
     require('scripts.BalanceOfPowerMorrowind.main')
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
     resolve.assignInitialControl()
     return overlayWithCapture()
 end
@@ -61,7 +62,7 @@ function M.registersNothing()
     core._test.setFactionRecords(vanillaReactions)
     require('scripts.BalanceOfPowerMorrowind.main')
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
 
     local factions = registry.countFactions()
     local settlements = #registry.settlementIds
@@ -122,7 +123,9 @@ function M.standingsAreOrderedByPower()
 
     local previous = nil
     for _, line in ipairs(captured) do
-        local value = string.match(line, '^%s+%S.-%s+(%d+%.%d)%s+%d+%s*$')
+        -- Power, then the held count. The digit after it is what skips
+        -- the power-only rows, which are a second descending run.
+        local value = string.match(line, '^%s+%S.-%s+(%d+%.%d)%s+%d')
         if value then
             value = tonumber(value)
             if previous then

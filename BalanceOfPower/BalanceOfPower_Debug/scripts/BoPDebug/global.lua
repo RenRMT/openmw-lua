@@ -92,49 +92,33 @@ end
 
 --- Power and holdings per faction, in aligned columns. Land-holding
 -- factions first, since the map is about them; the power-only factions
--- follow in their own group rather than mixed in with a blank column.
+-- follow in their own group rather than mixed in with blank columns.
+--
+-- standings() arrives sorted by power, which is the ordering to read when
+-- checking whether a push landed.
 local function printStandings()
-    local ids = BoP.factionIds()
-    if #ids == 0 then
+    local standings = BoP.standings()
+    if #standings == 0 then
         out('no factions registered -- is a content pack loaded?')
         return
     end
 
-    -- One pass over the map rather than one per faction.
-    local held = {}
-    for _, territoryId in ipairs(BoP.territoryIds()) do
-        local owner = BoP.getOwner(territoryId)
-        if owner then
-            held[owner] = (held[owner] or 0) + 1
-        end
-    end
-
     local landed, powerOnly = {}, {}
-    for _, id in ipairs(ids) do
-        local faction = BoP.getFaction(id)
-        local bucket = faction.territorial and landed or powerOnly
-        bucket[#bucket + 1] = { faction = faction, id = id }
+    for _, standing in ipairs(standings) do
+        local bucket = standing.seats > 0 and landed or powerOnly
+        bucket[#bucket + 1] = standing
     end
 
-    -- Strongest first: what you want to see when checking whether a push
-    -- landed is the ordering, not the alphabet.
-    local function byPower(a, b)
-        return BoP.getPower(a.id) > BoP.getPower(b.id)
-    end
-    table.sort(landed, byPower)
-    table.sort(powerOnly, byPower)
-
-    out('  %-26s %8s %7s', 'faction', 'power', 'held')
-    for _, entry in ipairs(landed) do
-        out('  %-26s %8.1f %7d',
-            entry.faction.displayName, BoP.getPower(entry.id), held[entry.id] or 0)
+    out('  %-26s %8s %7s %8s %7s', 'faction', 'power', 'held', 'regions', 'strain')
+    for _, standing in ipairs(landed) do
+        out('  %-26s %8.1f %7d %8d %7.1f', nameOf(standing.id), standing.power,
+            standing.territories, standing.regions, standing.strain)
     end
 
     if #powerOnly > 0 then
         out('  -- holds no land --')
-        for _, entry in ipairs(powerOnly) do
-            out('  %-26s %8.1f %7s',
-                entry.faction.displayName, BoP.getPower(entry.id), '-')
+        for _, standing in ipairs(powerOnly) do
+            out('  %-26s %8.1f %7s', nameOf(standing.id), standing.power, '-')
         end
     end
 end

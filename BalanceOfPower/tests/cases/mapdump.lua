@@ -5,6 +5,7 @@ local expect = require('support.expect')
 local core = require('openmw.core')
 local world = require('openmw.world')
 
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local mapdump = require('scripts.BalanceOfPower.core.mapdump')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
@@ -50,7 +51,7 @@ local function twoRealms()
         },
     })
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
     require('scripts.BalanceOfPower.core.frontier').generate({
         landmass = 'testland', margin = 0,
     })

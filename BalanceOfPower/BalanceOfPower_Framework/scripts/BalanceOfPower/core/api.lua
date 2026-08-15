@@ -10,6 +10,7 @@ local config = require('scripts.BalanceOfPower.core.config')
 local driver = require('scripts.BalanceOfPower.core.driver')
 local events = require('scripts.BalanceOfPower.core.events')
 local frontier = require('scripts.BalanceOfPower.core.frontier')
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local hostility = require('scripts.BalanceOfPower.core.hostility')
 local log = require('scripts.BalanceOfPower.core.log')
 local mapdump = require('scripts.BalanceOfPower.core.mapdump')
@@ -224,6 +225,45 @@ function M.surroundedSince(settlementId)
 end
 
 --------------------------------------------------------------------------
+-- Standings
+--------------------------------------------------------------------------
+--
+-- Where a faction stands, on both sides of the same two axes: the seats
+-- it was built with, and the ground it holds today. This is the surface
+-- a mod acting on the simulation reads -- the framework publishes the
+-- numbers and does nothing about them.
+
+--- Everything known about one faction's position, or nil if it isn't
+-- registered.
+--
+--   { id, power, territories, settlements, regions,
+--     seats, seatScore, strain, concentration }
+--
+-- `strain` is territories held per 100 power: a faction spread thinner
+-- than its standing supports reads high. `concentration` is territories
+-- per region. Both are ratios over the fields beside them, here so that
+-- every mod computes them the same way.
+function M.factionStanding(factionId)
+    return holdings.factionStanding(factionId)
+end
+
+--- Every registered faction's standing, strongest first.
+function M.standings()
+    return holdings.standings()
+end
+
+--- Regions a faction holds any ground in, sorted.
+function M.regionsHeldBy(factionId)
+    return holdings.regionsHeldBy(factionId)
+end
+
+--- Who holds ground in a region, and how much: factionId -> territory
+-- count. Region names are the game's own, as carried on the territory.
+function M.holdersOfRegion(regionName)
+    return holdings.holdersOfRegion(regionName)
+end
+
+--------------------------------------------------------------------------
 -- Hostility
 --------------------------------------------------------------------------
 --
@@ -338,21 +378,14 @@ function M.dump()
         landmassCount = landmassCount + 1
     end
 
-    -- One pass over ownership, rather than re-scanning it per faction.
-    local held = {}
-    for territoryId, owner in pairs(data.ownership) do
-        if owner and registry.territories[territoryId] then
-            held[owner] = (held[owner] or 0) + 1
-        end
-    end
-
     log.info('--- Balance of Power -----------------------------------')
     log.info('interface v%d | day %s | %d landmass(es) | %d settlements over %d cells '
         .. '| %d frontier cells',
         M.version, tostring(data.lastResolvedDay), landmassCount,
         #registry.settlementIds, #registry.settlementCellIds, #registry.frontierIds)
 
-    for _, id in ipairs(registry.sortedFactionIds()) do
+    for _, standing in ipairs(holdings.standings()) do
+        local id = standing.id
         local faction = registry.factions[id]
         local tags = faction.territorial and '' or ' [non-territorial]'
         if (faction.growthPerDay or 0) ~= 0 then
@@ -366,8 +399,9 @@ function M.dump()
             tags = tags .. ' [hostile: '
                 .. (#enemies > 0 and table.concat(enemies, ', ') or 'player only') .. ']'
         end
-        log.info('  %-20s power %7.2f  territories %4d%s',
-            faction.displayName, power.getLive(id), held[id] or 0, tags)
+        log.info('  %-20s power %7.2f  territories %4d  regions %3d  strain %5.1f%s',
+            faction.displayName, standing.power, standing.territories,
+            standing.regions, standing.strain, tags)
     end
     log.info('--------------------------------------------------------')
 end

@@ -64,6 +64,18 @@ sum" rule projection uses, so a farm belt counts as presence in a region rather
 than as a stack of cities. Starting power is derived from it, and nothing else
 reads it.
 
+**Standing** — a faction's position as the API publishes it: its power, what it
+holds now, what it was built with, and two ratios over those. The seat side is
+fixed at registration; the held side moves with every flip.
+
+**Strain** — territories held per 100 power. A faction whose borders have run
+ahead of its standing reads high, and goes on reading high until it grows into
+the ground or loses it. Observed and published, never acted on — the same
+contract as *surrounded*.
+
+**Concentration** — territories per region. The held-ground counterpart of
+depth, where strain is about how far the power is stretched.
+
 **Weight** — a settlement's share of its faction's power, by tier. A city
 projects at full weight, a minor location at a fraction of it.
 

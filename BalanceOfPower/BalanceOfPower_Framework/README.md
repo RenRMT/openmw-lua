@@ -337,6 +337,49 @@ its factions a derived standing without disturbing the rest.
 one falls back to its landmass rather than to something unique, which would make
 every region-less holding its own region.
 
+### Standings
+
+Breadth and depth are measured on two sides. Seats are what a faction was built
+with, and they never change; **standings** are what it holds today, and they move
+with every flip.
+
+```lua
+local standing = I.BalanceOfPower.factionStanding('hlaalu')
+--  { id, power, territories, settlements, regions,
+--    seats, seatScore, strain, concentration }
+```
+
+| | |
+|---|---|
+| `territories` | exterior cells held right now |
+| `settlements` | named places it holds at least one cell of — a city counts once |
+| `regions` | distinct regions it holds any ground in |
+| `seats` / `seatScore` | the fixed side: what the registry says it was built with |
+| `strain` | territories held per 100 power |
+| `concentration` | territories per region |
+
+The last two are ratios over the fields beside them, in the API so that every
+mod computes them the same way. **`strain` is the overreach signal**: a faction
+whose borders have run ahead of its standing reads high, and stays high until it
+either grows into the ground or loses it. On the Morrowind pack the Tribunal
+Temple sits around 145 — three seats, one of them Vivec, projecting over a
+quarter of the island — while the Empire sits around 40 on nine well-spread
+forts. That gap is the hook: it is the difference between a faction that holds
+its ground and one that is merely on it.
+
+The rest of the surface:
+
+```lua
+I.BalanceOfPower.standings()                  -- every faction, strongest first
+I.BalanceOfPower.regionsHeldBy('hlaalu')      -- sorted region names
+I.BalanceOfPower.holdersOfRegion('Ascadian Isles')  -- factionId -> cell count
+```
+
+The framework publishes these and acts on none of them. Spawning extra bandits
+in a strained faction's cells, thinning its patrols, or writing a rumour about
+it are all extension decisions — see the `isSurrounded` contract, which works
+the same way.
+
 ### Deriving the frontier
 
 Wilderness is generated, not authored — a landmass is thousands of cells.
@@ -530,6 +573,7 @@ Also available: `getPower`, `setPower`, `getOwner`, `getTerritory`,
 `planPatrol`, `getEffectivePower`, `getProjection`, `classify`, `getReach`,
 `getSettlement`,
 `settlementIds`, `getSettlementOwner`, `isSurrounded`, `surroundedSince`,
+`factionStanding`, `standings`, `regionsHeldBy`, `holdersOfRegion`,
 `getCurrentDay`, `powerSummary`, `reactionAudit`, `dumpReactions`, `dump`,
 `dumpMap`, `renderMap`, `isDebug`, and the `CELL_SIZE` constant.
 

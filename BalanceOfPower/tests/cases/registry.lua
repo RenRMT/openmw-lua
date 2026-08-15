@@ -4,6 +4,7 @@ local expect = require('support.expect')
 
 local core = require('openmw.core')
 
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local state = require('scripts.BalanceOfPower.core.state')
 
@@ -156,7 +157,7 @@ end
 function M.treatsOmittedDefaultOwnerAsUnclaimed()
     registry.registerLandmass(minimalLandmass())
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
 
     expect.equal(state.getOwner('balmora_-3_-2'), 'hlaalu', 'authored owner')
     expect.isNil(state.getOwner('west_gash'), 'omitted owner')

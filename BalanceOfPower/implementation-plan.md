@@ -440,6 +440,50 @@ power = DEFAULT_BASE_POWER × ( FLOOR_SHARE + (1 − FLOOR_SHARE) × score ÷ me
   second copy the change exists to remove. The Temple lands third rather than
   first as a result, which is what its three holdings say.
 
+### 4e — live holdings and the standings API
+
+**Ships:** the faction→territory index, and the query surface built on it.
+
+4d measured breadth and depth on the fixed side — seats, known at registration.
+The same two axes on the *held* side had no home at all: the only per-faction
+ownership aggregate in the codebase was a throwaway loop inside `api.dump()`,
+recomputed per call and hand-duplicated in the debug mod. Every consequence a
+modder might want starts there, so it is built once and cached.
+
+`factionStanding` returns both sides together, plus two ratios over them:
+**strain** (territories per 100 power) and **concentration** (territories per
+region). They are in the API rather than left to callers so that every mod
+computes them the same way.
+
+**Design decisions settled here:**
+
+- **The index is cached against an ownership generation counter**, not
+  invalidated by hand. `state.setOwner` is not the only writer: `fillDefaults`
+  and `deserialize` both write `data.ownership` directly, and a cache keyed off
+  `setOwner` alone would report the previous session's map after a load. The
+  counter also covers `reset`. This is the arrangement `registry.generation`
+  already uses, and it keeps the dependency arrows pointing one way.
+- **`seedPower` moved from `state` to `holdings`.** The live index has to read
+  ownership, and `state` requiring `holdings` for the derivation while `holdings`
+  required `state` for the map is a load-time cycle. The layering answer is the
+  same as the mechanical one: storage should not depend on the things derived
+  from it. `holdings.seedPower()` also drops the `registry` argument, which
+  `state` only needed because it does not require the registry itself.
+- **Strain is published, not applied.** It is the `isSurrounded` contract: the
+  framework observes and exposes, and what happens as a result — bandits in a
+  strained faction's cells, thinner patrols, a rumour — belongs to an extension.
+  Phase 4 adds the events and leaves the feedback constants at zero.
+- **A settlement counts once** however many of its cells a faction holds.
+  Territories and settlements answer different questions, and a fifteen-cell
+  Vivec would otherwise make the Temple look like it held fifteen places.
+- **Ratios return 0 rather than dividing by zero.** A faction at zero power is
+  not infinitely strained; it is a faction nothing has been said about yet.
+
+On the Morrowind map the numbers separate the two shapes of holding
+immediately: the Temple sits near 145 strain on three seats — Vivec projects
+over a quarter of the island — while the Empire sits near 40 on nine well-spread
+forts. Same map, opposite kinds of control.
+
 ---
 
 ## Phase 5 — Player influence hooks

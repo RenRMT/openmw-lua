@@ -13,11 +13,12 @@ Near-term and actionable. The full phase breakdown is in
 | 3 — Morrowind pack + frontier generator | Done, tested, **never run in-game** |
 | 4a — Patrol decisions, hostility, growth | Done, tested, **never run in-game** |
 | 4b — Spawning actual actors | **Blocked** on engine verification — see below |
+| 4c–4e — Records, derived power, standings | Done, tested, **never run in-game** |
 | 5 — Player hooks | Not started — **recommended next**; commerce dropped |
 | 6 — Invasion | **Dissolved.** It was two fields on a faction |
 | 7 — Tuning and UX | Not started |
 
-**165 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
+**195 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
 that loads the real Morrowind pack through its own `main.lua` headlessly. What
 tests cannot cover: whether the faction ids match real ESM records, whether the
 derived map looks right against the actual game world, and first-tick timing

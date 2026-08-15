@@ -15,6 +15,7 @@ local world = require('openmw.world')
 local api = require('scripts.BalanceOfPower.core.api')
 local cells = require('scripts.BalanceOfPower.core.cells')
 local config = require('scripts.BalanceOfPower.core.config')
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local hostility = require('scripts.BalanceOfPower.core.hostility')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
@@ -38,7 +39,7 @@ local function loadPack()
     core._test.setFactionRecords(vanillaReactions)
     require('scripts.BalanceOfPowerMorrowind.main')
     state.fillDefaults(registry)
-    state.seedPower(registry)
+    holdings.seedPower()
 end
 
 --------------------------------------------------------------------------
