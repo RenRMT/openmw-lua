@@ -68,19 +68,6 @@ function M.aFarmBeltCountsFarLessThanTheSameWeightSpreadOut()
     expect.equal(holdings.seatProfile('broad').seats, 5, 'same seat count')
 end
 
---- Depth still counts for something, or a farm belt would be worth
--- nothing at all and holding one would be indistinguishable from holding
--- open ground.
-function M.depthCountsButLessThanBreadth()
-    seats('one', { { 'town', 'a' } })
-    seats('two', { { 'town', 'a' }, { 'town', 'a' } })
-
-    local single = holdings.seatProfile('one').score
-    local double = holdings.seatProfile('two').score
-    expect.truthy(double > single, 'a second holding is worth something')
-    expect.truthy(double < 2 * single, 'but less than a first one')
-end
-
 --- Region is the game's own, and it can be missing. Falling back to a
 -- unique key would make every region-less seat its own region, inflating
 -- exactly the scattered holdings the depth share is there to damp.
@@ -116,14 +103,6 @@ function M.factionsWithNoSeatsGetTheFloorShare()
     -- And it stays there when the world around it grows.
     seats('newcomer', { { 'megalopolis', 'z' } }, 'later_pack')
     expect.near(holdings.basePowerOf('guild'), floor, 1e-6, 'unmoved by a later pack')
-end
-
-function M.strongerHoldingsGiveMorePower()
-    seats('city', { { 'metropolis', 'a' } })
-    seats('farm', { { 'minor location', 'b' } })
-
-    expect.truthy(holdings.basePowerOf('city') > config.DEFAULT_BASE_POWER, 'above the mean')
-    expect.truthy(holdings.basePowerOf('farm') < config.DEFAULT_BASE_POWER, 'below it')
 end
 
 --- The score is recomputed when a later pack registers, so a faction that
@@ -181,15 +160,6 @@ function M.countsTerritoriesRegionsAndSettlements()
     expect.equal(standing.regions, 1, 'all of it in one region')
 end
 
-function M.unclaimedGroundBelongsToNobody()
-    twoRegionWorld()
-    state.setOwner('moor', 'north')
-    state.setOwner('moor', nil)
-
-    expect.equal(holdings.factionStanding('north').territories, 0, 'given back')
-    expect.isNil(next(holdings.holdersOfRegion('upper')), 'and nobody holds the region')
-end
-
 function M.theIndexFollowsAnOwnershipChange()
     twoRegionWorld()
     state.setOwner('moor', 'north')
@@ -198,6 +168,11 @@ function M.theIndexFollowsAnOwnershipChange()
     state.setOwner('moor', 'south')
     expect.equal(holdings.factionStanding('north').territories, 0, 'lost')
     expect.equal(holdings.factionStanding('south').territories, 1, 'gained')
+
+    -- And given back to nobody, which is not the same as given away.
+    state.setOwner('moor', nil)
+    expect.equal(holdings.factionStanding('south').territories, 0, 'released')
+    expect.isNil(next(holdings.holdersOfRegion('upper')), 'nobody holds the region')
 end
 
 --- fillDefaults writes ownership without going through setOwner, so an

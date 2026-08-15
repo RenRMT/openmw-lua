@@ -18,7 +18,7 @@ Near-term and actionable. The full phase breakdown is in
 | 6 — Invasion | **Dissolved.** It was two fields on a faction |
 | 7 — Tuning and UX | Not started |
 
-**206 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
+**175 unit tests pass** (`python BalanceOfPower/tests/run.py`), including a suite
 that loads the real Morrowind pack through its own `main.lua` headlessly. What
 tests cannot cover: whether the faction ids match real ESM records, whether the
 derived map looks right against the actual game world, and first-tick timing

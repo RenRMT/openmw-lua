@@ -168,18 +168,13 @@ end
 -- Patrol penalty
 --------------------------------------------------------------------------
 
-function M.thePatrolPenaltyIsOffByDefault()
+function M.aStrainedFactionFieldsFewerOnlyWhenTurnedOn()
     sixCellsOnWhateverPower()
     power.set('alpha', 5)
 
-    expect.equal(patrol.sizeFor(120, 'alpha'), 4, 'the full group')
-end
+    expect.equal(patrol.sizeFor(120, 'alpha'), 4, 'the full group at zero')
 
-function M.aStrainedFactionFieldsFewerWhenTurnedOn()
-    sixCellsOnWhateverPower()
-    power.set('alpha', 5)
     config.STRAIN_PATROL_PENALTY = 0.5
-
     expect.equal(patrol.sizeFor(120, 'alpha'), 2, 'halved')
     expect.equal(patrol.sizeFor(0, 'alpha'), 1, 'never below one on the road')
 end

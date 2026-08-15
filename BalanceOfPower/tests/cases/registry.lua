@@ -177,16 +177,9 @@ function M.rejectsTheSameFactionTwiceInOneDefinition()
     end, 'twice in the same definition', 'duplicate faction')
 end
 
-function M.rejectsUnknownTier()
-    expect.raises(function()
-        registry.registerLandmass(minimalLandmass({
-            territories = { { id = 'x', tier = 'imaginary', cells = { '#0,0' } } },
-        }))
-    end, 'unknown tier', 'bad settlement tier')
-end
-
 --- The error has to name the ladder. A tier is a word off a fixed list,
--- and "unknown tier" alone leaves a pack author guessing at spelling.
+-- and "unknown tier" alone leaves a pack author guessing at spelling --
+-- so the assertion is on the list rather than on the phrase.
 function M.namesTheTiersWhenRejectingOne()
     expect.raises(function()
         registry.registerLandmass(minimalLandmass({

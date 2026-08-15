@@ -193,18 +193,9 @@ function M.patrolsGrowWithProjection()
     expect.equal(patrol.sizeFor(1e9), config.PATROL_MAX_MEMBERS, 'and it is capped')
 end
 
---- A dozen guards on one road is a performance problem and reads as an
--- army. The cap is what keeps a runaway faction from producing one.
-function M.anOverwhelmingFactionStillFieldsAPatrolNotAnArmy()
-    twoRealms()
-    power.set('invader', 100000)
-    resolve.invalidateProjections()
-
-    local plan = firstPlan(at(2, 0))
-    expect.truthy(plan, 'it patrols')
-    expect.equal(plan.groups[1].count, config.PATROL_MAX_MEMBERS, 'at the cap, not beyond')
-end
-
+--- Tiers unlock with projection and stop at what the pack authored. A
+-- one-tier roster stays at tier 1 however strong its faction becomes --
+-- the pack having said what it fields, not a limitation to work around.
 function M.rosterTiersUnlockWithProjection()
     twoRealms()
     local roster = registry.factions.invader.patrolRoster
@@ -212,14 +203,8 @@ function M.rosterTiersUnlockWithProjection()
     expect.equal(patrol.tierFor(0, roster), 1, 'the bottom tier is always available')
     expect.equal(patrol.tierFor(config.PATROL_POWER_PER_TIER, roster), 2, 'one step up')
     expect.equal(patrol.tierFor(1e9, roster), 3, 'capped by what the pack authored')
-end
-
---- A pack that authored one tier gets tier 1 forever, however strong its
--- faction becomes. That is the pack having said what it fields, not a
--- limitation to work around.
-function M.aSingleTierRosterNeverOutgrowsItself()
-    twoRealms()
-    expect.equal(patrol.tierFor(1e9, registry.factions.house.patrolRoster), 1, 'still tier 1')
+    expect.equal(patrol.tierFor(1e9, registry.factions.house.patrolRoster), 1,
+        'and a one-tier roster never outgrows itself')
 end
 
 --- Drawing only from the unlocked tier would make a strong faction's
@@ -248,8 +233,11 @@ end
 -- Hostility
 --------------------------------------------------------------------------
 
+--- willFight is symmetric, so the house is in the fight without being
+-- flagged. It never starts anything -- it just ends up in one.
 function M.opposedPatrolsInTheSameCellFight()
     twoRealms()
+    expect.falsy(registry.factions.house.hostile, 'the house is peaceful')
 
     local found = nil
     for day = 1, 400 do
@@ -263,24 +251,6 @@ function M.opposedPatrolsInTheSameCellFight()
     expect.truthy(found, 'both sides turn up in the same cell eventually')
     expect.equal(found.groups[1].fights[1], found.groups[2].faction, 'and they pair off')
     expect.equal(found.groups[2].fights[1], found.groups[1].faction, 'both ways')
-end
-
---- willFight is symmetric, so the house fights back without being
--- flagged. It never starts anything -- it just ends up in a fight.
-function M.theDefenderFightsBackWithoutBeingHostile()
-    twoRealms()
-    expect.falsy(registry.factions.house.hostile, 'the house is peaceful')
-
-    for day = 1, 400 do
-        local plan = patrol.plan(at(0, 0), day)
-        if plan and #plan.groups == 2 then
-            for _, group in ipairs(plan.groups) do
-                expect.equal(#group.fights, 1, group.faction .. ' is in the fight')
-            end
-            return
-        end
-    end
-    expect.truthy(false, 'the two sides never met')
 end
 
 function M.onlyHostileFactionsAttackThePlayer()
@@ -314,17 +284,6 @@ function M.thePlanForACellAndDayIsStable()
         expect.equal(again.groups[1].count, first.groups[1].count, 'same size')
         expect.equal(again.groups[1].records[1], first.groups[1].records[1], 'same records')
     end
-end
-
-function M.differentDaysGiveDifferentPatrols()
-    twoRealms()
-    local territoryId = at(-2, 0)
-
-    local seen = {}
-    for day = 1, 60 do
-        seen[patrol.plan(territoryId, day) and 'yes' or 'no'] = true
-    end
-    expect.truthy(seen.yes and seen.no, 'some days have a patrol and some do not')
 end
 
 --- The bug this file found, and the reason it is worth a test of its

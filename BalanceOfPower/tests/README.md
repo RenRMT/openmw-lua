@@ -77,6 +77,27 @@ return M
 
 Names starting with `_` are ignored, so helpers can live in the same table.
 
+## What earns a test
+
+The suite runs in under four seconds, so speed is never the reason to leave one
+out — the cost is prose that has to stay true as the code moves. Four rules,
+settled by a cull in August 2026 that removed 31 tests:
+
+- **A test that cannot fail is worse than no test.** One here looped over
+  settlement `defaultOwner`s after a change had removed every one of them, and
+  another matched letters that came from the legend rather than the drawn grid.
+  Both passed for months. If an assertion reads a collection, check it isn't
+  empty.
+- **Assert the formula, not its consequences.** Pinning
+  `strongest + DEPTH_SHARE * rest` implies every inequality anyone would write
+  about it, and three inequality tests do not imply the formula.
+- **Two tests that share a fixture and a conclusion are one test.** Cover the
+  extra assertion by adding a line, not a function.
+- **Diagnostics get architecture, not wording.** `mapdump` and the debug overlay
+  cannot break the simulation. What is pinned there is that the overlay
+  registers nothing, draws nothing over the HUD and names no faction; what is
+  not pinned is any log string.
+
 Anything random must be made deterministic rather than seeded — `math.randomseed`
 ties results to one Lua build's generator. `resolve.setRandom(fn)` exists for
 this; pass a function returning a fixed value to force a roll to succeed or

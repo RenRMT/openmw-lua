@@ -84,12 +84,17 @@ end
 --- The direction that matters: a row is the faction's own opinions, so
 -- "redoran moves when hlaalu moves" is written on redoran. An ally moves
 -- with it, an enemy against it.
+--
+-- None of the three holds ground, so this is the power-only case too:
+-- standing rises and falls for a faction that cannot own a cell, which
+-- is the whole reason to track one.
 function M.propagatesAlongRecordReactions()
     records({
         redoran = { hlaalu = 3 },
         telvanni = { hlaalu = -3 },
     })
     threeFactions()
+    expect.falsy(registry.factions.redoran.territorial, 'no seats, so power-only')
 
     power.apply('hlaalu', 10)
 
@@ -97,17 +102,6 @@ function M.propagatesAlongRecordReactions()
     expect.near(power.getLive('hlaalu'), 60, 1e-6, 'subject')
     expect.near(power.getLive('redoran'), 50 + expected, 1e-6, 'ally moves with it')
     expect.near(power.getLive('telvanni'), 50 - expected, 1e-6, 'rival moves against it')
-end
-
---- A faction whose record says nothing about the one that moved stays put.
-function M.aFactionWithNoOpinionDoesNotMove()
-    records({ redoran = { hlaalu = 3 }, telvanni = { redoran = 3 } })
-    threeFactions()
-
-    power.apply('hlaalu', 10)
-
-    expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6, 'ally')
-    expect.equal(power.getLive('telvanni'), 50, 'faction with no opinion about hlaalu')
 end
 
 --- Reactions are the game's to define, not a pack's. A table here would
@@ -214,39 +208,21 @@ end
 -- Which way round the data reads
 --------------------------------------------------------------------------
 
---- The convention, asserted rather than left implied by the behavioural
--- tests: a row belongs to the faction holding the opinions. Reading it
--- the other way round is silent, because most pairs are near-symmetric,
--- and this framework has shipped that bug once.
+--- The convention, against the vanilla pair it was settled on: a row
+-- belongs to the faction holding the opinions. Reading it the other way
+-- round is silent, because most pairs are near-symmetric, and this
+-- framework shipped that bug once -- the engine's own documentation
+-- describes the map as inbound and is wrong for ESM3.
 --
--- The engine's own documentation describes the map as inbound and is
--- wrong for ESM3, which is how the bug got in.
-function M.readsRecordRowsAsTheFactionsOwnOpinions()
-    records({
-        -- This says hlaalu feels +3 about redoran, which tells us nothing
-        -- about how redoran responds when hlaalu moves...
-        hlaalu = { redoran = 3 },
-        -- ...and this says telvanni feels -3 about hlaalu, which does.
-        telvanni = { hlaalu = -3 },
-    })
-    threeFactions()
-
-    power.apply('hlaalu', 10)
-
-    expect.equal(power.getLive('redoran'), 50, 'hlaalu own opinion moves nobody')
-    expect.near(power.getLive('telvanni'), 50 - 10 * config.INFLUENCE_STRENGTH, 1e-6,
-        'the faction with an opinion about hlaalu is the one that moves')
-end
-
---- The pair the convention was settled against, kept as a fixture. The
--- Twin Lamps run slaves out of Telvanni holdings and the vanilla records
+-- The Twin Lamps run slaves out of Telvanni holdings, and the records
 -- carry that asymmetrically: -3 on the Twin Lamps' own row, and nothing
 -- at all on House Telvanni's, who do not think about them.
 --
 -- Telvanni still gets a row here, naming somebody else. That is the
 -- point of the fixture: the zero has to come from the *pair* being
 -- absent, not from the faction having no data at all, and only a
--- genuinely asymmetric pair can tell those two apart.
+-- genuinely asymmetric pair can tell those two apart. It is also why
+-- this covers "a faction with no opinion about the mover does not move".
 function M.readsTheTwinLampsPairTheWayTheGameStoresIt()
     records({
         ['Twin Lamps'] = { Telvanni = -3 },
@@ -302,11 +278,6 @@ function M.auditReportsFactionsNobodyReactsTo()
     expect.equal(byId.redoran.movedBy, 1, 'but hlaalu moves it')
 end
 
-function M.auditCoversEveryRegisteredFaction()
-    threeFactions()
-    expect.count(power.reactionAudit(), 3, 'one row per faction')
-end
-
 --- A reaction of zero is the absence of a relationship, not a quiet one,
 -- and the audit has to agree. Vanilla rows carry explicit zeros, so
 -- counting entries rather than opinions would report every faction as
@@ -339,20 +310,6 @@ function M.clampsExtremeReactionValues()
 
     -- 99 must behave as the maximum, not as 33x the maximum.
     expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6, 'clamped')
-end
-
---- Holding no ground keeps a faction off the map, not out of the
--- politics. A guild that can't own a cell still rises and falls with its
--- allies -- that standing is the whole reason to track it.
-function M.propagatesToPowerOnlyFactions()
-    records({ redoran = { hlaalu = 3 } })
-    threeFactions()
-
-    expect.falsy(registry.factions.redoran.territorial, 'no seats, so power-only')
-    power.apply('hlaalu', 10)
-
-    expect.near(power.getLive('redoran'), 50 + 10 * config.INFLUENCE_STRENGTH, 1e-6,
-        'power-only faction still reacts')
 end
 
 function M.noPropagateMovesOneFactionAlone()

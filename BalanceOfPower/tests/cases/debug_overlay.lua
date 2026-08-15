@@ -3,6 +3,13 @@
 -- Only the global half is exercised here; the player half needs
 -- openmw.input and openmw.self, which aren't stubbed. That half is
 -- input-only anyway -- all output lives here.
+--
+-- Deliberately thin. Nothing in this mod can break the simulation, so
+-- what is tested is the handful of properties that are architecture
+-- rather than formatting: that it registers no content, that it survives
+-- having none, that it draws nothing over the HUD, that it names no
+-- faction of its own, and that a bad pack doesn't take the framework
+-- down with it. Log wording is not pinned.
 
 local expect = require('support.expect')
 local vanillaReactions = require('fixtures.vanilla_reactions')
@@ -107,38 +114,19 @@ end
 -- Commands
 --------------------------------------------------------------------------
 
+--- Standings are how everything else is read back, and the display name
+-- coming from the record rather than the pack is a framework property
+-- worth one smoke test through the shipping path.
 function M.dumpReportsStandings()
     local handlers = loadWithOverlay()
     handlers.BoPDebug_Dump()
 
-    says('STANDINGS', 'titled block')
     says('Great House Hlaalu', 'names a faction, from the record')
     says('holds no land', 'separates power-only factions')
 end
 
---- Ordering by power is what makes a push visible at a glance.
-function M.standingsAreOrderedByPower()
-    local handlers = loadWithOverlay()
-    handlers.BoPDebug_Dump()
-
-    local previous = nil
-    for _, line in ipairs(captured) do
-        -- Power, then the held count. The digit after it is what skips
-        -- the power-only rows, which are a second descending run.
-        local value = string.match(line, '^%s+%S.-%s+(%d+%.%d)%s+%d')
-        if value then
-            value = tonumber(value)
-            if previous then
-                expect.truthy(value <= previous, 'standings descend by power')
-            end
-            previous = value
-        end
-    end
-    expect.truthy(previous ~= nil, 'some standings rows were printed')
-end
-
---- Targeting by standing position is what lets the overlay work against
--- content it knows nothing about.
+--- Naming no faction is what lets the overlay work against content it
+-- knows nothing about: it pushes whoever holds the ground under you.
 function M.boostPushesWhoeverHoldsTheGroundYouAreOn()
     local handlers = loadWithOverlay()
 
@@ -149,34 +137,6 @@ function M.boostPushesWhoeverHoldsTheGroundYouAreOn()
     handlers.BoPDebug_Boost({ cell = '#-3,-2', target = 'owner', amount = 50 })
 
     expect.greater(power.getLive(owner), before, 'the holder was pushed')
-    says('BOOST', 'titled block')
-end
-
-function M.boostCanWeaken()
-    local handlers = loadWithOverlay()
-
-    local owner = state.getOwner(registry.territoryForCell('#-3,-2').id)
-    local before = power.getLive(owner)
-    handlers.BoPDebug_Boost({ cell = '#-3,-2', target = 'owner', amount = -50 })
-
-    expect.greater(before, power.getLive(owner), 'the holder was weakened')
-end
-
---- Pushing the challenger is what actually moves a front, so it has to
--- find one -- and say so plainly when there isn't one.
-function M.boostReportsWhenThereIsNoChallenger()
-    local handlers = loadWithOverlay()
-
-    -- A faction's own seat: it holds the ground and projects strongest.
-    handlers.BoPDebug_Boost({ cell = '#-3,-2', target = 'challenger', amount = 50 })
-    says('no challenger', 'says so')
-end
-
-function M.boostReportsWhenNotStandingInTerritory()
-    local handlers = loadWithOverlay()
-
-    handlers.BoPDebug_Boost({ cell = '#999,999', target = 'owner', amount = 50 })
-    says('not standing in any registered territory', 'says so')
 end
 
 --------------------------------------------------------------------------
@@ -193,22 +153,6 @@ function M.enteringACellPrintsOneLine()
 
     expect.count(captured, 1, 'exactly one line')
     says('Balmora', 'names the territory')
-end
-
-function M.hereGivesTheFullReport()
-    local handlers = loadWithOverlay()
-    handlers.BoPDebug_Here({ cell = '#-3,-2' })
-
-    says('HERE', 'titled block')
-    says('Balmora', 'names the territory')
-    says('projection', 'shows who reaches it')
-    says('region', 'carries the region through')
-end
-
-function M.hereHandlesUnregisteredGround()
-    local handlers = loadWithOverlay()
-    handlers.BoPDebug_Here({ cell = '#999,999' })
-    says('not registered territory', 'says so')
 end
 
 --------------------------------------------------------------------------
@@ -230,15 +174,6 @@ function M.eventFeedIsOffUntilToggled()
     expect.count(captured, 1, 'reported once toggled on')
 end
 
---- A territory changing hands is news whether or not the feed is on.
-function M.flipsAreAlwaysReported()
-    local handlers = loadWithOverlay()
-    captured = {}
-
-    handlers.BoP_TerritoryFlipped({ territory = 'balmora', from = 'hlaalu', to = 'redoran' })
-    says('FLIP', 'reported without the feed')
-end
-
 --- The self-test must pick its victim from whatever is registered rather
 -- than naming one, and must leave the registry intact afterwards.
 function M.selfTestRejectsDuplicateRegistrationWithoutBreakingAnything()
@@ -251,25 +186,6 @@ function M.selfTestRejectsDuplicateRegistrationWithoutBreakingAnything()
     expect.falsy(string.find(output(), 'FAIL', 1, true), 'not reported as a failure')
     expect.equal(registry.countFactions(), factions, 'registry intact afterwards')
     expect.isNil(registry.landmasses.bopdebug_should_not_exist, 'nothing half-registered')
-end
-
-function M.mapDrawsAWindowAndTheFullMap()
-    local handlers = loadWithOverlay()
-    handlers.BoPDebug_Map({ mode = 'contest', cell = '#-3,-2' })
-
-    says('MAP around #-3,-2', 'the window is titled')
-    says('MAP full', 'and the full draw follows')
-    says('contested', 'the legend came through')
-end
-
-function M.forceDayAdvancesTheSimulation()
-    local handlers = loadWithOverlay()
-    local before = state.get().lastResolvedDay or 0
-
-    handlers.BoPDebug_ForceDay({ count = 3 })
-
-    expect.greater(state.get().lastResolvedDay, before, 'days were resolved')
-    says('RAN 3 DAY(S)', 'titled block')
 end
 
 return M

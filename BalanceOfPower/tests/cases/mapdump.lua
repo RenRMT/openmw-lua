@@ -77,13 +77,16 @@ end
 
 --------------------------------------------------------------------------
 
+--- Asserted against the grid rather than the whole output: the legend
+-- reads "A/a Alpha  B/b Beta", so searching the full text for those
+-- letters passes whether or not a single row was drawn.
 function M.drawsSettlementsInUppercaseAndWildernessInLower()
     twoRealms()
-    local text = joined(mapdump.render({ landmass = 'testland' }))
+    local grid = gridOnly(mapdump.render({ landmass = 'testland' }))
 
-    expect.truthy(string.find(text, 'A', 1, true), 'the settlement')
-    expect.truthy(string.find(text, 'a', 1, true), 'its wilderness')
-    expect.truthy(string.find(text, 'B', 1, true), 'the rival settlement')
+    expect.truthy(string.find(grid, 'A', 1, true), 'the settlement')
+    expect.truthy(string.find(grid, 'a', 1, true), 'its wilderness')
+    expect.truthy(string.find(grid, 'B', 1, true), 'the rival settlement')
 end
 
 --- North at the top. Getting this backwards would make every map a lie
@@ -106,36 +109,17 @@ function M.putsNorthAtTheTop()
     expect.truthy(previous ~= nil, 'some rows were drawn')
 end
 
---- A guild has standing but no ground, so it must not appear on the map
--- or in its legend however much power it has.
-function M.omitsPowerOnlyFactions()
-    twoRealms()
-    local text = joined(mapdump.render({ landmass = 'testland' }))
-
-    expect.falsy(string.find(text, 'Guild', 1, true), 'guild absent from the legend')
-end
-
---- Listing every faction in the world would put the Great Houses in
--- Solstheim's legend.
+--- The legend lists what is drawn and nothing else. A faction holding no
+-- ground projects nothing, so it must never appear however much standing
+-- it has -- and listing every faction in the world would otherwise put
+-- the Great Houses in Solstheim's legend.
 function M.legendListsOnlyWhatIsDrawn()
     twoRealms()
 
     local text = joined(mapdump.render({ landmass = 'testland', mode = 'projection' }))
     expect.truthy(string.find(text, 'Alpha', 1, true), 'Alpha is drawn and listed')
-    expect.falsy(string.find(text, 'Landless', 1, true),
-        'a faction with no settlement projects nothing, so is not listed')
-end
-
---- A faction cannot be zeroed off the map, because the garrison floor is
--- a share of its settlement's weight rather than of its power. Stripping
--- Beta's standing entirely still leaves it holding Betatown.
-function M.aSeatHoldsItselfAtAnyPower()
-    twoRealms()
-    power.set('beta', 0)
-    resolve.invalidateProjections()
-
-    local text = joined(mapdump.render({ landmass = 'testland', mode = 'projection' }))
-    expect.truthy(string.find(text, 'Beta', 1, true), 'Beta still holds its own town')
+    expect.falsy(string.find(text, 'Guild', 1, true), 'a power-only faction is not')
+    expect.falsy(string.find(text, 'Landless', 1, true), 'nor one with no settlement')
 end
 
 --- The view for tuning: where projection disagrees with ownership, the
@@ -157,33 +141,23 @@ end
 --- A freshly derived map has nothing contested on it, and that is not a
 -- gap in the fixture: initial control hands every cell to its strongest
 -- projector, so by construction no owner is being out-projected. A cell
--- only becomes contested once power has moved under it.
-function M.contestModeShowsASettledMapAsSettled()
+-- only becomes contested once power has moved under it -- which is the
+-- second half here.
+function M.contestModeMarksFrontsOnlyOncePowerMoves()
     twoRealms()
     local grid = gridOnly(mapdump.render({ landmass = 'testland', mode = 'contest' }))
 
     expect.falsy(string.find(grid, '#', 1, true), 'nothing contested yet')
     expect.truthy(string.find(grid, '-', 1, true), 'consolidated ground')
-end
 
-function M.contestModeMarksFrontsOncePowerMoves()
-    twoRealms()
     -- Alpha surges past beta without a single roll having happened, so
     -- the band beta holds is now ground alpha out-projects.
     power.set('alpha', 500)
-
     local lines = mapdump.render({ landmass = 'testland', mode = 'contest' })
 
     expect.truthy(string.find(joined(lines), 'contested', 1, true), 'legend')
     expect.truthy(string.find(gridOnly(lines), '#', 1, true),
         'a contested cell between the two realms')
-end
-
-function M.rejectsUnknownMode()
-    twoRealms()
-    expect.raises(function()
-        mapdump.render({ landmass = 'testland', mode = 'nonsense' })
-    end, 'unknown map mode', 'bad mode')
 end
 
 function M.handlesAnEmptyWorld()
@@ -216,20 +190,6 @@ function M.windowsAroundACell()
         end
     end
     expect.greater(4, rows, 'at most three rows for radius 1')
-end
-
-function M.windowClampsToTheDrawnRegion()
-    twoRealms()
-    -- Far outside anything generated.
-    local lines = mapdump.render({ landmass = 'testland', centreCell = '#500,500' })
-    expect.truthy(string.find(joined(lines), 'outside the simulated region', 1, true),
-        'says so rather than drawing blank rows')
-end
-
-function M.windowRejectsInteriorCellNames()
-    twoRealms()
-    local lines = mapdump.render({ landmass = 'testland', centreCell = 'Balmora, Eight Plates' })
-    expect.truthy(string.find(joined(lines), 'not an exterior cell', 1, true), 'says so')
 end
 
 return M

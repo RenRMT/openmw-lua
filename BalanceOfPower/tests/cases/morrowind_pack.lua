@@ -46,13 +46,6 @@ end
 -- Registration
 --------------------------------------------------------------------------
 
-function M.loadsWithoutError()
-    loadPack()
-    expect.truthy(registry.landmasses.vvardenfell, 'vvardenfell registered')
-    expect.truthy(registry.landmasses.solstheim, 'solstheim registered')
-    expect.truthy(registry.factions['sixth house'], 'the Sixth House is an ordinary faction')
-end
-
 --- The pack names no faction into existence: the records do. Tribunal's
 -- Royal Guard is the proof -- nothing in this pack mentions it, and it
 -- arrives anyway because its record takes part in the politics.
@@ -135,6 +128,10 @@ function M.mergesFactionsAcrossLandmasses()
     end
     expect.truthy(landmasses.vvardenfell, 'holds ground on Vvardenfell')
     expect.truthy(landmasses.solstheim, 'and on Solstheim')
+
+    -- Which rests on each settlement landing on the right one.
+    expect.equal(registry.settlements.raven_rock.landmass, 'solstheim', 'Raven Rock')
+    expect.equal(registry.settlements.balmora.landmass, 'vvardenfell', 'Balmora')
 end
 
 --- Guilds have standing but no geography. If one ever acquires a seat,
@@ -149,20 +146,6 @@ function M.powerOnlyFactionsHoldNothing()
         expect.falsy(faction.territorial, id .. ' holds no land')
         expect.count(faction.seats, 0, id .. ' holds no settlement')
         expect.greater(power.getLive(id), 0, id .. ' still has standing')
-    end
-end
-
---- Every faction the settlement list names must exist in factions.lua,
--- or a settlement would project for nobody.
-function M.everySettlementFactionIsDefined()
-    loadPack()
-
-    for _, territoryId in ipairs(registry.settlementCellIds) do
-        local territory = registry.territories[territoryId]
-        if territory.defaultOwner then
-            expect.truthy(registry.factions[territory.defaultOwner],
-                territoryId .. ' has a defined owner')
-        end
     end
 end
 
@@ -416,14 +399,6 @@ function M.keepsMultiCellSettlementsTogether()
     for _, id in ipairs(vivec.territoryIds) do
         expect.equal(state.getOwner(id), 'temple', id .. ' is Temple')
     end
-end
-
-function M.assignsSolstheimToItsOwnLandmass()
-    loadPack()
-
-    expect.equal(registry.settlements.raven_rock.landmass, 'solstheim', 'Raven Rock')
-    expect.equal(registry.settlements.skaal.landmass, 'solstheim', 'Skaal Village')
-    expect.equal(registry.settlements.balmora.landmass, 'vvardenfell', 'Balmora')
 end
 
 --------------------------------------------------------------------------
