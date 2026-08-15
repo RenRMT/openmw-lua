@@ -19,6 +19,7 @@
 -- GLOBAL context only.
 
 local config = require('scripts.BalanceOfPower.core.config')
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local hostility = require('scripts.BalanceOfPower.core.hostility')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -130,8 +131,15 @@ end
 --- How many, from how hard the faction is projecting here. One member
 -- is the floor: a faction that holds ground at all can put somebody on
 -- the road.
-function M.sizeFor(projection)
+--
+-- A strained faction fields STRAIN_PATROL_PENALTY fewer, down to that
+-- floor -- thin control that looks thin. Zero by default, and skipped
+-- entirely then, so an omitted factionId costs nothing.
+function M.sizeFor(projection, factionId)
     local count = 1 + math.floor(projection / config.PATROL_POWER_PER_MEMBER)
+    if config.STRAIN_PATROL_PENALTY > 0 and factionId and holdings.isStrained(factionId) then
+        count = math.max(1, math.floor(count * (1 - config.STRAIN_PATROL_PENALTY)))
+    end
     return math.min(count, config.PATROL_MAX_MEMBERS)
 end
 
@@ -221,7 +229,7 @@ function M.plan(territoryId, day, opts)
         if chance < config.PATROL_SPAWN_CHANCE then
             local faction = registry.factions[candidate.faction]
             local tier = M.tierFor(candidate.projection, faction.patrolRoster)
-            local count = M.sizeFor(candidate.projection)
+            local count = M.sizeFor(candidate.projection, candidate.faction)
             local records
             records, seed = draw(faction.patrolRoster, tier, count, seed)
 

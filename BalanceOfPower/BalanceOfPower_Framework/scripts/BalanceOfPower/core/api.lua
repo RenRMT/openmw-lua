@@ -263,6 +263,19 @@ function M.holdersOfRegion(regionName)
     return holdings.holdersOfRegion(regionName)
 end
 
+--- Whether a faction's strain is at or above STRAIN_EVENT_THRESHOLD.
+-- Answered live, so it does not wait for the daily pass.
+function M.isStrained(factionId)
+    return holdings.isStrained(factionId)
+end
+
+--- The day a faction most recently became strained, or nil. Subtract
+-- from getCurrentDay() for a duration; as with surroundedSince, the
+-- framework keeps no streak of its own.
+function M.strainedSince(factionId)
+    return state.get().strainedSince[factionId]
+end
+
 --------------------------------------------------------------------------
 -- Hostility
 --------------------------------------------------------------------------

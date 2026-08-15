@@ -70,8 +70,12 @@ fixed at registration; the held side moves with every flip.
 
 **Strain** — territories held per 100 power. A faction whose borders have run
 ahead of its standing reads high, and goes on reading high until it grows into
-the ground or loses it. Observed and published, never acted on — the same
-contract as *surrounded*.
+the ground or loses it. Passing `STRAIN_EVENT_THRESHOLD` makes a faction
+**strained**, which is announced once on the crossing rather than daily.
+
+Observed and published, and by default acted on by nothing — the same contract
+as *surrounded*. Two constants can make it bite (a strained faction defending
+worse, or fielding thinner patrols) and both ship at zero.
 
 **Concentration** — territories per region. The held-ground counterpart of
 depth, where strain is about how far the power is stretched.

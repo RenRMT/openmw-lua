@@ -314,6 +314,16 @@ function handlers.BoP_TerritoryFlipped(data)
     out('FLIP    %s: %s -> %s', data.territory, tostring(data.from), tostring(data.to))
 end
 
+function handlers.BoP_FactionStrained(data)
+    out('STRAIN  %s is over-extended (%.0f per 100 power, day %s)',
+        nameOf(data.faction), data.strain, tostring(data.day))
+end
+
+function handlers.BoP_FactionRelieved(data)
+    out('EASED   %s is back within its means (day %s)',
+        nameOf(data.faction), tostring(data.day))
+end
+
 function handlers.BoP_SettlementSurrounded(data)
     out('RINGED  %s (day %s)', data.territory, tostring(data.day))
 end

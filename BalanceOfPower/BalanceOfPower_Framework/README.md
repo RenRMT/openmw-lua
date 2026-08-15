@@ -375,10 +375,27 @@ I.BalanceOfPower.regionsHeldBy('hlaalu')      -- sorted region names
 I.BalanceOfPower.holdersOfRegion('Ascadian Isles')  -- factionId -> cell count
 ```
 
-The framework publishes these and acts on none of them. Spawning extra bandits
-in a strained faction's cells, thinning its patrols, or writing a rumour about
-it are all extension decisions — see the `isSurrounded` contract, which works
-the same way.
+Crossing `STRAIN_EVENT_THRESHOLD` fires `BoP_FactionStrained`, and falling back
+under it fires `BoP_FactionRelieved` — on the crossing, not every day the
+condition holds. `isStrained(factionId)` answers live and `strainedSince` gives
+the day it started, exactly as `isSurrounded` and `surroundedSince` do.
+
+The framework publishes all of this and acts on none of it by default. Spawning
+extra bandits in a strained faction's cells, thinning its patrols, or writing a
+rumour about it are extension decisions.
+
+Two knobs exist for a game that wants strain to bite, and **both ship at zero**:
+
+| Constant | What turning it up does |
+|---|---|
+| `STRAIN_DEFENCE_PENALTY` | a strained faction defends ground with that fraction less of its projected strength |
+| `STRAIN_PATROL_PENALTY` | it fields that fraction fewer patrol members, never below one |
+
+The defence penalty is the interesting one and the risky one: it makes borders
+self-correcting, and a faction that loses ground, unstrains, and takes it back
+is an oscillation. `FRONTIER_COOLDOWN_DAYS` is what damps it. Ship-off is a
+default, not a recommendation — the constants exist so that turning it on is a
+number rather than a rewrite.
 
 ### Deriving the frontier
 
@@ -574,6 +591,7 @@ Also available: `getPower`, `setPower`, `getOwner`, `getTerritory`,
 `getSettlement`,
 `settlementIds`, `getSettlementOwner`, `isSurrounded`, `surroundedSince`,
 `factionStanding`, `standings`, `regionsHeldBy`, `holdersOfRegion`,
+`isStrained`, `strainedSince`,
 `getCurrentDay`, `powerSummary`, `reactionAudit`, `dumpReactions`, `dump`,
 `dumpMap`, `renderMap`, `isDebug`, and the `CELL_SIZE` constant.
 
@@ -603,6 +621,7 @@ them in whichever context it runs in. Names are on `I.BalanceOfPower.events`.
 |---|---|
 | `BoP_TerritoryFlipped` | `territory`, `kind`, `from`, `to`, `day` |
 | `BoP_SettlementSurrounded` / `BoP_SettlementRelieved` | `territory`, `day` |
+| `BoP_FactionStrained` / `BoP_FactionRelieved` | `faction`, `strain`, `day` |
 | `BoP_PowerChanged` | `faction`, `delta`, `newTotal` |
 | `BoP_DayResolved` | `day` |
 

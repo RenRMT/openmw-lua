@@ -34,6 +34,14 @@ M.SETTLEMENT_RELIEVED = 'BoP_SettlementRelieved'
 -- A faction's power moved: { faction, delta, newTotal }
 M.POWER_CHANGED = 'BoP_PowerChanged'
 
+-- A faction's holdings passed STRAIN_EVENT_THRESHOLD, or fell back under
+-- it: { faction, strain, day }. Fires on the crossing, not every day it
+-- holds -- the same contract as SETTLEMENT_SURROUNDED, and for the same
+-- reason: what overreach means is a question for whatever extension
+-- cares.
+M.FACTION_STRAINED = 'BoP_FactionStrained'
+M.FACTION_RELIEVED = 'BoP_FactionRelieved'
+
 -- One in-game day finished resolving: { day }.
 --
 -- The scheduling hook for everything built on top. An extension that has

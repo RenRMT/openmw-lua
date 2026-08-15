@@ -484,6 +484,41 @@ immediately: the Temple sits near 145 strain on three seats — Vivec projects
 over a quarter of the island — while the Empire sits near 40 on nine well-spread
 forts. Same map, opposite kinds of control.
 
+### 4f — strain: state, events, and feedback that ships off
+
+**Ships:** `strainedSince`, two events, and two constants at zero.
+
+Strain existed as a number after 4e but nothing published a *change* in it, and
+a mod polling every faction daily to spot a crossing is the work the framework
+should do once. `BoP_FactionStrained` / `BoP_FactionRelieved` fire on the
+crossing of `STRAIN_EVENT_THRESHOLD`, with `strainedSince` recording the day —
+the `surroundedSince` contract, copied deliberately rather than reinvented.
+
+**Design decisions settled here:**
+
+- **`STATE_VERSION` does not move for a new section.** `deserialize` starts from
+  a fully shaped state and copies known sections in, so a save written before
+  `strainedSince` existed loads with it empty. Bumping the version would imply
+  migration logic that has nothing to migrate.
+- **The event is `BoP_FactionRelieved`, not `BoP_FactionConsolidated`.** The plan
+  named the latter; `consolidated` is already one of the four cell states, and
+  the glossary exists precisely to stop near-synonyms drifting. Pairing
+  strained/relieved with surrounded/relieved says "the condition ended" the same
+  way twice.
+- **Strain is frozen for the resolution pass.** It is derived from ownership,
+  which the pass is busy changing, so reading it live would both shift mid-pass
+  and rebuild the holdings index on every flip. The power snapshot already works
+  this way and for the same reason.
+- **The threshold is 100** — one territory per point of power, which the units
+  make readable. On the Morrowind map it flags the Temple alone; Redoran is next
+  at around 96, so the default sits in a real gap rather than on a cliff.
+- **Both feedback constants ship at zero**, and are skipped entirely at zero
+  rather than multiplying by one. The defence penalty is the version of this
+  system worth having and also the one that can oscillate: a faction loses
+  ground, unstrains, defends better and takes it back. `FRONTIER_COOLDOWN_DAYS`
+  damps that, but the interaction wants play-testing that has not happened, and
+  the framework's job is to make turning it on a number rather than a rewrite.
+
 ---
 
 ## Phase 5 — Player influence hooks

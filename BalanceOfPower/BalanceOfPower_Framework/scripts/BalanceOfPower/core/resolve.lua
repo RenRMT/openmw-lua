@@ -34,6 +34,7 @@
 
 local config = require('scripts.BalanceOfPower.core.config')
 local events = require('scripts.BalanceOfPower.core.events')
+local holdings = require('scripts.BalanceOfPower.core.holdings')
 local log = require('scripts.BalanceOfPower.core.log')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
@@ -282,6 +283,47 @@ local function powerRoll(attacker, defender)
 end
 
 --------------------------------------------------------------------------
+-- Strain
+--------------------------------------------------------------------------
+
+-- Who was strained when the day opened. Frozen for the pass, like the
+-- power snapshot: strain is derived from ownership, and reading it live
+-- would both change mid-pass and rebuild the holdings index on every
+-- flip.
+local strainedToday = {}
+
+local function freezeStrain()
+    strainedToday = {}
+    for _, id in ipairs(registry.sortedFactionIds()) do
+        strainedToday[id] = holdings.isStrained(id)
+    end
+end
+
+-- What a strained faction keeps of its strength when defending. Ships at
+-- 1: STRAIN_DEFENCE_PENALTY is zero by default.
+local function defenceFactor(factionId)
+    if strainedToday[factionId] then
+        return 1 - config.STRAIN_DEFENCE_PENALTY
+    end
+    return 1
+end
+
+--- Record which factions are strained, and announce the crossings.
+local function updateStrain(day)
+    local data = state.get()
+    for _, id in ipairs(registry.sortedFactionIds()) do
+        local strain = holdings.factionStanding(id).strain
+        local was = data.strainedSince[id] ~= nil
+        local now = strain >= config.STRAIN_EVENT_THRESHOLD
+        if now ~= was then
+            data.strainedSince[id] = now and day or nil
+            events.emit(now and events.FACTION_STRAINED or events.FACTION_RELIEVED,
+                { faction = id, strain = strain, day = day })
+        end
+    end
+end
+
+--------------------------------------------------------------------------
 -- Ownership changes
 --------------------------------------------------------------------------
 
@@ -413,7 +455,7 @@ local function resolveTerritory(territory, day)
         return
     end
 
-    if powerRoll(bestValue, ownerValue) then
+    if powerRoll(bestValue, ownerValue * defenceFactor(owner)) then
         capture(territory, owner, bestId, day)
     end
 end
@@ -486,11 +528,13 @@ end
 -- the graph is large. Keeping the parameter means that becomes a change
 -- to the scheduler alone.
 --
--- Every cell goes through the same rule, in one pass. The surrounded
--- check runs after all of it, because it reads the frontier ownership
--- the pass has just settled -- doing it inline would judge each
--- settlement against a half-updated map.
+-- Every cell goes through the same rule, in one pass. The surrounded and
+-- strain checks run after all of it, because they read the ownership the
+-- pass has just settled -- doing either inline would judge against a
+-- half-updated map.
 function M.run(day, batch)
+    freezeStrain()
+
     if batch then
         for _, id in ipairs(batch) do
             local territory = registry.territories[id]
@@ -510,6 +554,7 @@ function M.run(day, batch)
     for _, id in ipairs(registry.settlementIds) do
         updateSurrounded(registry.settlements[id], day)
     end
+    updateStrain(day)
 end
 
 --------------------------------------------------------------------------

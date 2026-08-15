@@ -338,6 +338,44 @@ M.MIN_CLAIM_POWER = 5
 M.SURROUND_SHARE = 0.6
 
 --------------------------------------------------------------------------
+-- Strain
+--------------------------------------------------------------------------
+--
+-- Strain is territories held per 100 power: how far a faction's borders
+-- have run ahead of its standing. Like being surrounded, it is observed
+-- and published and the framework does nothing about it -- but unlike
+-- being surrounded, there are two knobs here for a game that wants it to
+-- bite, both shipped off.
+
+-- Strain at which a faction is reported strained, and at which the two
+-- penalties below apply. The units make this readable: 100 is one
+-- territory per point of power.
+--
+-- On the Morrowind map it flags the Tribunal Temple alone, which projects
+-- over a quarter of the island from three seats. Redoran is the next
+-- nearest at around 96.
+M.STRAIN_EVENT_THRESHOLD = 100
+
+-- How much of its projected strength a strained faction loses when
+-- defending ground, as a fraction.
+--
+-- Off by default, and not a small switch: it makes borders
+-- self-correcting, which is the interesting version of this system and
+-- also the one that can oscillate. A faction loses ground, its strain
+-- falls, it defends better, it takes the ground back. Turn it on with
+-- FRONTIER_COOLDOWN_DAYS in mind -- the cooldown is what damps it.
+M.STRAIN_DEFENCE_PENALTY = 0
+
+-- How much of its patrol group size a strained faction loses, as a
+-- fraction. Never below one member: a faction on the ground still has
+-- somebody on the road.
+--
+-- Off by default. This is the visible half -- thin control that looks
+-- thin -- and it is deliberately the framework doing less rather than
+-- more, so what fills the gap is an extension's business.
+M.STRAIN_PATROL_PENALTY = 0
+
+--------------------------------------------------------------------------
 -- Patrols
 --------------------------------------------------------------------------
 --

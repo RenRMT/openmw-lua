@@ -254,6 +254,13 @@ function M.standings()
     return rows
 end
 
+--- Whether a faction is holding more ground than its standing supports.
+-- Live, so it answers before the daily pass has recorded the crossing.
+function M.isStrained(factionId)
+    local standing = M.factionStanding(factionId)
+    return standing ~= nil and standing.strain >= config.STRAIN_EVENT_THRESHOLD
+end
+
 --- Regions a faction holds any ground in, sorted.
 function M.regionsHeldBy(factionId)
     ensureHeld()

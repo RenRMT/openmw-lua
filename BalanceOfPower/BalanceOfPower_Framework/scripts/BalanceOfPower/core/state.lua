@@ -36,6 +36,9 @@ local SECTIONS = {
     -- while it isn't. A fact the framework observes and publishes; what
     -- anything does about it belongs to an extension.
     'surroundedSince',
+    -- factionId -> the day its strain most recently passed the
+    -- threshold, absent while it hasn't. Same contract.
+    'strainedSince',
 }
 
 local M = {}
