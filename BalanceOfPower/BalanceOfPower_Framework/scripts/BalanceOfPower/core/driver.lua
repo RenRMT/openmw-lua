@@ -1,11 +1,7 @@
 -- The clock: turns elapsed game time into resolution passes.
 --
 -- Split out from main.lua so that "when does the world resolve" is a
--- separate question from "how does it resolve". Design doc 3.4 expects
--- the answer to change -- one synchronous pass at day rollover for the
--- MVP, staggered buckets on smaller timers once the graph is large --
--- and that should be a change to this file alone.
---
+-- separate question from "how does it resolve".
 -- It's also the only place that can run a day on demand, which is what
 -- makes the simulation testable without sleeping through in-game days.
 --
@@ -56,10 +52,7 @@ function M.runDay(day)
     power.commitBatch()
 
     -- After the commit, so a listener that reads power back sees settled
-    -- numbers. This is the scheduling hook every extension runs from --
-    -- a corruption mechanic reacting to a flip, a quest system ageing
-    -- its own state -- and it is the only thing the framework offers in
-    -- place of the mechanics that used to live inside this function.
+    -- numbers. This is the scheduling hook every extension runs from.
     events.emit(events.DAY_RESOLVED, { day = day })
 
     if config.DEBUG_DAILY_SUMMARY and registry.countFactions() > 0 then
@@ -69,9 +62,8 @@ end
 
 --- Poll for day rollover.
 --
--- Deliberately a poll rather than a 24-hour repeating timer: game time
--- jumps whenever the player sleeps, waits or fast travels, and a period
--- timer either drifts against midnight or swallows the jump entirely.
+-- game time jumps whenever the player sleeps, waits or fast travels, 
+-- a period timer either drifts against midnight or swallows the jump entirely.
 -- Comparing day indices instead settlements the tick to the game calendar,
 -- and a jump is caught as however many days it actually was.
 function M.poll()

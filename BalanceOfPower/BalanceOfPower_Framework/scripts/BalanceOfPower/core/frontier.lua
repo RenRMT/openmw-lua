@@ -2,17 +2,11 @@
 --
 -- The wilderness between settlements is far too fine-grained to author
 -- by hand -- Vvardenfell alone is thousands of exterior cells -- so it's
--- derived instead. A content pack declares where the seats of power are;
--- this turns that into the grid they contest.
+-- derived instead. A content pack declares where the seats of power are.
+-- This generator reads the settlements in the registry and works outward 
+-- from them.
 --
--- The generator is landmass-agnostic on purpose, and has to stay that
--- way. It knows nothing about Morrowind, cell naming conventions or
--- which factions exist: it reads the settlements already in the
--- registry and works outward from them. A pack supplies data, never
--- behaviour.
---
--- **Only ground somebody can actually reach becomes a territory.** The
--- union of every settlement's influence radius defines the grid, so
+-- The union of every settlement's influence radius defines the grid, so
 -- open ocean and deep wilderness never exist as territories rather than
 -- existing and being skipped. That keeps the daily pass small by
 -- construction instead of by optimization, and keeps the save file
@@ -74,7 +68,7 @@ end
 --- Every settlement gets frontier around it, whatever the planning power
 -- says.
 --
--- A small remote holding -- an Ashlander camp at outpost weight -- can
+-- A small remote holding (Ashlander camp at outpost weight) can
 -- have a claim radius under one cell, and would otherwise sit on the map
 -- with no wilderness next to it at all. That is not a tuning outcome, it
 -- is a hole: `isSurrounded()` is answered from a settlement's ring of

@@ -1,4 +1,4 @@
--- The public interface, exposed to other mods as
+-- The public interface, exposed to other mods as 
 -- require('openmw.interfaces').BalanceOfPower from any global script.
 --
 -- This is the whole contract. A content pack should never require a file
@@ -20,22 +20,13 @@ local resolve = require('scripts.BalanceOfPower.core.resolve')
 local state = require('scripts.BalanceOfPower.core.state')
 
 local M = {
-    -- Zero for the whole of closed alpha: nothing here is stable, and
-    -- there is no deprecation window or compatibility shim. Pin the
-    -- framework build you were written against rather than checking this.
-    -- It becomes 1 when the interface is frozen for a public release.
+    -- Closed alpha: nothing here is stable.
     version = 0,
 
     -- Event name constants, so listeners don't hardcode the strings.
     events = events,
 
     -- World units per exterior cell, as the engine defines it.
-    --
-    -- Exposed so a pack placing anything by grid coordinate agrees with
-    -- the frontier generator about where a cell is, instead of writing
-    -- 8192 down a second time. Two copies of a constant that must match
-    -- drift into a map subtly out of register with its own settlements,
-    -- with nothing to catch it.
     CELL_SIZE = config.CELL_SIZE,
 }
 

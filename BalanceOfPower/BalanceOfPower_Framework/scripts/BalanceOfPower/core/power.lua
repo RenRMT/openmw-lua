@@ -1,13 +1,11 @@
 -- Faction power: the scalar every other system reads from and writes
--- to (design doc 3.5).
+-- to
 --
 -- Two things here are load-bearing beyond "store a number per faction".
 --
 -- 1. Reaction propagation. A faction's power change drags every other
 --    faction along with it, scaled by how that *other* faction feels
---    about the one that moved. That is what makes an invader's story work
---    for free: everyone hates them, so an award in their favour is
---    everyone else's loss, with nothing anywhere special-casing them.
+--    about the one that moved.
 --
 --    Ambient growth is the deliberate exception -- see applyDailyGrowth,
 --    and the arithmetic on GROWTH_PROPAGATES for why a daily drip
@@ -82,8 +80,6 @@ local function recordReactions(factionId)
 end
 
 --- Merge every faction's reactions into one table of rows.
---
--- Two sources, combined rather than one shadowing the other (doc 3.5).
 -- The game's records supply the vanilla politics; an authored table
 -- supplies whatever the records can't express. Both are rows in the same
 -- direction, so merging them is a plain overlay. Authored values win
