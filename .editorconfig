@@ -1,0 +1,22 @@
+# Trailing whitespace is a CI failure here: luacheck's 61x warnings are on by
+# default and `luacheck .` exits non-zero on any warning. Stripping it on save
+# keeps it from ever reaching a commit.
+#
+# Note that VSCode honours this file only with the EditorConfig extension
+# installed -- .vscode/settings.json carries the same rules natively.
+
+root = true
+
+[*]
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.omwscripts]
+# Flag lists are parsed line-by-line by CI; nothing here is indented.
+indent_size = 4

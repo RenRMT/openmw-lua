@@ -2,7 +2,7 @@
 --
 -- Nothing inside the framework listens to these -- they exist so UI
 -- mods, quest mods and later content can react to the simulation.
--- Names are string constantsso a typo in a listener is at least 
+-- Names are string constants, so a typo in a listener is at least
 -- greppable against one definition.
 --
 -- Every event is delivered twice, to two different audiences:
@@ -26,7 +26,7 @@ M.TERRITORY_FLIPPED = 'BoP_TerritoryFlipped'
 -- hands: { territory, day }. Fires on the change, not every day it holds.
 --
 -- The framework reports this and does nothing about it. What being
--- surrounded means (siege, blockade, nothing) is a question for whatever 
+-- surrounded means (siege, blockade, nothing) is a question for whatever
 -- extension cares.
 M.SETTLEMENT_SURROUNDED = 'BoP_SettlementSurrounded'
 M.SETTLEMENT_RELIEVED = 'BoP_SettlementRelieved'
@@ -37,7 +37,7 @@ M.POWER_CHANGED = 'BoP_PowerChanged'
 -- One in-game day finished resolving: { day }.
 --
 -- The scheduling hook for everything built on top. An extension that has
--- to act once a day runs from this rather than keeping a timer that 
+-- to act once a day runs from this rather than keeping a timer that
 -- drifts against the framework's own pass.
 --
 -- Delivery is queued rather than synchronous, so a listener acts on the

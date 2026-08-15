@@ -62,9 +62,9 @@ end
 
 --- Poll for day rollover.
 --
--- game time jumps whenever the player sleeps, waits or fast travels, 
+-- game time jumps whenever the player sleeps, waits or fast travels,
 -- a period timer either drifts against midnight or swallows the jump entirely.
--- Comparing day indices instead settlements the tick to the game calendar,
+-- Comparing day indices instead anchors the tick to the game calendar,
 -- and a jump is caught as however many days it actually was.
 function M.poll()
     -- Cheap and idempotent, so it runs every tick rather than requiring

@@ -1,11 +1,11 @@
 -- Balance of Power -- framework global script.
 --
--- Owns the save/load boundary and exports the interface; 
+-- Owns the save/load boundary and exports the interface;
 -- the clock lives in core/driver.lua and the simulation in
 -- the other core modules, so each later phase adds a call inside
 -- driver.runDay() rather than growing this file.
 --
--- On its own this mod will register nothing and report an empty 
+-- On its own this mod will register nothing and report an empty
 -- world. It requires content packs.
 
 local api = require('scripts.BalanceOfPower.core.api')
