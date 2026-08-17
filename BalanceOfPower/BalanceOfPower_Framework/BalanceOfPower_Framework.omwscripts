@@ -1,0 +1,12 @@
+# Balance of Power -- framework core.
+#
+# Ships no factions and no territories. Content comes from separate
+# data packs that call registerLandmass / generateFrontier through the
+# BalanceOfPower interface, and every one of those packs must load
+# AFTER this file.
+
+# Owns the persistent simulation state, the in-game day tick, and the
+# public interface. Global because territory and faction power are
+# world-level facts that have to keep resolving in cells the player
+# isn't standing in.
+GLOBAL: scripts/BalanceOfPower/main.lua

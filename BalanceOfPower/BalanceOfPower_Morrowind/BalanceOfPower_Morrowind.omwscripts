@@ -1,0 +1,13 @@
+# Balance of Power -- Morrowind content pack.
+#
+# Vvardenfell and Solstheim: factions, settlements and patrol rosters.
+# The Sixth House is an ordinary faction here, differing only in that it
+# grows on its own and fights. Pure data plus the API calls that register
+# it -- all behaviour lives in the framework.
+#
+# MUST load after BalanceOfPower_Framework.
+#
+# Solstheim is placed at its Anthology / Tamriel Rebuilt coordinates, not
+# vanilla Bloodmoon's. See the README before enabling.
+
+GLOBAL: scripts/BalanceOfPowerMorrowind/main.lua
