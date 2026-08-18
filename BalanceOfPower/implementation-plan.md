@@ -373,7 +373,7 @@ plus `recordId` where its id and the record's differ.
   glossary and in `power.lua`, because separating them is how the direction bug
   got in. The engine's documentation says the map is inbound and is wrong for
   ESM3 — settled a second time, against the raw ESM data, and recorded with the
-  evidence in `openmw-lua-api-notes.md`.
+  evidence in the repo's [engine notes](../openmw-lua-notes.md) §7.
 - **Case is normalized on both ends.** The ESM stores keys as authored
   (`"Sixth House"`) while a pack registers lowercase ids. Record lookup is
   case-insensitive in the engine; a reaction map is a plain Lua table and is not.
