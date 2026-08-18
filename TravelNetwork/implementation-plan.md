@@ -263,16 +263,22 @@ engine facts in the repo notes §3, §4 and §8. The mod is buildable as designe
 and the probe mod has been deleted — if a question ever needs re-running, the
 three above say what to ask.
 
-**Phase 1 — build and dump the graph.** Walk records for a non-empty
-`travelDestinations` (not the services flag — §2a), walk cells for the
-operators, merge into nodes by the three rules in §3, emit edges. Expose
-`dumpGraph()` through the mod's interface for console inspection. Deliverable:
-a log dump listing every stop and its incident modes.
+**Phase 1 — build and dump the graph. Done, 2026-08-18.** The mod is
+`TravelNetwork/TravelNetwork/`: `graph.lua` builds and queries, `adapter.lua`
+walks cells and records, `main.lua` caches and exposes the interface. Its README
+carries the API and the console commands.
 
-Targets to hit, all measured rather than guessed: **37 operators, 116
-destinations, 4 modes, and 31 nodes** once merging is applied (32 labels less
-`ToddTest`). Anything else means the merge rules are wrong or the walk missed
-something. Build once and cache — a full sweep is ~600 ms (§2b).
+Every target was hit against the fixture: **36 operators used** (37 placed less
+the excluded test dummy), **115 legs**, **31 stops**, 4 modes, 1 unplaced record
+skipped. Built once and cached; the sweep behind it is ~600 ms (§2b).
+
+**The result worth the exercise: the whole game has three interchanges.** Khuul
+and Molag Mar, where boat meets silt strider, and Vivec's Foreign Quarter, where
+boat meets gondola. Nowhere else can a player change vehicle without walking —
+which is a far smaller number than the four-mode network suggests, and it is the
+thing nobody could have known without assembling the graph.
+
+Still no UI, no routing, no gameplay.
 
 **Phase 2 — routing.** Dijkstra over the directed graph with a configurable cost
 mixing distance and a per-transfer penalty, plus a mode-change penalty so a
@@ -331,10 +337,11 @@ normalisation bugs worth testing — but it means the adapter lowercases on the
 way in, and a test comparing a fixture id to a produced key must say which side
 it is on.
 
-Still to set up, and not free: the runner. `BalanceOfPower/tests/run.py` is
-hardcoded to that project's directories, and CI's test job runs only that file.
-This mod needs either its own copy under `tests/` or a runner that takes a
-project root — plus a CI step either way.
+The runner is set up: `tests/run.py`, a near-copy of BalanceOfPower's, with its
+own CI step. Nothing is stubbed, because nothing under test requires an
+`openmw.*` package. `support/fixture.lua` converts the dump into operator tables
+and is the deliberate twin of `adapter.lua` — same output shape, different
+source, so the two drifting apart shows up as a different graph.
 
 Cases worth having on day one: a node served by two modes is reported as a
 transfer; a one-way edge does not produce a return route; two operators serving
@@ -357,10 +364,25 @@ without erroring.
   files (§2a). Keep the loop, expect nothing.
 - ~~Are guild guides distinguishable by class?~~ **Yes** — class `Guild Guide`,
   and gondoliers likewise (§2a).
-- How should a node the game never named be labelled? The Holamayan landing is
-  the only one in vanilla, and `Cell.region` plus a grid reference is the
-  obvious answer — but it is a player-facing string, so it is a decision, not a
-  detail. (Phase 1.)
+- **How do you get from a town to the guild hall standing in it?** The guide
+  network turns out to be a disconnected island: guides run between interiors,
+  and no leg joins `Balmora, Guild of Mages` to `Balmora`, because in the world
+  you walk out of a door and the graph has no concept of that. **This blocks
+  phase 2** — without walk links, no route can mix a guide with a strider, and
+  Caldera is reachable by nothing else. Two ways:
+  - **Derive them from doors.** A `Door` in a guild hall names its destination
+    cell and position; a walk link is a zero-fare edge between the stop inside
+    and the stop the door lands in. Principled, data-driven, costs another cell
+    sweep — which is now known to be affordable.
+  - **Parse the cell name.** `Balmora, Guild of Mages` starts with the town it
+    is in. Cheap, and wrong the moment a mod names a hall differently; it also
+    fails Caldera, which has a hall and no other stop.
+
+  Doors are the better answer for the same reason the mode table is not a
+  guess: it reads what the game shipped.
+- ~~How should a stop the game never named be labelled?~~ Region plus grid
+  reference — "Azura's Coast (19, -5)" — with "Wilderness" when even the region
+  is missing. Vanilla needs it exactly once, for the Holamayan landing.
 - Does `teleport` into a far interior behave, given the `onGround` finding in
   BalanceOfPower's phase 4b notes? Travel destinations carry an authored
   position, so this *should* be the safe case — but it is the same code path

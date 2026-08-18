@@ -1,0 +1,256 @@
+-- The travel network as one directed graph.
+--
+-- Pure: plain tables in, plain tables out, no `openmw.*` package anywhere.
+-- Everything that touches the engine is in adapter.lua, which is what lets
+-- this run headless against the shipped-data fixture.
+--
+-- A point is one end of a leg -- where an operator stands, or where they take
+-- you -- and looks like:
+--
+--   { cellId, cellName, isInterior, position = {x=, y=, z=}, gridX, gridY, region }
+--
+-- An operator is `{ id, name, class, place = point|nil, destinations = {point} }`.
+
+local config = require('scripts.TravelNetwork.config')
+local modesData = require('scripts.TravelNetwork.data.modes')
+
+local M = {}
+
+local function lower(text)
+    return type(text) == 'string' and string.lower(text) or nil
+end
+
+local function isBlank(text)
+    return text == nil or text == ''
+end
+
+--- Horizontal distance. Merging ignores height on purpose: a stop on the bluff
+-- above a dock is the same town, and vanilla's z varies by hundreds of units
+-- across one settlement.
+local function planarDistance(a, b)
+    local dx, dy = a.x - b.x, a.y - b.y
+    return math.sqrt(dx * dx + dy * dy)
+end
+
+local function distance(a, b)
+    local dx, dy, dz = a.x - b.x, a.y - b.y, a.z - b.z
+    return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+--- The key a point belongs to, or nil when only proximity can decide.
+--
+-- Interiors key on the cell, because their coordinates are cell-local and
+-- comparing them across cells is meaningless. Named exteriors key on the name,
+-- which is what unifies the towns whose stops straddle a grid boundary --
+-- Molag Mar's platform and dock are 10896 units apart and both called "Molag
+-- Mar". Everything else is left to the second pass.
+local function directKey(point)
+    if point.isInterior then
+        return 'cell:' .. (lower(point.cellId) or lower(point.cellName) or '?')
+    end
+    if not isBlank(point.cellName) then
+        return 'place:' .. lower(point.cellName)
+    end
+    return nil
+end
+
+local function fallbackName(point)
+    local where = ''
+    if point.gridX and point.gridY then
+        where = string.format(' (%d, %d)', point.gridX, point.gridY)
+    end
+    if not isBlank(point.region) then
+        return point.region .. where
+    end
+    return 'Wilderness' .. where
+end
+
+local function nodeName(point)
+    if not isBlank(point.cellName) then
+        return point.cellName
+    end
+    return fallbackName(point)
+end
+
+local function newNode(key, point)
+    return {
+        key = key,
+        name = nodeName(point),
+        cellId = point.cellId,
+        isExterior = not point.isInterior,
+        position = { x = point.position.x, y = point.position.y, z = point.position.z },
+        modes = {},
+    }
+end
+
+--- The mode an operator's legs are labelled with.
+-- An id override beats the class, because four vanilla operators are authored
+-- with a class that describes the person rather than the vehicle.
+local function modeFor(operator, modes)
+    local override = modes.overrides[lower(operator.id) or '']
+    if override then
+        return override
+    end
+    local byClass = modes.classes[lower(operator.class) or '']
+    if byClass then
+        return byClass.id
+    end
+    return modes.unknown.id
+end
+
+function M.modeLabel(modeId, modes)
+    modes = modes or modesData
+    for _, mode in pairs(modes.classes) do
+        if mode.id == modeId then
+            return mode.label
+        end
+    end
+    if modeId == modes.unknown.id then
+        return modes.unknown.label
+    end
+    -- An override names a mode the class table also defines, so falling
+    -- through here means a mode id nothing declares.
+    return modeId
+end
+
+--- Build the graph.
+-- @param operators list of operators, see the header
+-- @param opts optional { modes = <modes table>, mergeRadius = <number> }
+function M.build(operators, opts)
+    opts = opts or {}
+    local modes = opts.modes or modesData
+    local mergeRadius = opts.mergeRadius or config.NODE_MERGE_RADIUS
+
+    local graph = {
+        nodes = {},
+        order = {},
+        edges = {},
+        stats = { operators = 0, excluded = 0, unplaced = 0, selfEdges = 0, edges = 0, nodes = 0 },
+    }
+
+    local function addNode(key, point)
+        local node = graph.nodes[key]
+        if not node then
+            node = newNode(key, point)
+            graph.nodes[key] = node
+            graph.order[#graph.order + 1] = key
+        end
+        return node
+    end
+
+    -- Pass one: everything the game named. Deferred points are collected with
+    -- their owner so the second pass can key them without walking twice.
+    local deferred = {}
+    local function classify(point)
+        if not point or not point.position then
+            return
+        end
+        local key = directKey(point)
+        if key then
+            addNode(key, point)
+            point._key = key
+        else
+            deferred[#deferred + 1] = point
+        end
+    end
+
+    local usable = {}
+    for _, operator in ipairs(operators) do
+        if modes.exclude[lower(operator.id) or ''] then
+            graph.stats.excluded = graph.stats.excluded + 1
+        elseif not operator.place then
+            -- Cut content: a record with destinations that no cell places.
+            -- Nothing can depart from a stop nobody stands at.
+            graph.stats.unplaced = graph.stats.unplaced + 1
+        else
+            usable[#usable + 1] = operator
+            graph.stats.operators = graph.stats.operators + 1
+            classify(operator.place)
+            for _, destination in ipairs(operator.destinations) do
+                classify(destination)
+            end
+        end
+    end
+
+    -- Pass two, and it has to be a second pass: run inline, a point 396 units
+    -- outside Tel Aruhn is keyed before Tel Aruhn's node exists and becomes a
+    -- stop of its own.
+    for _, point in ipairs(deferred) do
+        local bestKey, bestDistance = nil, mergeRadius
+        for _, key in ipairs(graph.order) do
+            local candidate = planarDistance(point.position, graph.nodes[key].position)
+            if candidate <= bestDistance then
+                bestKey, bestDistance = key, candidate
+            end
+        end
+        if bestKey then
+            point._key = bestKey
+        else
+            local key = string.format('at:%d,%d', point.position.x, point.position.y)
+            addNode(key, point)
+            point._key = key
+        end
+    end
+
+    for _, operator in ipairs(usable) do
+        local fromKey = operator.place._key
+        local mode = modeFor(operator, modes)
+        for _, destination in ipairs(operator.destinations) do
+            local toKey = destination._key
+            if toKey == fromKey then
+                -- Vanilla lists a few operators as serving their own stop.
+                graph.stats.selfEdges = graph.stats.selfEdges + 1
+            else
+                local edges = graph.edges[fromKey]
+                if not edges then
+                    edges = {}
+                    graph.edges[fromKey] = edges
+                end
+                edges[#edges + 1] = {
+                    from = fromKey,
+                    to = toKey,
+                    mode = mode,
+                    operator = operator.id,
+                    operatorName = operator.name,
+                    distance = distance(graph.nodes[fromKey].position, graph.nodes[toKey].position),
+                }
+                graph.stats.edges = graph.stats.edges + 1
+                graph.nodes[fromKey].modes[mode] = true
+                graph.nodes[toKey].modes[mode] = true
+            end
+        end
+    end
+
+    table.sort(graph.order, function(a, b)
+        return graph.nodes[a].name:lower() < graph.nodes[b].name:lower()
+    end)
+    graph.stats.nodes = #graph.order
+
+    return graph
+end
+
+--- The modes meeting at a stop, sorted. More than one means you can change
+-- vehicles there, which is the whole question the mod exists to answer.
+function M.modesAt(graph, key)
+    local node = graph.nodes[key]
+    if not node then
+        return {}
+    end
+    local list = {}
+    for mode in pairs(node.modes) do
+        list[#list + 1] = mode
+    end
+    table.sort(list)
+    return list
+end
+
+function M.isTransfer(graph, key)
+    return #M.modesAt(graph, key) > 1
+end
+
+--- Legs leaving a stop.
+function M.edgesFrom(graph, key)
+    return graph.edges[key] or {}
+end
+
+return M

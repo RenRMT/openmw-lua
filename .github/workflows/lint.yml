@@ -89,5 +89,8 @@ jobs:
       - name: Install lupa
         run: pip install lupa
 
-      - name: Run Lua unit tests
+      - name: Run Lua unit tests -- BalanceOfPower
         run: python BalanceOfPower/tests/run.py
+
+      - name: Run Lua unit tests -- TravelNetwork
+        run: python TravelNetwork/tests/run.py
