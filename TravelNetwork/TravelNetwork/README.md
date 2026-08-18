@@ -101,10 +101,14 @@ missing legs. Each stop indoors is followed out through teleport doors — up to
 Sadrith Mora's onto the inside of Wolverine Hall — and joined to whatever stop
 is at the far end by a `walk` leg in both directions.
 
-A walk leg carries a distance and nothing else: no fare, since nobody charges
-for a door, and no time, since the player walks it themselves. It measures both
-halves — across the room to the door, then from the doorstep to the stop out on
-the street.
+A walk leg carries a distance and no fare — nobody charges for a door. It
+measures both halves: across the room to the door, then from the doorstep to
+the stop out on the street.
+
+It is not a stretch the player is left to cover themselves. When booking lands
+(phase 4), a booked journey teleports walk legs along with vehicle legs, so you
+press book at Balmora's silt strider and arrive in Caldera. The clock advances
+for a walk as it does for a ride; only the fare stays at zero.
 
 Two consequences worth knowing:
 

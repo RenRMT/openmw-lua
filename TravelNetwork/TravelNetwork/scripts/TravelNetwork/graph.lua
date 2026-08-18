@@ -258,9 +258,11 @@ end
 --
 -- A walk leg is an edge, not a merge: the two ends are genuinely different
 -- places, and in one vanilla case -- the guide at Wolverine Hall and the boat
--- at Sadrith Mora -- they are 11593 units apart. It carries a distance and
--- nothing else: no fare, because nobody charges for a door, and no time,
--- because the player really does walk it.
+-- at Sadrith Mora -- they are 11593 units apart.
+--
+-- It carries a distance and no fare: nobody charges for a door. Booking moves
+-- the player across it like any other leg, so the time it takes is charged
+-- like any other leg too -- see the plan's phase 4.
 --
 -- Walk legs deliberately do **not** register a mode on either stop.
 -- `modesAt` stays the list of vehicles meeting in one place, so the count of

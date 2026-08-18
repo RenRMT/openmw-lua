@@ -222,8 +222,9 @@ same named exterior cell as the existing stop, 3.2k–4k units away, and name
 keying already merges them. The other two add a stop.
 
 **The decision, 2026-08-18: doors only.** No authored pairs, no proximity links.
-A walk leg costs its distance, has no fare and takes no time, because the player
-really does walk it — booking only ever teleports vehicle legs.
+A walk leg costs its distance for routing and carries no fare. It is not a
+conceptual seam the player is left to cross on foot: booking teleports it like
+any other leg, and charges the time (phase 4).
 
 **What that costs, honestly:** Sadrith Mora's guide lets you out at Wolverine
 Hall, 11593 units from the boats, in a differently named cell. No door connects
@@ -348,9 +349,25 @@ using** — if energy runs out here, it ships.
 **Phase 4 — booking.** With an operator within `BOOKING_RADIUS` (found via
 `nearby.actors` filtered on `servicesOffered.Travel`), offer "travel the whole
 way": deduct the summed fare, then per leg `teleport` to the destination and
-`world.advanceTime(legHours)`. Note that `advanceTime` explicitly does not run
-regeneration, so a long journey will not heal the player the way sleeping does —
-decide deliberately whether to compensate, and write down which way you went.
+`world.advanceTime(legHours)`.
+
+**Walk legs are teleported too** (decided 2026-08-18). The player books at
+Balmora's silt strider and arrives in Caldera; the mod walks them through the
+guild hall door rather than stopping the journey there and asking them to finish
+it on foot. Two consequences to hold to:
+
+- **A walk leg costs time but never money.** It advances the clock by
+  `HOURS_PER_UNIT` like any other leg, because the mod is moving the player and
+  a free teleport across town is not what "walk" should mean. It contributes
+  nothing to the fare — nobody charges for a door.
+- **A journey may begin with a walk.** Standing at the strider and asking for
+  Caldera, the first leg is the walk to the guild hall. The operator you are
+  standing next to sells the whole journey, including the legs their own
+  vehicle does not cover.
+
+Note that `advanceTime` explicitly does not run regeneration, so a long journey
+will not heal the player the way sleeping does — decide deliberately whether to
+compensate, and write down which way you went.
 
 **Phase 5 (optional) — fares that mean something.** Distance-scaled base fare,
 modified by region and by mode. Only ever applied to mod-booked journeys; single
