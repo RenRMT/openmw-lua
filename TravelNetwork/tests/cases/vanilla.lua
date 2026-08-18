@@ -52,23 +52,37 @@ function M.everyLegLandsOnAKnownStop()
     end
 end
 
-function M.theWholeNetworkHasExactlyThreeInterchanges()
-    -- The headline the mod exists to produce, and it is a smaller number than
-    -- anyone would guess: Khuul and Molag Mar are where boat meets strider,
-    -- Vivec's Foreign Quarter is where boat meets gondola. Nowhere else in
-    -- Morrowind can you change vehicle without walking.
-    local g = vanilla()
-    local interchanges = {}
-    for _, key in ipairs(g.order) do
-        if graph.isTransfer(g, key) then
-            interchanges[#interchanges + 1] = g.nodes[key].name
+function M.theWholeNetworkHasFiveInterchanges()
+    -- The headline the mod exists to produce. Three are places where two
+    -- vehicles meet on the spot; two more are towns where the guild hall is a
+    -- short walk from the silt strider, which is a change players make without
+    -- thinking and so counts as one.
+    local g = linked()
+    local names, onFoot = {}, {}
+    for _, stop in ipairs(graph.interchanges(g)) do
+        names[#names + 1] = stop.name
+        if stop.onFoot then
+            onFoot[#onFoot + 1] = stop.name
         end
     end
-    table.sort(interchanges)
 
-    expect.equal(#interchanges, 3, 'interchange count')
-    expect.equal(table.concat(interchanges, ', '),
-        'Khuul, Molag Mar, Vivec, Foreign Quarter', 'the interchanges')
+    expect.equal(#names, 5, 'interchange count')
+    expect.equal(table.concat(names, ', '),
+        'Ald-ruhn, Balmora, Khuul, Molag Mar, Vivec, Foreign Quarter', 'the interchanges')
+    expect.equal(table.concat(onFoot, ', '), 'Ald-ruhn, Balmora',
+        'the ones where changing costs a walk')
+end
+
+function M.vivecIsTheOnlyPlaceThreeModesMeet()
+    local g = linked()
+    for _, stop in ipairs(graph.interchanges(g)) do
+        if stop.name == 'Vivec, Foreign Quarter' then
+            expect.equal(table.concat(stop.modes, '+'), 'boat+gondola+guide', 'modes at Vivec')
+            expect.falsy(stop.onFoot, 'boat and gondola meet on the spot there')
+        else
+            expect.equal(#stop.modes, 2, stop.name .. ' serves two modes')
+        end
+    end
 end
 
 function M.everyGuildHallFindsItsWayOutside()
@@ -105,17 +119,19 @@ function M.walkingJoinsTheGuideNetworkToTheRest()
         'what is reachable on foot from it')
 end
 
-function M.walkLinksDoNotInventInterchanges()
-    -- Still three. A change of vehicle that costs a walk is a different thing
-    -- from one that does not, and the headline number must not blur them.
-    local g = linked()
-    local count = 0
-    for _, key in ipairs(g.order) do
-        if graph.isTransfer(g, key) then
-            count = count + 1
+function M.walkingAddsTwoJunctionsAndFoldsVivecIntoItsCanton()
+    -- Before doors, only vehicles meeting on the spot count: three. Doors add
+    -- Ald-ruhn and Balmora, and put Vivec's guild hall into the interchange
+    -- its canton already was rather than inventing a fourth one next door.
+    local before, after = graph.interchanges(vanilla()), graph.interchanges(linked())
+    expect.count(before, 3, 'interchanges before doors')
+    expect.count(after, 5, 'interchanges after doors')
+
+    for _, stop in ipairs(after) do
+        if stop.name == 'Vivec, Foreign Quarter' then
+            expect.count(stop.stops, 2, 'the canton and its guild hall, as one place')
         end
     end
-    expect.equal(count, 3, 'interchanges after linking')
 end
 
 function M.doorsAddTheTwoStopsNoVehicleServes()

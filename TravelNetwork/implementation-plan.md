@@ -232,11 +232,18 @@ Sadrith Mora by boat when guide-plus-a-short-walk would have been faster. That
 is a real quality gap, and it is one stop in the whole game. Revisit it when the
 planner exists and it can be judged as a player rather than as a table.
 
-**Interchanges do not inflate.** A walk leg registers no mode on either stop, so
-`modesAt` stays the list of vehicles meeting in one place — still three — and
-`modesWithinWalk` is the wider view for the planner. Balmora's strider and its
-guild guide are one door and 3732 units apart: a change a player makes without
-thinking, and a different fact from Khuul, where two vehicles meet on the spot.
+**Walking counts as changing, decided 2026-08-18 after seeing the graph in
+game.** `isTransfer` asks what is reachable on foot, so Ald-ruhn and Balmora
+join the list: their guild halls are one door from the silt strider, and a
+player makes that change without thinking about it. `modesAt` stays the narrower
+fact — what meets on this exact spot — so Khuul and Balmora remain
+distinguishable, and `interchanges()` marks which is which with `onFoot`.
+
+**A junction is a place, not a stop.** Both ends of a walk link qualify, so
+counting stops would report Balmora twice and make Vivec's guild hall a separate
+junction from the canton it opens onto. `interchanges()` folds each
+walk-connected group into one entry, named after whichever of its stops the most
+vehicles reach: five places, eight stops.
 
 ---
 
@@ -317,11 +324,12 @@ Walk links followed the same day (§2c), joining the guide network to the rest
 through the doors of the buildings it runs between: **33 stops, 125 legs**, ten
 of them on foot.
 
-**The result worth the exercise: the whole game has three interchanges.** Khuul
-and Molag Mar, where boat meets silt strider, and Vivec's Foreign Quarter, where
-boat meets gondola. Nowhere else can a player change vehicle without walking —
-which is a far smaller number than the four-mode network suggests, and it is the
-thing nobody could have known without assembling the graph.
+**The result worth the exercise: the whole game has five interchanges.** Khuul,
+Molag Mar and Vivec's Foreign Quarter, where two vehicles meet on the spot; plus
+Ald-ruhn and Balmora, where the guild hall is a short walk from the silt strider
+(§2c). Five places in a province, for four modes of transport — a far smaller
+number than the network suggests, and nobody could have known it without
+assembling the graph.
 
 Still no UI, no routing, no gameplay.
 

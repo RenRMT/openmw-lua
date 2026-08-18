@@ -84,24 +84,25 @@ local function dump(opts)
     end
 end
 
---- The stops where more than one mode meets -- the question the mod exists to
--- answer, and in vanilla the answer is three.
+--- Where a player can change vehicle -- counted as places, not as stops, so a
+-- guild hall and the street outside it are one junction.
 local function interchanges()
-    local g = current()
-    local found = {}
-    for _, key in ipairs(g.order) do
-        if graph.isTransfer(g, key) then
-            found[#found + 1] = { key = key, name = g.nodes[key].name, modes = graph.modesAt(g, key) }
-        end
-    end
-    return found
+    return graph.interchanges(current())
 end
 
 local function dumpInterchanges()
     local found = interchanges()
     out('%d interchange(s)', #found)
     for _, stop in ipairs(found) do
-        out('  %-46s %s', stop.name, table.concat(stop.modes, '+'))
+        out('  %-30s %-24s %s', stop.name, table.concat(stop.modes, '+'),
+            stop.onFoot and 'change costs a walk' or 'vehicles meet here')
+        if #stop.stops > 1 then
+            local names = {}
+            for _, key in ipairs(stop.stops) do
+                names[#names + 1] = current().nodes[key].name
+            end
+            out('        %s', table.concat(names, '  +  '))
+        end
     end
 end
 

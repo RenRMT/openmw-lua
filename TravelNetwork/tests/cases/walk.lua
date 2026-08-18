@@ -177,15 +177,15 @@ function M.aWalkLegCarriesBothSidesOfTheDoor()
     end
 end
 
-function M.aWalkLegDoesNotMakeAStopAnInterchange()
-    -- The distinction the whole model rests on: a vehicle change you can make
-    -- standing still is not the same as one that costs you a walk, and only
-    -- the first is an interchange.
+function M.aWalkLegMakesAStopAnInterchange()
+    -- Walking counts: a player standing at the strider stop can reach the boat
+    -- through one door, and does. What `modesAt` reports stays narrower --
+    -- what meets on this exact spot -- so the two facts remain separable.
     local hall = interior('Town, Guild', 0, 0)
     local street = exterior('Town', 30000, 0)
     local far = exterior('Far', 90000, 0)
     local g = graph.build({
-        { id = 'guide', name = 'Guide', class = 'shipmaster', place = hall,
+        { id = 'sailor', name = 'Sailor', class = 'shipmaster', place = hall,
           destinations = { interior('Other, Guild', 0, 0) } },
         { id = 'driver', name = 'Driver', class = 'caravaner', place = street,
           destinations = { far } },
@@ -198,10 +198,39 @@ function M.aWalkLegDoesNotMakeAStopAnInterchange()
         ['town, guild'] = { door(0, 100, street) },
     })))
 
-    expect.falsy(graph.isTransfer(g, 'place:town'), 'not an interchange')
-    expect.equal(table.concat(graph.modesAt(g, 'place:town'), '+'), 'strider', 'what meets there')
+    expect.truthy(graph.isTransfer(g, 'place:town'), 'an interchange, on foot')
+    expect.equal(table.concat(graph.modesAt(g, 'place:town'), '+'), 'strider',
+        'what meets on the spot')
     expect.equal(table.concat(graph.modesWithinWalk(g, 'place:town'), '+'), 'boat+strider',
         'what is reachable on foot')
+end
+
+function M.aHallAndItsStreetAreOneInterchangeNotTwo()
+    -- Counted as places: both stops are interchanges in their own right, and
+    -- reporting both would count the same junction twice.
+    local hall = interior('Town, Guild', 0, 0)
+    local street = exterior('Town', 30000, 0)
+    local far = exterior('Far', 90000, 0)
+    local g = graph.build({
+        { id = 'sailor', name = 'Sailor', class = 'shipmaster', place = hall,
+          destinations = { interior('Other, Guild', 0, 0) } },
+        { id = 'driver', name = 'Driver', class = 'caravaner', place = street,
+          destinations = { far } },
+    }, { modes = { classes = {
+            ['caravaner'] = { id = 'strider', label = 'Silt strider' },
+            ['shipmaster'] = { id = 'boat', label = 'Boat' },
+        }, overrides = {}, exclude = {}, unknown = { id = 'unknown', label = 'Unknown' } } })
+
+    graph.link(g, walk.links({ stopIn(hall) }, doorsFrom({
+        ['town, guild'] = { door(0, 100, street) },
+    })))
+
+    local found = graph.interchanges(g)
+    expect.count(found, 1, 'interchanges')
+    expect.equal(found[1].name, 'Town', 'named after the street, not the hall')
+    expect.count(found[1].stops, 2, 'stops folded into it')
+    expect.truthy(found[1].onFoot, 'the change costs a walk')
+    expect.equal(table.concat(found[1].modes, '+'), 'boat+strider', 'modes across the junction')
 end
 
 function M.linkingCanAddAStopNoVehicleServes()

@@ -309,8 +309,35 @@ function M.modesAt(graph, key)
     return list
 end
 
+--- Can you change vehicle here?
+--
+-- Walking counts. Standing at Balmora's silt strider, the guild guide is one
+-- door and 5137 units away, and a player who wants to go to Caldera makes that
+-- change without thinking about it. A planner that called this "not an
+-- interchange" would be describing the data structure rather than the world.
+--
+-- `modesAt` remains the narrower fact -- what meets on this exact spot -- for
+-- anything that needs to tell the two apart.
 function M.isTransfer(graph, key)
-    return #M.modesAt(graph, key) > 1
+    return #M.modesWithinWalk(graph, key) > 1
+end
+
+--- Every stop reachable from this one on foot, including itself.
+function M.walkGroup(graph, key)
+    local seen = { [key] = true }
+    local group = { key }
+    local index = 1
+    while index <= #group do
+        for _, edge in ipairs(M.edgesFrom(graph, group[index])) do
+            if edge.mode == 'walk' and not seen[edge.to] then
+                seen[edge.to] = true
+                group[#group + 1] = edge.to
+            end
+        end
+        index = index + 1
+    end
+    table.sort(group)
+    return group
 end
 
 --- Every vehicle meeting here or one walk leg away.
@@ -341,6 +368,78 @@ end
 --- Legs leaving a stop.
 function M.edgesFrom(graph, key)
     return graph.edges[key] or {}
+end
+
+--- The interchanges, counted as places rather than as stops.
+--
+-- A hall and the street outside it are one junction, not two: reporting both
+-- would count Balmora twice and make Vivec -- where the guild hall walks out
+-- onto a canton that is already an interchange -- look like a second one.
+-- So each walk-connected group is folded into a single entry, named after
+-- whichever of its stops the most vehicles reach.
+--
+-- `onFoot` says whether the change costs a walk: false at Khuul, where boat
+-- and strider meet on the spot, true at Balmora, where they do not.
+function M.interchanges(graph)
+    local claimed = {}
+    local found = {}
+
+    -- Which stop lends the group its name: the one the most vehicles reach,
+    -- then the one out of doors -- a junction is called Balmora, not Balmora,
+    -- Guild of Mages -- and alphabetical order only to break a real tie.
+    local function namesTheGroup(candidate, incumbent)
+        if incumbent == nil then
+            return true
+        end
+        local here, there = #M.modesAt(graph, candidate), #M.modesAt(graph, incumbent)
+        if here ~= there then
+            return here > there
+        end
+        local outside, alsoOutside = graph.nodes[candidate].isExterior, graph.nodes[incumbent].isExterior
+        if outside ~= alsoOutside then
+            return outside
+        end
+        return graph.nodes[candidate].name:lower() < graph.nodes[incumbent].name:lower()
+    end
+
+    for _, key in ipairs(graph.order) do
+        if not claimed[key] and M.isTransfer(graph, key) then
+            local group = M.walkGroup(graph, key)
+            local modes, best, spot = {}, nil, false
+            for _, member in ipairs(group) do
+                claimed[member] = true
+                local here = M.modesAt(graph, member)
+                if #here > 1 then
+                    spot = true
+                end
+                if namesTheGroup(member, best) then
+                    best = member
+                end
+                for _, mode in ipairs(here) do
+                    modes[mode] = true
+                end
+            end
+
+            local modeList = {}
+            for mode in pairs(modes) do
+                modeList[#modeList + 1] = mode
+            end
+            table.sort(modeList)
+
+            found[#found + 1] = {
+                key = best,
+                name = graph.nodes[best].name,
+                stops = group,
+                modes = modeList,
+                onFoot = not spot,
+            }
+        end
+    end
+
+    table.sort(found, function(a, b)
+        return a.name:lower() < b.name:lower()
+    end)
+    return found
 end
 
 return M

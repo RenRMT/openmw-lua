@@ -30,9 +30,17 @@ Output goes to `openmw.log`, tagged `[TravelNetwork]`.
 
 On unmodded Morrowind + Tribunal + Bloodmoon the dump reports **33 stops and
 125 legs** (ten of them on foot) from **36 operators**, and — the number worth
-the whole exercise — **three interchanges**: Khuul and Molag Mar, where boat
-meets silt strider, and Vivec's Foreign Quarter, where boat meets gondola.
-Nowhere else in the game can you change vehicle without walking.
+the whole exercise — **five interchanges**:
+
+| Place | Modes | |
+|---|---|---|
+| Khuul | boat + strider | vehicles meet on the spot |
+| Molag Mar | boat + strider | vehicles meet on the spot |
+| Vivec, Foreign Quarter | boat + gondola + guide | boat and gondola on the spot, the guild hall a walk away |
+| Ald-ruhn | guide + strider | the change costs a walk |
+| Balmora | guide + strider | the change costs a walk |
+
+Five places in a province, for four modes of transport.
 
 ## API
 
@@ -100,11 +108,15 @@ the street.
 
 Two consequences worth knowing:
 
-- **Walk legs never make a stop an interchange.** `modesAt` stays the vehicles
-  that meet in one place, so the count of real interchanges cannot inflate;
-  `modesWithinWalk` is the wider view. Balmora's strider and its guild guide are
-  one door apart, which is a change you can make — and a different fact from
-  Khuul, where two vehicles meet on the spot.
+- **Walking counts as changing.** `isTransfer` asks what you can reach on foot,
+  because a player at Balmora's silt strider who wants Caldera walks to the
+  guild hall without thinking about it. `modesAt` stays the narrower fact —
+  what meets on this exact spot — so anything needing to tell Khuul from
+  Balmora still can, and `interchanges()` reports it as `onFoot`.
+- **A junction is a place, not a stop.** A guild hall and the street outside it
+  are one interchange between them, named after whichever stop the most
+  vehicles reach. Otherwise Balmora would be counted twice and Vivec's hall
+  would look like a separate junction from the canton it opens onto.
 - **Sadrith Mora's guide is not joined to its boats.** The guide lets out at
   Wolverine Hall, 11593 units away in a differently named cell, and no door
   connects two exteriors. The graph says they are separate stops, because they
