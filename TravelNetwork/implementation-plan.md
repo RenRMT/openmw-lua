@@ -199,6 +199,47 @@ is not a trap, so either is defensible.
 
 ---
 
+## 2c. Doors, and what they join (2026-08-18)
+
+Travel records describe vehicles and nothing else, so the guide network came out
+of phase 1 as an island: five guild halls connected to each other and to nothing
+else, because in the world you walk through a door and no travel record says so.
+
+**Teleport doors say so.** `types.Door.destCell` and `destPosition` name where a
+door opens onto, and `getAll(types.Door)` reads them from cells the player has
+never loaded. Every vanilla guild hall reaches the street in at most two doors:
+
+| Hall | Doors | Opens onto | Already a stop? |
+|---|---|---|---|
+| Balmora, Guild of Mages | 1 | Balmora | yes |
+| Ald-ruhn, Guild of Mages | 1 | Ald-ruhn | yes |
+| Caldera, Guild of Mages | 1 | Caldera | **no** — Caldera has no vehicle at all |
+| Vivec, Guild of Mages | 2, via the Foreign Quarter Plaza | Vivec, Foreign Quarter | yes |
+| Sadrith Mora, Wolverine Hall: Mage's Guild | 2, via Wolverine Hall | Wolverine Hall | **no** |
+
+Three of the five need no new rule beyond the door: the doorstep lands in the
+same named exterior cell as the existing stop, 3.2k–4k units away, and name
+keying already merges them. The other two add a stop.
+
+**The decision, 2026-08-18: doors only.** No authored pairs, no proximity links.
+A walk leg costs its distance, has no fare and takes no time, because the player
+really does walk it — booking only ever teleports vehicle legs.
+
+**What that costs, honestly:** Sadrith Mora's guide lets you out at Wolverine
+Hall, 11593 units from the boats, in a differently named cell. No door connects
+two exteriors, so the graph keeps them apart and the planner will send you to
+Sadrith Mora by boat when guide-plus-a-short-walk would have been faster. That
+is a real quality gap, and it is one stop in the whole game. Revisit it when the
+planner exists and it can be judged as a player rather than as a table.
+
+**Interchanges do not inflate.** A walk leg registers no mode on either stop, so
+`modesAt` stays the list of vehicles meeting in one place — still three — and
+`modesWithinWalk` is the wider view for the planner. Balmora's strider and its
+guild guide are one door and 3732 units apart: a change a player makes without
+thinking, and a different fact from Khuul, where two vehicles meet on the spot.
+
+---
+
 ## 3. Data model
 
 ```
@@ -271,6 +312,10 @@ carries the API and the console commands.
 Every target was hit against the fixture: **36 operators used** (37 placed less
 the excluded test dummy), **115 legs**, **31 stops**, 4 modes, 1 unplaced record
 skipped. Built once and cached; the sweep behind it is ~600 ms (§2b).
+
+Walk links followed the same day (§2c), joining the guide network to the rest
+through the doors of the buildings it runs between: **33 stops, 125 legs**, ten
+of them on foot.
 
 **The result worth the exercise: the whole game has three interchanges.** Khuul
 and Molag Mar, where boat meets silt strider, and Vivec's Foreign Quarter, where
@@ -364,22 +409,10 @@ without erroring.
   files (§2a). Keep the loop, expect nothing.
 - ~~Are guild guides distinguishable by class?~~ **Yes** — class `Guild Guide`,
   and gondoliers likewise (§2a).
-- **How do you get from a town to the guild hall standing in it?** The guide
-  network turns out to be a disconnected island: guides run between interiors,
-  and no leg joins `Balmora, Guild of Mages` to `Balmora`, because in the world
-  you walk out of a door and the graph has no concept of that. **This blocks
-  phase 2** — without walk links, no route can mix a guide with a strider, and
-  Caldera is reachable by nothing else. Two ways:
-  - **Derive them from doors.** A `Door` in a guild hall names its destination
-    cell and position; a walk link is a zero-fare edge between the stop inside
-    and the stop the door lands in. Principled, data-driven, costs another cell
-    sweep — which is now known to be affordable.
-  - **Parse the cell name.** `Balmora, Guild of Mages` starts with the town it
-    is in. Cheap, and wrong the moment a mod names a hall differently; it also
-    fails Caldera, which has a hall and no other stop.
-
-  Doors are the better answer for the same reason the mode table is not a
-  guess: it reads what the game shipped.
+- ~~How do you get from a town to the guild hall standing in it?~~ **Doors**,
+  and they answer it completely (§2c). Decided 2026-08-18: door-derived links
+  only, no authored pairs and no proximity links, and a walk leg costs its
+  distance with no fare and no time -- the player really does walk it.
 - ~~How should a stop the game never named be labelled?~~ Region plus grid
   reference — "Azura's Coast (19, -5)" — with "Wilderness" when even the region
   is missing. Vanilla needs it exactly once, for the Holamayan landing.

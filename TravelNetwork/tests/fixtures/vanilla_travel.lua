@@ -13,6 +13,10 @@
 -- which is what the ESM says and all it says -- `exteriorNames` maps the
 -- grid coordinates of the named exterior cells to their names.
 --
+-- `doors` holds the teleport doors inside the interiors a stop can be
+-- reached through, keyed by lowercased cell name. A door with no
+-- `destCell` opens onto the exterior, which is where a chain ends.
+--
 -- Sorted by record id, so a regeneration that changes nothing produces
 -- no diff. Placements keep the order the cells gave them.
 
@@ -1174,6 +1178,217 @@ return {
                     position = { -69200.7270, 142117.5620, 214.0790 },
                     rotation = { 0.0000, 0.0000, 3.0832 },
                 },
+            },
+        },
+    },
+    doors = {
+        ['ald-ruhn, guild of mages'] = {
+            {
+                position = { -514.1500, -175.4230, 15.9650 },
+                destPosition = { -14801.9000, 53102.4000, 2304.0000 },
+            },
+        },
+        ['balmora, guild of mages'] = {
+            {
+                position = { -128.0000, 0.0000, 128.0000 },
+                destPosition = { -21589.6000, -14510.2000, 934.4450 },
+            },
+            {
+                position = { -512.0000, -384.0000, 128.0000 },
+                destPosition = { -22037.1000, -14007.1000, 888.8680 },
+            },
+            {
+                position = { -512.0000, -384.0000, -128.0000 },
+                destPosition = { -22066.8000, -14040.2000, 621.3640 },
+            },
+        },
+        ['caldera, guild of mages'] = {
+            {
+                position = { 1056.0000, 816.0000, 256.0000 },
+                destPosition = { -13191.9000, 19662.2000, 1657.2100 },
+            },
+        },
+        ['sadrith mora, wolverine hall'] = {
+            {
+                position = { 5000.0000, 3072.0000, 14272.0000 },
+                destPosition = { 149552.0000, 29920.0000, 1200.0000 },
+            },
+            {
+                position = { 5120.0000, 3200.0000, 14272.0000 },
+                destPosition = { 149264.0000, 30272.0000, 1264.0000 },
+            },
+            {
+                position = { 4096.0000, 4224.0000, 14272.0000 },
+                destPosition = { 149072.0000, 29168.0000, 1200.0000 },
+            },
+            {
+                position = { 3840.0000, 4480.0000, 14272.0000 },
+                destPosition = { 148224.0000, 29184.0000, 1264.0000 },
+            },
+            {
+                position = { 4096.0000, 3440.0000, 14272.0000 },
+                destPosition = { 149248.0000, 29184.0000, 1200.0000 },
+            },
+            {
+                destCell = 'Sadrith Mora, Wolverine Hall: Fighter\'s Guild',
+                position = { 2048.0000, 4224.0000, 14016.0000 },
+                destPosition = { -224.0000, -416.0000, 96.0000 },
+            },
+            {
+                position = { 4080.0000, 3072.0000, 14528.0000 },
+                destPosition = { 149680.0000, 29344.0000, 1808.0000 },
+            },
+            {
+                position = { 4096.0000, 4336.0000, 14529.2000 },
+                destPosition = { 148608.0000, 29088.0000, 1680.0000 },
+            },
+            {
+                position = { 5120.0000, 3072.0000, 14528.0000 },
+                destPosition = { 149616.0000, 30240.0000, 1568.0000 },
+            },
+            {
+                position = { 3968.0000, 3072.0000, 14272.0000 },
+                destPosition = { 149552.0000, 28896.0000, 1200.0000 },
+            },
+            {
+                position = { 4224.0000, 3328.0000, 14272.0000 },
+                destPosition = { 149536.0000, 29712.0000, 1200.0000 },
+            },
+            {
+                position = { 2560.0000, 3903.9000, 15040.0000 },
+                destPosition = { 148992.0000, 28128.0000, 2464.0000 },
+            },
+            {
+                destCell = 'Sadrith Mora, Wolverine Hall: Fighter\'s Guild',
+                position = { 2560.0000, 4224.0000, 14016.0000 },
+                destPosition = { 288.0000, -416.0000, 96.0000 },
+            },
+            {
+                position = { 2432.0000, 4096.0000, 13760.0000 },
+                destPosition = { 148997.0000, 27500.2000, 690.6460 },
+            },
+            {
+                position = { 2048.0000, 3968.0000, 14272.0000 },
+                destPosition = { 148927.0000, 27730.2000, 1472.0000 },
+            },
+            {
+                position = { 2560.0000, 3968.0000, 14784.0000 },
+                destPosition = { 148576.0000, 28192.0000, 1792.0000 },
+            },
+            {
+                destCell = 'Sadrith Mora, Wolverine Hall: Mage\'s Guild',
+                position = { 2560.0000, 3968.0000, 14528.0000 },
+                destPosition = { 448.0000, 192.0000, 160.0000 },
+            },
+            {
+                destCell = 'Sadrith Mora, Wolverine Hall: Imperial Shrine',
+                position = { 2560.0000, 4224.0000, 14272.0000 },
+                destPosition = { -320.0000, -96.0000, 0.0000 },
+            },
+            {
+                destCell = 'Sadrith Mora, Wolverine Hall: Fighter\'s Guild',
+                position = { 2944.0000, 4352.0000, 14016.0000 },
+                destPosition = { 544.0000, -416.0000, 96.0000 },
+            },
+        },
+        ['sadrith mora, wolverine hall: fighter\'s guild'] = {
+            {
+                destCell = 'Sadrith Mora, Wolverine Hall',
+                position = { 672.0000, -416.0000, 128.0000 },
+                destPosition = { 3072.0000, 4352.0000, 13984.0000 },
+            },
+            {
+                destCell = 'Sadrith Mora, Wolverine Hall',
+                position = { 288.0000, -544.0000, 128.0000 },
+                destPosition = { 2560.0000, 4064.0000, 13984.0000 },
+            },
+            {
+                destCell = 'Sadrith Mora, Wolverine Hall',
+                position = { -224.0000, -544.0000, 128.0000 },
+                destPosition = { 2048.0000, 4096.0000, 13984.0000 },
+            },
+        },
+        ['sadrith mora, wolverine hall: imperial shrine'] = {
+            {
+                position = { 59.4059, -36.9818, 0.0000 },
+                destPosition = { 148896.0000, 28512.0000, 1472.0000 },
+            },
+            {
+                destCell = 'Sadrith Mora, Wolverine Hall',
+                position = { -320.0000, -224.0000, 32.0000 },
+                destPosition = { 2560.0000, 4064.0000, 14240.0000 },
+            },
+        },
+        ['sadrith mora, wolverine hall: mage\'s guild'] = {
+            {
+                destCell = 'Sadrith Mora, Wolverine Hall',
+                position = { 452.0000, 56.0000, 192.0000 },
+                destPosition = { 2560.0000, 3830.0200, 14499.4000 },
+            },
+        },
+        ['toddtest'] = {
+            {
+                destCell = 'ToddTest',
+                position = { 2113.2400, 1818.3600, -59.3026 },
+                destPosition = { 2176.0000, 3648.0000, 0.0000 },
+            },
+        },
+        ['vivec, alusaron: smith'] = {
+            {
+                destCell = 'Vivec, Foreign Quarter Plaza',
+                position = { 3904.0000, 4224.0000, 15616.0000 },
+                destPosition = { -993.2440, -164.8450, 316.1320 },
+            },
+        },
+        ['vivec, foreign quarter plaza'] = {
+            {
+                destCell = 'Vivec, Guild of Mages',
+                position = { -823.4110, 491.1880, 322.9260 },
+                destPosition = { 0.8172, 157.1130, -167.3720 },
+            },
+            {
+                destCell = 'Vivec, Alusaron: Smith',
+                position = { -985.0540, -312.4300, 322.9260 },
+                destPosition = { 3967.2000, 4098.4600, 15704.4000 },
+            },
+            {
+                destCell = 'Vivec, Guild of Fighters',
+                position = { 1156.6900, 494.1560, 322.9260 },
+                destPosition = { -248.3660, 186.8750, -164.3120 },
+            },
+            {
+                destCell = 'Vivec, Ralen Tilvur: Smith',
+                position = { 1062.6000, -286.4690, 322.9260 },
+                destPosition = { 123.1290, 237.3710, -43.5485 },
+            },
+            {
+                position = { 1480.0500, 128.0000, 412.9600 },
+                destPosition = { 31476.5000, -79741.0000, 3348.0300 },
+            },
+            {
+                position = { -1605.5700, 128.0000, 414.0310 },
+                destPosition = { 28294.0000, -79745.1000, 3357.6100 },
+            },
+        },
+        ['vivec, guild of fighters'] = {
+            {
+                destCell = 'Vivec, Foreign Quarter Plaza',
+                position = { -320.0000, 320.0000, -256.0000 },
+                destPosition = { 1165.2400, 367.1320, 309.8150 },
+            },
+        },
+        ['vivec, guild of mages'] = {
+            {
+                destCell = 'Vivec, Foreign Quarter Plaza',
+                position = { 64.0000, 320.0000, -256.0000 },
+                destPosition = { -826.7930, 357.8340, 309.6950 },
+            },
+        },
+        ['vivec, ralen tilvur: smith'] = {
+            {
+                destCell = 'Vivec, Foreign Quarter Plaza',
+                position = { 192.0000, 384.0000, -128.0000 },
+                destPosition = { 1063.8700, -149.9930, 308.3500 },
             },
         },
     },

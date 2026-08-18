@@ -81,8 +81,18 @@ REF_ID_RE = re.compile(r'^    ID: "(?P<id>.*)"\s*$')
 REF_POS_RE = re.compile(r"^    Position: \((?P<vec>[^)]*)\)\s*$")
 REF_ROT_RE = re.compile(r"^    Rotation: \((?P<vec>[^)]*)\)\s*$")
 REF_DELETED_RE = re.compile(r"^    Deleted: (?P<value>\d+)\s*$")
+REF_DEST_POS_RE = re.compile(r"^    Destination position: \((?P<vec>[^)]*)\)\s*$")
+REF_DEST_CELL_RE = re.compile(r"^    Destination cell: (?P<cell>.*)$")
 
 CELL_INTERIOR_FLAG = 0x1
+
+DOOR_RECORD_RE = re.compile(r'^Record: DOOR "(?P<id>.*)"\s*$')
+
+# How far a walk link may chase a door chain out of a building. Vanilla's
+# deepest stop is two doors in (the Vivec and Wolverine Hall guild halls); the
+# limit exists so a mod with a warren of interiors cannot make the fixture --
+# or the runtime walk -- unbounded.
+MAX_DOOR_HOPS = 3
 
 
 def run_esmtool(esmtool: pathlib.Path, esm: pathlib.Path, args: list[str]):
@@ -172,14 +182,62 @@ def dump_operators(esmtool: pathlib.Path, esm: pathlib.Path) -> "OrderedDict[str
     )
 
 
-def dump_placements(esmtool: pathlib.Path, esm: pathlib.Path, wanted: set[str]):
-    """Where each wanted record is placed, plus the named exterior cells.
+def dump_door_ids(esmtool: pathlib.Path, esm: pathlib.Path) -> set[str]:
+    """Record ids of every door, lowercased.
 
-    Both come out of the same pass because both live in CELL records and the
-    pass is the expensive part.
+    A cell reference says what it is only by id, so recognising a door means
+    knowing the ids first.
+    """
+    ids = set()
+    for line in run_esmtool(esmtool, esm, ["--type", "DOOR"]):
+        match = DOOR_RECORD_RE.match(line)
+        if match:
+            ids.add(match.group("id").lower())
+    return ids
+
+
+def reachable_doors(doors: dict, start_cells: set[str]) -> dict:
+    """Trim the door table to what a walk link could actually use.
+
+    Breadth-first from the cells that hold a stop, following doors inward and
+    stopping at the first exterior -- which is the same walk the mod does at
+    runtime. Everything else is thousands of doors nobody will ever ask about.
+    """
+    by_name = {name.lower(): entries for name, entries in doors.items()}
+    kept: dict[str, list[dict]] = {}
+    frontier = [(name.lower(), 0) for name in start_cells]
+    seen = {name for name, _ in frontier}
+
+    while frontier:
+        cell_name, hops = frontier.pop(0)
+        entries = by_name.get(cell_name)
+        if not entries:
+            continue
+        kept[cell_name] = entries
+        if hops >= MAX_DOOR_HOPS:
+            continue
+        for door in entries:
+            # No destination cell means the exterior, where the chain ends.
+            destination = door.get("destCell")
+            if destination and destination.lower() not in seen:
+                seen.add(destination.lower())
+                frontier.append((destination.lower(), hops + 1))
+    return kept
+
+
+def dump_placements(esmtool: pathlib.Path, esm: pathlib.Path, wanted: set[str],
+                    door_ids: set[str]):
+    """Where each wanted record is placed, the named exterior cells, and the
+    teleport doors inside interiors.
+
+    All three come out of the same pass because all three live in CELL records
+    and the pass is the expensive part. The doors are what connect a stop
+    inside a building to the street outside it -- the one thing travel records
+    do not describe.
     """
     placements: dict[str, list[dict]] = {}
     exterior_names: dict[tuple[int, int], str] = {}
+    doors: dict[str, list[dict]] = {}
 
     cell: dict = {}
     ref: dict | None = None
@@ -187,7 +245,21 @@ def dump_placements(esmtool: pathlib.Path, esm: pathlib.Path, wanted: set[str]):
     def flush(reference: dict | None) -> None:
         if reference is None or reference.get("deleted"):
             return
-        if reference["id"] not in wanted or "position" not in reference:
+        if "position" not in reference:
+            return
+        # A teleport door inside an interior: one end of a walk link. Doors in
+        # exteriors lead inward and are not needed -- the chain is walked from
+        # the stop outwards.
+        if (reference.get("id", "").lower() in door_ids
+                and "destPosition" in reference and cell.get("interior")):
+            door = {
+                "position": reference["position"],
+                "destPosition": reference["destPosition"],
+            }
+            if reference.get("destCell"):
+                door["destCell"] = reference["destCell"]
+            doors.setdefault(cell.get("name", ""), []).append(door)
+        if reference["id"] not in wanted:
             return
         entry = {
             "position": reference["position"],
@@ -252,9 +324,17 @@ def dump_placements(esmtool: pathlib.Path, esm: pathlib.Path, wanted: set[str]):
         deleted = REF_DELETED_RE.match(line)
         if deleted:
             ref["deleted"] = deleted.group("value") != "0"
+            continue
+        destination = REF_DEST_POS_RE.match(line)
+        if destination:
+            ref["destPosition"] = parse_vec(destination.group("vec"))
+            continue
+        destination_cell = REF_DEST_CELL_RE.match(line)
+        if destination_cell:
+            ref["destCell"] = destination_cell.group("cell").strip()
 
     flush(ref)
-    return placements, exterior_names
+    return placements, exterior_names, doors
 
 
 def lua_string(value: str) -> str:
@@ -280,7 +360,7 @@ def lua_entry(fields: list[tuple[str, str]], indent: int) -> list[str]:
     return lines
 
 
-def emit(operators: "OrderedDict[str, dict]", exterior_names: dict) -> str:
+def emit(operators: "OrderedDict[str, dict]", exterior_names: dict, doors: dict) -> str:
     lines = [
         "-- GENERATED FILE -- do not edit.",
         "--",
@@ -296,6 +376,10 @@ def emit(operators: "OrderedDict[str, dict]", exterior_names: dict) -> str:
         "-- destination or placement with no `cell` is in the exterior worldspace,",
         "-- which is what the ESM says and all it says -- `exteriorNames` maps the",
         "-- grid coordinates of the named exterior cells to their names.",
+        "--",
+        "-- `doors` holds the teleport doors inside the interiors a stop can be",
+        "-- reached through, keyed by lowercased cell name. A door with no",
+        "-- `destCell` opens onto the exterior, which is where a chain ends.",
         "--",
         "-- Sorted by record id, so a regeneration that changes nothing produces",
         "-- no diff. Placements keep the order the cells gave them.",
@@ -340,6 +424,18 @@ def emit(operators: "OrderedDict[str, dict]", exterior_names: dict) -> str:
         lines.append("        },")
 
     lines.append("    },")
+    lines.append("    doors = {")
+    for cell_name in sorted(doors):
+        lines.append(f"        [{lua_string(cell_name)}] = {{")
+        for door in doors[cell_name]:
+            fields = []
+            if door.get("destCell"):
+                fields.append(("destCell", lua_string(door["destCell"])))
+            fields.append(("position", lua_vec(door["position"])))
+            fields.append(("destPosition", lua_vec(door["destPosition"])))
+            lines.extend(lua_entry(fields, 12))
+        lines.append("        },")
+    lines.append("    },")
     lines.append("    exteriorNames = {")
     for grid in sorted(exterior_names):
         key = "%d,%d" % grid
@@ -350,7 +446,8 @@ def emit(operators: "OrderedDict[str, dict]", exterior_names: dict) -> str:
     return "\n".join(lines)
 
 
-def report(operators: "OrderedDict[str, dict]", per_file: list, exterior_names: dict) -> None:
+def report(operators: "OrderedDict[str, dict]", per_file: list, exterior_names: dict,
+           doors: dict) -> None:
     """What the dump is actually for: the answers, printed."""
     print()
     for name, count, creatures in per_file:
@@ -362,6 +459,8 @@ def report(operators: "OrderedDict[str, dict]", per_file: list, exterior_names: 
     print(f"  {len(operators)} operators, {destinations} destinations "
           f"({interior} interior, {destinations - interior} exterior)")
     print(f"  {len(exterior_names)} named exterior cells")
+    door_count = sum(len(entries) for entries in doors.values())
+    print(f"  {door_count} teleport doors in {len(doors)} interiors a stop can be reached through")
 
     print()
     print("  operator classes:")
@@ -426,19 +525,36 @@ def main() -> int:
     # Placement comes second because it needs to know which ids to keep, and a
     # later content file can place -- or move -- an operator the first defined.
     exterior_names: dict[tuple[int, int], str] = {}
+    doors: dict[str, list[dict]] = {}
     for name in CONTENT_FILES:
         print(f"walking cells in {name} ...")
-        placements, names = dump_placements(args.esmtool, args.data / name, set(merged))
+        door_ids = dump_door_ids(args.esmtool, args.data / name)
+        placements, names, found = dump_placements(
+            args.esmtool, args.data / name, set(merged), door_ids)
         exterior_names.update(names)
+        for cell_name, entries in found.items():
+            doors.setdefault(cell_name, []).extend(entries)
         for record_id, entries in placements.items():
             merged[record_id].setdefault("placements", []).extend(entries)
 
+    # A stop is inside a building when its placement or one of its
+    # destinations names an interior cell; those are the chains worth keeping.
+    interior_stops = set()
+    for record in merged.values():
+        for placement in record.get("placements", []):
+            if placement.get("isInterior") and placement.get("cell"):
+                interior_stops.add(placement["cell"])
+        for destination in record["destinations"]:
+            if destination.get("cell"):
+                interior_stops.add(destination["cell"])
+    doors = reachable_doors(doors, interior_stops)
+
     OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUT_PATH.write_text(emit(merged, exterior_names), encoding="utf-8")
+    OUT_PATH.write_text(emit(merged, exterior_names, doors), encoding="utf-8")
 
     print()
     print(f"wrote {OUT_PATH.relative_to(PROJECT.parent)}")
-    report(merged, per_file, exterior_names)
+    report(merged, per_file, exterior_names, doors)
     return 0
 
 

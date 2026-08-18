@@ -86,6 +86,28 @@ function M.operators()
     return operators
 end
 
+--- Teleport doors in one cell, in the shape walk.links takes.
+--
+-- The test-side twin of `adapter.doorsFor`. The fixture keys doors by
+-- lowercased cell name, which is also what the engine reports as an interior
+-- cell's id -- see the repo's openmw-lua-notes.md §4.
+function M.doorsFor(cellId)
+    local entries = data.doors[string.lower(cellId)]
+    if not entries then
+        return {}
+    end
+    local doors = {}
+    for _, entry in ipairs(entries) do
+        local destination = vector(entry.destPosition)
+        doors[#doors + 1] = {
+            position = vector(entry.position),
+            dest = entry.destCell and interiorPoint(destination, entry.destCell)
+                or exteriorPoint(destination),
+        }
+    end
+    return doors
+end
+
 function M.raw()
     return data
 end

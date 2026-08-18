@@ -67,6 +67,37 @@ local function operatorFrom(record, object, cell)
     }
 end
 
+--- Teleport doors in one cell, in the shape walk.links takes.
+--
+-- Only cells that hold a stop, and the few a door chain passes through, are
+-- ever asked -- five guild halls and their hallways in vanilla. Sweeping every
+-- cell for doors would mean thousands of them, none of which any route can
+-- use.
+function M.doorsFor(cellId)
+    local ok, cell = pcall(world.getCellById, cellId)
+    if not ok or cell == nil then
+        return {}
+    end
+    local objects = select(2, pcall(cell.getAll, cell, types.Door))
+    if type(objects) ~= 'userdata' and type(objects) ~= 'table' then
+        return {}
+    end
+
+    local doors = {}
+    for _, door in ipairs(objects) do
+        if types.Door.isTeleport(door) then
+            local destination = pointFromCell(types.Door.destCell(door), types.Door.destPosition(door))
+            if destination then
+                doors[#doors + 1] = {
+                    position = { x = door.position.x, y = door.position.y, z = door.position.z },
+                    dest = destination,
+                }
+            end
+        end
+    end
+    return doors
+end
+
 --- Every travel operator in the world, in the shape graph.build takes.
 --
 -- Discovery is by a non-empty `travelDestinations`, never by

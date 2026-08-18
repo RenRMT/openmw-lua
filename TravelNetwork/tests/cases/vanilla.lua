@@ -7,11 +7,28 @@
 local expect = require('support.expect')
 local fixture = require('support.fixture')
 local graph = require('scripts.TravelNetwork.graph')
+local walk = require('scripts.TravelNetwork.walk')
 
 local M = {}
 
+--- The vehicle network on its own, before any door is opened.
 local function vanilla()
     return graph.build(fixture.operators())
+end
+
+--- The whole thing: vehicles, then the doors joining stops inside buildings
+-- to the streets outside them. This is what the mod builds in game.
+local function linked()
+    local g = vanilla()
+    local stops = {}
+    for _, key in ipairs(g.order) do
+        local node = g.nodes[key]
+        if not node.isExterior then
+            stops[#stops + 1] = { cellId = node.cellId, position = node.position }
+        end
+    end
+    graph.link(g, walk.links(stops, fixture.doorsFor))
+    return g
 end
 
 function M.theShippedNetworkHasTheShapeTheDumpFound()
@@ -54,21 +71,79 @@ function M.theWholeNetworkHasExactlyThreeInterchanges()
         'Khuul, Molag Mar, Vivec, Foreign Quarter', 'the interchanges')
 end
 
-function M.theGuildNetworkIsAnIslandUntilWalkLinksExist()
-    -- Guild guides operate between interiors, and no leg connects a guild hall
-    -- to the town it stands in -- in the world you walk out of the door, and
-    -- the graph has no concept of that yet. Guarding it so the day walk links
-    -- land, this test fails and gets rewritten rather than quietly passing.
-    local g = vanilla()
-    expect.truthy(g.nodes['cell:balmora, guild of mages'], 'the guild hall is a stop')
-    expect.truthy(g.nodes['place:balmora'], 'the town is a stop')
+function M.everyGuildHallFindsItsWayOutside()
+    -- All five, and none of them needs more than two doors: three open onto
+    -- the street, Vivec's onto a canton plaza first, Sadrith Mora's onto the
+    -- inside of Wolverine Hall.
+    local g = linked()
+    local halls = {
+        ['cell:ald-ruhn, guild of mages'] = 'Ald-ruhn',
+        ['cell:balmora, guild of mages'] = 'Balmora',
+        ['cell:caldera, guild of mages'] = 'Caldera',
+        ['cell:vivec, guild of mages'] = 'Vivec, Foreign Quarter',
+        ["cell:sadrith mora, wolverine hall: mage's guild"] = 'Wolverine Hall',
+    }
 
-    for _, leg in ipairs(graph.edgesFrom(g, 'place:balmora')) do
-        expect.falsy(leg.to == 'cell:balmora, guild of mages', 'no leg from town to hall')
+    for key, street in pairs(halls) do
+        local found = nil
+        for _, leg in ipairs(graph.edgesFrom(g, key)) do
+            if leg.mode == 'walk' then
+                found = g.nodes[leg.to].name
+            end
+        end
+        expect.equal(found, street, key .. ' walks out to')
     end
-    for _, leg in ipairs(graph.edgesFrom(g, 'cell:balmora, guild of mages')) do
-        expect.falsy(leg.to == 'place:balmora', 'no leg from hall to town')
+end
+
+function M.walkingJoinsTheGuideNetworkToTheRest()
+    -- The gap that used to make the guide network an island: standing at
+    -- Balmora's silt strider, the guild guide is one door away.
+    local g = linked()
+    expect.equal(table.concat(graph.modesAt(g, 'place:balmora'), '+'), 'strider',
+        'what meets at the strider stop')
+    expect.equal(table.concat(graph.modesWithinWalk(g, 'place:balmora'), '+'), 'guide+strider',
+        'what is reachable on foot from it')
+end
+
+function M.walkLinksDoNotInventInterchanges()
+    -- Still three. A change of vehicle that costs a walk is a different thing
+    -- from one that does not, and the headline number must not blur them.
+    local g = linked()
+    local count = 0
+    for _, key in ipairs(g.order) do
+        if graph.isTransfer(g, key) then
+            count = count + 1
+        end
     end
+    expect.equal(count, 3, 'interchanges after linking')
+end
+
+function M.doorsAddTheTwoStopsNoVehicleServes()
+    -- Caldera has a guild hall and no vehicle at all; Wolverine Hall is where
+    -- Sadrith Mora's guide lets you out, 11593 units from the boats. Neither
+    -- exists in the vehicle-only graph.
+    local before, after = vanilla(), linked()
+    expect.equal(before.stats.nodes, 31, 'stops before linking')
+    expect.equal(after.stats.nodes, 33, 'stops after linking')
+    expect.equal(after.stats.edges, 125, 'legs after linking')
+    expect.equal(after.stats.walkLegs, 10, 'walk legs -- five doors, both ways')
+
+    expect.isNil(before.nodes['place:caldera'], 'Caldera is unserved by vehicles')
+    expect.truthy(after.nodes['place:caldera'], 'and reachable once doors count')
+    expect.truthy(after.nodes['place:wolverine hall'], 'Wolverine Hall likewise')
+end
+
+function M.sadrithMoraIsNotQuietlyJoinedToItsGuide()
+    -- The choice made when walk links were designed: doors only. The guide
+    -- lets out at Wolverine Hall, the boats are at Sadrith Mora, and no door
+    -- connects two exteriors -- so the graph says they are different stops,
+    -- because they are.
+    local g = linked()
+    for _, leg in ipairs(graph.edgesFrom(g, 'place:wolverine hall')) do
+        expect.falsy(leg.to == 'place:sadrith mora', 'no leg to Sadrith Mora')
+    end
+    expect.equal(table.concat(graph.modesWithinWalk(g, 'place:sadrith mora'), '+'), 'boat',
+        'Sadrith Mora is boats only, even on foot')
 end
 
 function M.aTownWhoseStopsStraddleAGridBoundaryIsOneStop()

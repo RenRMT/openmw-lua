@@ -28,11 +28,11 @@ I.TravelNetwork.rebuild()              -- throw the cache away and walk again
 
 Output goes to `openmw.log`, tagged `[TravelNetwork]`.
 
-On unmodded Morrowind + Tribunal + Bloodmoon the dump reports **31 stops, 115
-legs, 36 operators**, and — the number worth the whole exercise — **three
-interchanges**: Khuul and Molag Mar, where boat meets silt strider, and Vivec's
-Foreign Quarter, where boat meets gondola. Nowhere else in the game can you
-change vehicle without walking.
+On unmodded Morrowind + Tribunal + Bloodmoon the dump reports **33 stops and
+125 legs** (ten of them on foot) from **36 operators**, and — the number worth
+the whole exercise — **three interchanges**: Khuul and Molag Mar, where boat
+meets silt strider, and Vivec's Foreign Quarter, where boat meets gondola.
+Nowhere else in the game can you change vehicle without walking.
 
 ## API
 
@@ -43,6 +43,8 @@ change vehicle without walking.
 | `graph()` | The whole graph, built and cached on first call |
 | `rebuild()` | Discards the cache and rebuilds |
 | `interchanges()` | `{ { key, name, modes }, ... }` for stops serving more than one mode |
+| `modesAt(g, key)` / `modesWithinWalk(g, key)` | Vehicles meeting at a stop; and those one walk leg away |
+| `edgesFrom(g, key)` / `isTransfer(g, key)` | Legs leaving a stop; whether vehicles meet there |
 | `dump(opts)` / `dumpInterchanges()` | Log output; `opts.legs` lists legs |
 
 The graph:
@@ -76,15 +78,34 @@ interior coordinates are cell-local. So:
 | File | What it is |
 |---|---|
 | `scripts/TravelNetwork/graph.lua` | Building, merging and querying. Pure — no `openmw.*` at all, which is what makes it testable |
-| `scripts/TravelNetwork/adapter.lua` | The engine half: walks cells and records, hands `graph` plain tables |
+| `scripts/TravelNetwork/walk.lua` | Follows doors out of a building, so a stop indoors knows which street it belongs to. Pure as well |
+| `scripts/TravelNetwork/adapter.lua` | The engine half: walks cells, records and doors, hands the rest plain tables |
 | `scripts/TravelNetwork/main.lua` | Global script, cache, interface, dumps |
 | `scripts/TravelNetwork/config.lua` | Every tunable |
 | `scripts/TravelNetwork/data/modes.lua` | Which class drives what, plus the four vanilla operators whose class does not say |
 
-## Known gap
+## Walking between stops
 
-**The guild guide network is a separate island.** Guides run between guild
-halls, which are interiors, and no leg connects a hall to the town it stands
-in — in the world you walk out of a door, and the graph has no concept of that.
-Until walk links exist, no route can mix a guide with a strider. See the plan's
-open questions.
+Guild guides run between interiors, so without help the guide network would be
+an island: no leg would connect a hall to the town around it. Doors supply the
+missing legs. Each stop indoors is followed out through teleport doors — up to
+`MAX_DOOR_HOPS` of them, because Vivec's hall opens onto a canton plaza and
+Sadrith Mora's onto the inside of Wolverine Hall — and joined to whatever stop
+is at the far end by a `walk` leg in both directions.
+
+A walk leg carries a distance and nothing else: no fare, since nobody charges
+for a door, and no time, since the player walks it themselves. It measures both
+halves — across the room to the door, then from the doorstep to the stop out on
+the street.
+
+Two consequences worth knowing:
+
+- **Walk legs never make a stop an interchange.** `modesAt` stays the vehicles
+  that meet in one place, so the count of real interchanges cannot inflate;
+  `modesWithinWalk` is the wider view. Balmora's strider and its guild guide are
+  one door apart, which is a change you can make — and a different fact from
+  Khuul, where two vehicles meet on the spot.
+- **Sadrith Mora's guide is not joined to its boats.** The guide lets out at
+  Wolverine Hall, 11593 units away in a differently named cell, and no door
+  connects two exteriors. The graph says they are separate stops, because they
+  are. This is the one place in the game where doors-only is visibly lossy.

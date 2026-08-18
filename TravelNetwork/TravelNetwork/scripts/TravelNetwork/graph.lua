@@ -72,6 +72,27 @@ local function nodeName(point)
     return fallbackName(point)
 end
 
+--- The key a point belongs to, resolved against a graph that already has nodes
+-- in it: named things key directly, anything else joins the nearest stop
+-- within the merge radius or stands alone.
+local function resolveKey(graph, point, mergeRadius)
+    local key = directKey(point)
+    if key then
+        return key
+    end
+    local bestKey, bestDistance = nil, mergeRadius
+    for _, existing in ipairs(graph.order) do
+        local candidate = planarDistance(point.position, graph.nodes[existing].position)
+        if candidate <= bestDistance then
+            bestKey, bestDistance = existing, candidate
+        end
+    end
+    if bestKey then
+        return bestKey
+    end
+    return string.format('at:%d,%d', point.position.x, point.position.y)
+end
+
 local function newNode(key, point)
     return {
         key = key,
@@ -125,6 +146,7 @@ function M.build(operators, opts)
         nodes = {},
         order = {},
         edges = {},
+        mergeRadius = mergeRadius,
         stats = { operators = 0, excluded = 0, unplaced = 0, selfEdges = 0, edges = 0, nodes = 0 },
     }
 
@@ -176,20 +198,9 @@ function M.build(operators, opts)
     -- outside Tel Aruhn is keyed before Tel Aruhn's node exists and becomes a
     -- stop of its own.
     for _, point in ipairs(deferred) do
-        local bestKey, bestDistance = nil, mergeRadius
-        for _, key in ipairs(graph.order) do
-            local candidate = planarDistance(point.position, graph.nodes[key].position)
-            if candidate <= bestDistance then
-                bestKey, bestDistance = key, candidate
-            end
-        end
-        if bestKey then
-            point._key = bestKey
-        else
-            local key = string.format('at:%d,%d', point.position.x, point.position.y)
-            addNode(key, point)
-            point._key = key
-        end
+        local key = resolveKey(graph, point, mergeRadius)
+        addNode(key, point)
+        point._key = key
     end
 
     for _, operator in ipairs(usable) do
@@ -201,32 +212,86 @@ function M.build(operators, opts)
                 -- Vanilla lists a few operators as serving their own stop.
                 graph.stats.selfEdges = graph.stats.selfEdges + 1
             else
-                local edges = graph.edges[fromKey]
-                if not edges then
-                    edges = {}
-                    graph.edges[fromKey] = edges
-                end
-                edges[#edges + 1] = {
-                    from = fromKey,
-                    to = toKey,
-                    mode = mode,
-                    operator = operator.id,
-                    operatorName = operator.name,
-                    distance = distance(graph.nodes[fromKey].position, graph.nodes[toKey].position),
-                }
-                graph.stats.edges = graph.stats.edges + 1
+                M.addEdge(graph, fromKey, toKey, mode,
+                    distance(graph.nodes[fromKey].position, graph.nodes[toKey].position),
+                    operator.id, operator.name)
                 graph.nodes[fromKey].modes[mode] = true
                 graph.nodes[toKey].modes[mode] = true
             end
         end
     end
 
+    M.sort(graph)
+    return graph
+end
+
+--- Re-sort and recount, after anything adds a stop.
+function M.sort(graph)
     table.sort(graph.order, function(a, b)
         return graph.nodes[a].name:lower() < graph.nodes[b].name:lower()
     end)
     graph.stats.nodes = #graph.order
-
     return graph
+end
+
+--- One directed leg. Walk legs come through here too, which is what saves a
+-- router from having to know they are different.
+function M.addEdge(graph, fromKey, toKey, mode, legDistance, operator, operatorName)
+    local edges = graph.edges[fromKey]
+    if not edges then
+        edges = {}
+        graph.edges[fromKey] = edges
+    end
+    edges[#edges + 1] = {
+        from = fromKey,
+        to = toKey,
+        mode = mode,
+        operator = operator,
+        operatorName = operatorName,
+        distance = legDistance,
+    }
+    graph.stats.edges = graph.stats.edges + 1
+    return edges[#edges]
+end
+
+--- Join stops inside buildings to the streets their doors open onto.
+--
+-- A walk leg is an edge, not a merge: the two ends are genuinely different
+-- places, and in one vanilla case -- the guide at Wolverine Hall and the boat
+-- at Sadrith Mora -- they are 11593 units apart. It carries a distance and
+-- nothing else: no fare, because nobody charges for a door, and no time,
+-- because the player really does walk it.
+--
+-- Walk legs deliberately do **not** register a mode on either stop.
+-- `modesAt` stays the list of vehicles meeting in one place, so the count of
+-- real interchanges cannot quietly inflate; `modesWithinWalk` is the wider
+-- view.
+--
+-- @param links from walk.links -- { cellId, point, walked }
+function M.link(graph, links)
+    for _, link in ipairs(links) do
+        local fromKey = 'cell:' .. (lower(link.cellId) or '?')
+        if graph.nodes[fromKey] then
+            local toKey = resolveKey(graph, link.point, graph.mergeRadius or 0)
+            local to = graph.nodes[toKey]
+            if not to then
+                -- A stop no vehicle serves: Caldera has a guild hall and
+                -- nothing else, and is reachable only this way.
+                to = newNode(toKey, link.point)
+                graph.nodes[toKey] = to
+                graph.order[#graph.order + 1] = toKey
+            end
+            if toKey ~= fromKey then
+                -- The last stretch is on the far side of the door: from where
+                -- it drops you to wherever the stop out there actually is.
+                local total = link.walked + distance(link.point.position, to.position)
+                M.addEdge(graph, fromKey, toKey, 'walk', total)
+                M.addEdge(graph, toKey, fromKey, 'walk', total)
+                graph.stats.walkLegs = (graph.stats.walkLegs or 0) + 2
+            end
+        end
+    end
+    return M.sort(graph)
 end
 
 --- The modes meeting at a stop, sorted. More than one means you can change
@@ -246,6 +311,31 @@ end
 
 function M.isTransfer(graph, key)
     return #M.modesAt(graph, key) > 1
+end
+
+--- Every vehicle meeting here or one walk leg away.
+--
+-- The honest answer to "can I change here": Balmora's silt strider and its
+-- guild guide are one door and 3732 units apart, a change a player makes
+-- without thinking and `modesAt` will never show.
+function M.modesWithinWalk(graph, key)
+    local found = {}
+    for _, mode in ipairs(M.modesAt(graph, key)) do
+        found[mode] = true
+    end
+    for _, edge in ipairs(M.edgesFrom(graph, key)) do
+        if edge.mode == 'walk' then
+            for _, mode in ipairs(M.modesAt(graph, edge.to)) do
+                found[mode] = true
+            end
+        end
+    end
+    local list = {}
+    for mode in pairs(found) do
+        list[#list + 1] = mode
+    end
+    table.sort(list)
+    return list
 end
 
 --- Legs leaving a stop.

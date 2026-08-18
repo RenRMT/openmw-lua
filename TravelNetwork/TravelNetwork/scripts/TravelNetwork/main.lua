@@ -5,6 +5,7 @@
 
 local adapter = require('scripts.TravelNetwork.adapter')
 local graph = require('scripts.TravelNetwork.graph')
+local walk = require('scripts.TravelNetwork.walk')
 
 local TAG = '[TravelNetwork]'
 
@@ -21,9 +22,26 @@ local function out(fmt, ...)
     end
 end
 
+--- Stops that sit inside a building, which are the ones needing a way out.
+local function interiorStops(g)
+    local stops = {}
+    for _, key in ipairs(g.order) do
+        local node = g.nodes[key]
+        if not node.isExterior then
+            stops[#stops + 1] = { cellId = node.cellId, position = node.position }
+        end
+    end
+    return stops
+end
+
 local function current()
     if not cached then
-        cached = graph.build(adapter.operators())
+        local built = graph.build(adapter.operators())
+        -- Vehicles first, then the doors joining the stops inside buildings to
+        -- the streets outside them. Order matters: a walk link needs the stop
+        -- it starts from to exist.
+        graph.link(built, walk.links(interiorStops(built), adapter.doorsFor))
+        cached = built
     end
     return cached
 end
@@ -39,15 +57,24 @@ local function dump(opts)
     opts = opts or {}
     local g = current()
 
-    out('%d stops, %d legs, from %d operators (%d unplaced, %d excluded)',
-        g.stats.nodes, g.stats.edges, g.stats.operators, g.stats.unplaced, g.stats.excluded)
+    out('%d stops, %d legs (%d on foot), from %d operators (%d unplaced, %d excluded)',
+        g.stats.nodes, g.stats.edges, g.stats.walkLegs or 0,
+        g.stats.operators, g.stats.unplaced, g.stats.excluded)
 
     for _, key in ipairs(g.order) do
         local node = g.nodes[key]
         local modes = graph.modesAt(g, key)
+        local onFoot = graph.modesWithinWalk(g, key)
         local legs = graph.edgesFrom(g, key)
-        out('  %-46s %-22s out=%d%s', node.name, table.concat(modes, '+'), #legs,
-            graph.isTransfer(g, key) and '  <- interchange' or '')
+        local note = ''
+        if graph.isTransfer(g, key) then
+            note = '  <- interchange'
+        elseif #onFoot > #modes then
+            -- Reachable on foot is not the same as meeting here, and the
+            -- planner should never blur the two.
+            note = '  (' .. table.concat(onFoot, '+') .. ' within a walk)'
+        end
+        out('  %-46s %-22s out=%d%s', node.name, table.concat(modes, '+'), #legs, note)
         if opts.legs then
             for _, leg in ipairs(legs) do
                 out('        -> %-40s %-10s %6.0f  (%s)',
@@ -86,5 +113,11 @@ return {
         dump = dump,
         interchanges = interchanges,
         dumpInterchanges = dumpInterchanges,
+        -- Queries re-exported so a caller holding a graph does not have to
+        -- require an internal module to ask anything about it.
+        modesAt = graph.modesAt,
+        modesWithinWalk = graph.modesWithinWalk,
+        edgesFrom = graph.edgesFrom,
+        isTransfer = graph.isTransfer,
     },
 }

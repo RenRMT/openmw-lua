@@ -116,6 +116,13 @@ pre-binds **`I`** (`openmw.interfaces`), `world`, `types`, `util`, `core`,
   inactive exterior reported exactly the requested position in the correctly
   derived cell, not the world origin. **The leveled-list case — what the bug is
   actually about — remains untested.**
+- **Teleport doors name where they go** *(docs-checked 2026-08-18)*.
+  `types.Door.isTeleport(obj)`, `destCell(obj)` (a Cell) and `destPosition(obj)`
+  (a Vector3), plus `destRotation`. With `getAll(types.Door)` on an unloaded
+  cell this is enough to walk a building's connections without the player being
+  anywhere near it -- which is the only way to learn that an interior and the
+  street outside it are the same place, since nothing else in the data says so.
+  *Not yet exercised in a running game.*
 - `core.getFormId(contentFile, index)` builds a FormId string, needed for
   ESM4-style content. ESM3 (Morrowind-style) content uses plain lowercase string
   ids instead.
