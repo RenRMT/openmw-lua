@@ -64,7 +64,16 @@ end
 -- @return true if the page registered
 function M.registerPage(interfaces)
     local settingsInterface = interfaces and interfaces.Settings
-    if not settingsInterface then
+    -- Only the contexts that can draw one have `registerPage`: MENU
+    -- registers the page and PLAYER forwards a menu event to it. The global
+    -- script's Settings interface is `registerGroup` and
+    -- `updateRendererArgument` and nothing else, so reaching for it there is
+    -- an error rather than a no-op -- and an error in a script body stops
+    -- the whole global script, taking the simulation with it.
+    --
+    -- Declining here is not a loss: the two player-context halves register
+    -- the same page, keyed the same way, so the page still exists.
+    if not settingsInterface or type(settingsInterface.registerPage) ~= 'function' then
         return false
     end
     settingsInterface.registerPage({
