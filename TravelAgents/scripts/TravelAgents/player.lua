@@ -312,13 +312,8 @@ end
 local function stopRow(stop)
     local marker = (selected == stop.key) and '> ' or '  '
     local price = stop.fare > 0 and tostring(stop.fare) or '-'
-    -- The tab already says how many times the traveller changes; the mark
-    -- says whether any of those changes is onto a different kind of vehicle.
-    -- Boarding a second silt strider and boarding a boat both count as one
-    -- change, and only one of them means finding a different dock.
-    local change = ((stop.modeChanges or 0) > 0) and '+' or ' '
-    local label = string.format('%s%-' .. config.NAME_COLUMN .. 's %5s %s',
-        marker, fit(stop.name, config.NAME_COLUMN), price, change)
+    local label = string.format('%s%-' .. config.NAME_COLUMN .. 's %5s',
+        marker, fit(stop.name, config.NAME_COLUMN), price)
     return row(label, function() pick(stop.key) end)
 end
 
@@ -452,24 +447,7 @@ local function destinations()
         },
     }
 
-    -- The legend earns its row only when something on this page carries the
-    -- mark, which on the direct tab is never.
-    local marked = false
-    for index = first, last do
-        if (stops[index].modeChanges or 0) > 0 then
-            marked = true
-            break
-        end
-    end
-
     local body = grid
-    if marked then
-        body = {
-            type = ui.TYPE.Flex,
-            props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
-            content = ui.content { text(l10n('changeMarker')), grid },
-        }
-    end
 
     if pages < 2 then
         return body

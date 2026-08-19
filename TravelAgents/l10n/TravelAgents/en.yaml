@@ -55,10 +55,6 @@ pageNext: "more >"
 
 # The chosen journey, condensed into the strip under the list.
 via: "via {places}"
-# The mark on a row whose journey changes to a different kind of vehicle,
-# as opposed to another of the same kind. Shown only when the open tab holds
-# any, which the direct tab never does.
-changeMarker: "+ marks a change of vehicle"
 pickAStop: "Pick a place to see the journey."
 arrivingAt: "Arriving at {place}"
 plannerHint: "Press {key} to plan a journey from here."
