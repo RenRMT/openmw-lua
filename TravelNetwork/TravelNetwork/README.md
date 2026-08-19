@@ -4,9 +4,24 @@ Morrowind's silt striders, boats, gondolas and guild guides are four unrelated
 dialogue menus. They are also, in the data, one directed graph that nothing has
 ever assembled. This mod assembles it.
 
-**Phase 1 — the graph, and a way to look at it.** No UI, no routing, no
-booking. See [../implementation-plan.md](../implementation-plan.md) for the
+**Phases 1–3 — the graph, routing, and a planner window.** No booking yet: the
+planner tells you the way, and you still buy each leg through the operator's own
+dialogue. See [../implementation-plan.md](../implementation-plan.md) for the
 build order and the decisions behind it.
+
+## Using it
+
+**Bind a key first** — Options → Scripts → Travel Network → *Open the planner*.
+Nothing is bound by default, since any key this mod picked would be one some
+other mod had already taken.
+
+Press it anywhere. The window lists every stop you can reach from where you are
+standing, cheapest first, with how many changes each takes, how long, and what
+it costs. Click a stop to see its legs; click again to fold it away. Escape
+closes the window, as does the same key.
+
+Standing indoors somewhere that is not itself a stop — a tavern, a shop — the
+planner follows the doors out and plans from the street.
 
 ## Setup
 

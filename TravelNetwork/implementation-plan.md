@@ -359,11 +359,28 @@ vehicle leg against those. The guide leg between Balmora and Ald-ruhn now reads
 towns. Walk legs keep their measured distance; they were never taken across a
 seam.
 
-**Phase 3 — the planner UI.** Player script, keybind from settings, an MWUI
-window listing reachable stops from the nearest node, sorted by cost, each
-expanding to its legs and transfers. Read-only; the player still books legs
-through vanilla dialogue. **This is the point at which the mod is already worth
-using** — if energy runs out here, it ships.
+**Phase 3 — the planner UI. Done, 2026-08-19.** `player.lua` holds the keybind,
+the settings page and the window; `plan.lua` and `locate.lua` hold everything it
+decides, and are pure, which is what keeps the untestable part down to drawing.
+
+- **The keybind is a registered trigger** bound through the `inputBinding`
+  settings renderer. Nothing is bound by default: any key this mod chose would
+  be one some other mod had already taken.
+- **`plan.build` is the whole of what crosses between contexts.** The graph
+  lives in the global script because only global scripts walk cells; the window
+  lives in the player script because only local scripts draw. What travels
+  between them is names and numbers, nothing needing the engine to read.
+- **Standing indoors somewhere that is not a stop**, the planner follows the
+  doors out and plans from the street — the same walk that joins guild halls to
+  their towns, reused. `locate.nearest` refuses to guess from inside an
+  unrelated room, because interior coordinates would put the player at whichever
+  stop happened to sit near another worldspace's origin.
+- The window closes on its own key, on its Close row, and on leaving interface
+  mode by any route.
+
+**This is the point the plan called worth using**, and it is: the mod now
+answers "how do I get to Dagon Fel from here" in a keypress. Booking is still
+vanilla dialogue, leg by leg.
 
 **Phase 4 — booking.** With an operator within `BOOKING_RADIUS` (found via
 `nearby.actors` filtered on `servicesOffered.Travel`), offer "travel the whole

@@ -1,0 +1,24 @@
+# TravelNetwork -- English strings.
+#
+# Keys match the settings entries in scripts/TravelNetwork/player.lua and the
+# planner window it draws. A setting named `foo` takes its description from
+# `fooDescription`, so the two always travel together.
+
+# --- settings ------------------------------------------------------------
+settingsPage: "Travel Network"
+settingsPageDescription: "Plan journeys across silt striders, boats, gondolas and guild guides."
+
+plannerGroup: "Planner"
+plannerGroupDescription: "The key that opens the journey planner."
+
+plannerKey: "Open the planner"
+plannerKeyDescription: "Shows every stop you can reach from where you are standing."
+
+# --- the window ----------------------------------------------------------
+windowTitle: "Travel Network"
+from: "From {place}"
+servedBy: "Served by {modes}"
+nowhereToGo: "No stop can be reached from here."
+nowhereNearby: "No travel stop near enough to plan from."
+andMore: "...and {count} more"
+close: "Close"
