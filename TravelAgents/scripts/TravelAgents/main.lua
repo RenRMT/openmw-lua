@@ -42,21 +42,76 @@ local function interiorStops(g)
     return stops
 end
 
-local function current()
-    if not cached then
-        local built = graph.build(adapter.operators())
-        -- Vehicles first, then the doors joining the stops inside buildings to
-        -- the streets outside them. Order matters: a walk link needs the stop
-        -- it starts from to exist.
-        graph.link(built, walk.links(interiorStops(built), adapter.doorsFor))
-        cached = built
-    end
-    return cached
+-- The cell walk, part-done. nil either before it starts or once it has
+-- finished and `cached` holds the answer.
+local scan = nil
+local scanStarted = nil
+
+--- Everything after the cell walk: cheap, and not worth slicing.
+--
+-- Vehicles first, then the doors joining the stops inside buildings to the
+-- streets outside them. Order matters: a walk link needs the stop it starts
+-- from to exist.
+local function assemble(operators)
+    local built = graph.build(operators)
+    graph.link(built, walk.links(interiorStops(built), adapter.doorsFor))
+    scan = nil
+    cached = built
+    return built
 end
 
+--- Push the cell walk along, for at most `budget` real seconds.
+--
+-- A nil budget means run it out here and now, which is what every caller
+-- that has to return an answer does.
+--
+-- @return the finished graph, or nil while there is still walking to do
+local function advance(budget)
+    if cached then
+        return cached
+    end
+    if scan == nil then
+        scan = adapter.operatorScan()
+        scanStarted = core.getRealTime()
+    end
+    local ok, result = coroutine.resume(scan, budget and (core.getRealTime() + budget) or nil)
+    if not ok then
+        -- A graph that cannot be built must not be retried every frame for
+        -- the rest of the session. An empty one is wrong but quiet, and the
+        -- log says why.
+        out('graph build failed: %s', tostring(result))
+        return assemble({})
+    end
+    if coroutine.status(scan) == 'dead' then
+        return assemble(result or {})
+    end
+    return nil
+end
+
+--- The graph, whatever it takes.
+--
+-- The guard for a player who reaches a travel service before the walk has
+-- finished: rather than answer from a half-built graph, or make them wait
+-- for a frame that a paused game may never run, the rest of the walk happens
+-- now. That is the stall this whole change exists to avoid -- but it is only
+-- ever the part not already done, it is logged so it can be told apart from
+-- the old behaviour, and walking anywhere for a second or two after load
+-- makes it impossible.
+local function current()
+    if cached then
+        return cached
+    end
+    local left = scan and 'partly built' or 'not started'
+    out('a travel service was reached before the graph was ready (%s); finishing now', left)
+    return advance(nil)
+end
+
+--- Throw the graph away and build another, here and now.
+-- Asked for from the console, where waiting for it is the point.
 local function rebuild()
     cached = nil
-    return current()
+    scan = nil
+    return advance(nil)
 end
 
 --- Every stop, what meets there, and how many legs leave it.
@@ -268,23 +323,22 @@ end
 -- That is seconds of work on Tamriel Rebuilt.
 --
 -- Doing it lazily meant paying for it on the first conversation with a
--- travel NPC, which is the worst possible moment: the game appears to
--- hang, mid-greeting, on the one interaction the mod exists to improve.
--- Here it lands on the first frame after load instead, where a moment of
--- work is indistinguishable from the loading that just finished.
+-- travel NPC, which is the worst possible moment: the game appears to hang,
+-- mid-greeting, on the one interaction the mod exists to improve. Doing it
+-- in one piece on the first frame after load only moved the hang.
 --
--- Still lazy underneath, so nothing breaks if a conversation somehow
--- comes first; this only decides *when* the one build happens.
-local warmedUp = false
+-- So it is done a slice at a time, from here, while the player gets on with
+-- whatever they were doing. `current` is the guard for anyone who arrives
+-- before it is finished.
 local function warmUp()
-    if warmedUp then
+    if cached then
         return
     end
-    warmedUp = true
-    local started = core.getRealTime()
-    local g = current()
-    out('graph ready: %d stops, %d legs, built in %.2fs',
-        g.stats.nodes, g.stats.edges, core.getRealTime() - started)
+    local g = advance(config.BUILD_SLICE_SECONDS)
+    if g then
+        out('graph ready: %d stops, %d legs, built in %.2fs of play',
+            g.stats.nodes, g.stats.edges, core.getRealTime() - (scanStarted or 0))
+    end
 end
 
 --- Sell a journey and make it.
