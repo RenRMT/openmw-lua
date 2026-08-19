@@ -18,6 +18,7 @@ local async = require('openmw.async')
 local core = require('openmw.core')
 local input = require('openmw.input')
 local self = require('openmw.self')
+local storage = require('openmw.storage')
 local ui = require('openmw.ui')
 local util = require('openmw.util')
 
@@ -30,6 +31,16 @@ local L10N = 'TravelNetwork'
 local PAGE = 'TravelNetwork'
 local GROUP = 'SettingsPlayerTravelNetwork'
 local TRIGGER = 'TravelNetworkPlanner'
+
+-- The id the binding is filed under. The settings entry stores this string,
+-- and the engine keys the actual key press by it -- see the inputBinding
+-- renderer in scripts/omw/input/settings.lua.
+local BINDING = 'TravelNetworkPlannerBinding'
+local BINDINGS_SECTION = 'OMWInputBindings'
+
+-- The engine's own labels for these live in a local table in that file, so
+-- the few that are not keyboard keys are spelled out again here.
+local MOUSE_BUTTONS = { [1] = 'Left', [2] = 'Middle', [3] = 'Right', [4] = '4', [5] = '5' }
 
 local l10n = core.l10n(L10N, 'en')
 
@@ -77,11 +88,39 @@ I.Settings.registerGroup {
             -- The value is the binding's own id; the argument names the
             -- trigger it fires, which is why that is registered first. No key
             -- is bound by default -- the player picks one on this page.
-            default = 'TravelNetworkPlannerBinding',
+            default = BINDING,
             argument = { type = 'trigger', key = TRIGGER },
         },
     },
 }
+
+--------------------------------------------------------------------------
+-- The keybind, as the player sees it
+--------------------------------------------------------------------------
+
+--- What key opens the planner, spelled the way the settings page spells it.
+--
+-- Read fresh each time rather than cached: the player can rebind it mid-game,
+-- and a hint naming the old key is worse than one naming none.
+--
+-- @return the label, or nil when nothing is bound
+local function boundKey()
+    local id = storage.playerSection(GROUP):get('plannerKey') or BINDING
+    local binding = storage.playerSection(BINDINGS_SECTION):get(id)
+    if not binding or not binding.button then
+        return nil
+    end
+    if binding.device == 'keyboard' then
+        return input.getKeyName(binding.button)
+    end
+    if binding.device == 'mouse' then
+        return string.format('Mouse %s', MOUSE_BUTTONS[binding.button] or binding.button)
+    end
+    if binding.device == 'controller' then
+        return l10n('controllerButton')
+    end
+    return nil
+end
 
 --------------------------------------------------------------------------
 -- The window
@@ -196,7 +235,14 @@ local function onPlan(data)
     end
     current = data
     expanded = nil
-    ui.showMessage(l10n('plannerHint'))
+    local key = boundKey()
+    if key then
+        ui.showMessage(l10n('plannerHint', { key = key }))
+    else
+        -- Nothing bound, so nothing the player can press. Saying "ask about
+        -- the network" here would be an instruction they cannot follow.
+        ui.showMessage(l10n('plannerUnbound'))
+    end
 end
 
 --- Talking to someone. Ask the global script whether they run anything; the

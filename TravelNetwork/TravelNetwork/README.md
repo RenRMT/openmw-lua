@@ -16,7 +16,9 @@ Nothing is bound by default, since any key this mod picked would be one some
 other mod had already taken.
 
 Then **talk to a silt strider driver, shipmaster, gondolier or guild guide**.
-The planner is part of that conversation: press the key and the window lists
+The conversation prompts you by name of key — *Press T to plan a journey from
+here* — or, if you have not bound one yet, says where to. Press it and the
+window lists
 every stop reachable from where they stand, cheapest first, with how many
 changes each journey takes, how long it runs and what it costs. Click a stop to
 see its legs; click again to fold it away. Closing the window leaves you in the
