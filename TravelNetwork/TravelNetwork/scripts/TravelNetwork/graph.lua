@@ -13,6 +13,7 @@
 
 local config = require('scripts.TravelNetwork.config')
 local modesData = require('scripts.TravelNetwork.data.modes')
+local placesData = require('scripts.TravelNetwork.data.places')
 
 local M = {}
 
@@ -54,9 +55,19 @@ local function directKey(point)
     return nil
 end
 
+--- What to call a stop in a cell the game never named.
+--
+-- A shipped name wins: one place in vanilla is well enough known that its grid
+-- reference would be a worse answer than the name everybody uses for it. After
+-- that it is the region and the grid, which at least says where on the map to
+-- look.
 local function fallbackName(point)
     local where = ''
     if point.gridX and point.gridY then
+        local named = placesData.exteriors[string.format('%d,%d', point.gridX, point.gridY)]
+        if named then
+            return named
+        end
         where = string.format(' (%d, %d)', point.gridX, point.gridY)
     end
     if not isBlank(point.region) then
@@ -423,6 +434,49 @@ function M.stopOf(graph, recordId)
     return graph.operators[string.lower(recordId)]
 end
 
+--- Which stop lends a walk-connected group its name: the one out of doors,
+-- then the one the most vehicles reach, and alphabetical order only to break a
+-- real tie.
+--
+-- Out of doors comes first because a place is a town and the hall is a room in
+-- it. Caldera's guild hall is the only thing any vehicle reaches there, and
+-- naming the town after it would be naming Caldera "Caldera, Guild of Mages".
+local function namesTheGroup(graph, candidate, incumbent)
+    if incumbent == nil then
+        return true
+    end
+    local outside, alsoOutside = graph.nodes[candidate].isExterior, graph.nodes[incumbent].isExterior
+    if outside ~= alsoOutside then
+        return outside
+    end
+    local here, there = #M.modesAt(graph, candidate), #M.modesAt(graph, incumbent)
+    if here ~= there then
+        return here > there
+    end
+    return graph.nodes[candidate].name:lower() < graph.nodes[incumbent].name:lower()
+end
+
+--- The place a stop belongs to: itself, plus everything a walk away, under one
+-- name.
+--
+-- A guild hall and the street outside it are one place to a traveller, and a
+-- list offering both offers the same town twice. Everything that folds stops
+-- together -- the interchange count, the planner's destination list -- folds
+-- them the same way, through here.
+function M.place(graph, key)
+    if graph.nodes[key] == nil then
+        return nil
+    end
+    local group = M.walkGroup(graph, key)
+    local best = nil
+    for _, member in ipairs(group) do
+        if namesTheGroup(graph, member, best) then
+            best = member
+        end
+    end
+    return { key = best, name = graph.nodes[best].name, stops = group }
+end
+
 --- The interchanges, counted as places rather than as stops.
 --
 -- A hall and the street outside it are one junction, not two: reporting both
@@ -437,24 +491,6 @@ function M.interchanges(graph)
     local claimed = {}
     local found = {}
 
-    -- Which stop lends the group its name: the one the most vehicles reach,
-    -- then the one out of doors -- a junction is called Balmora, not Balmora,
-    -- Guild of Mages -- and alphabetical order only to break a real tie.
-    local function namesTheGroup(candidate, incumbent)
-        if incumbent == nil then
-            return true
-        end
-        local here, there = #M.modesAt(graph, candidate), #M.modesAt(graph, incumbent)
-        if here ~= there then
-            return here > there
-        end
-        local outside, alsoOutside = graph.nodes[candidate].isExterior, graph.nodes[incumbent].isExterior
-        if outside ~= alsoOutside then
-            return outside
-        end
-        return graph.nodes[candidate].name:lower() < graph.nodes[incumbent].name:lower()
-    end
-
     for _, key in ipairs(graph.order) do
         if not claimed[key] and M.isTransfer(graph, key) then
             local group = M.walkGroup(graph, key)
@@ -465,7 +501,7 @@ function M.interchanges(graph)
                 if #here > 1 then
                     spot = true
                 end
-                if namesTheGroup(member, best) then
+                if namesTheGroup(graph, member, best) then
                     best = member
                 end
                 for _, mode in ipairs(here) do

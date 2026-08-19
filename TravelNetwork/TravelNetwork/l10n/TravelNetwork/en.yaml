@@ -33,10 +33,12 @@ modeChangeSurcharge: "Extra per change of vehicle (%)"
 modeChangeSurchargeDescription: "Added on top again whenever the journey changes from one kind of transport to another, since the two operators keep separate books."
 
 # --- the window ----------------------------------------------------------
-windowTitle: "Travel Network"
 from: "From {place}"
-servedBy: "Served by {modes}"
 nowhereToGo: "No stop can be reached from here."
+sectionDirect: "No change of vehicle"
+sectionChanging: "Changing vehicle"
+pickAStop: "Pick a place to see the journey."
+arrivingAt: "Arriving at {place}"
 plannerHint: "Press {key} to plan a journey from here."
 plannerUnbound: "Bind a key under Options, Scripts, Travel Network to plan a journey."
 controllerButton: "your controller button"
@@ -55,7 +57,9 @@ journeyChanging: "{changes, plural, one {1 change of vehicle} other {# changes o
 
 # --- booking -------------------------------------------------------------
 book: "Travel here -- {fare} gold"
-surchargeNote: "{base} gold in fares, plus {percent}% ({extra} gold) for booking it in one go"
+fareLine: "{base} gold in fares"
+surchargeLine: "plus {percent}% for booking it in one go -- {extra} gold"
+youHave: "You have {gold} gold"
 bookFree: "Travel here -- no charge"
 cannotAfford: "That journey costs {fare} gold -- you are {short} short."
 arrived: "You arrive at {place}. {hours} hours on the road, {fare} gold."

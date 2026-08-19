@@ -49,13 +49,10 @@ local MOUSE_BUTTONS = { [1] = 'Left', [2] = 'Middle', [3] = 'Right', [4] = '4', 
 
 local l10n = core.l10n(L10N, 'en')
 
--- How many destinations the window shows. Vanilla offers 32 from most stops,
--- which is more than fits on screen and more than anyone reads.
-local SHOWN = 14
-
 local window = nil
-local expanded = nil
--- Whether the list is showing everything or only the first SHOWN of it.
+-- The place whose journey the right-hand pane is showing.
+local selected = nil
+-- Whether the list is showing everything or only the first SHOWN_STOPS of it.
 local showAll = false
 -- The plan for the operator currently being talked to, fetched when the
 -- conversation opens so the keypress has nothing to wait for.
@@ -139,7 +136,7 @@ I.Settings.registerGroup {
 
 -- What the convenience is worth in gold, as against what a change is worth
 -- avoiding. Percentages of the fare, added together: a journey of three legs
--- with one change of vehicle is charged 5 + 5 + 10 per cent over the sum of
+-- with one change of vehicle is charged 10 + 10 + 20 per cent over the sum of
 -- its legs. A single leg is never surcharged, so buying it here costs what
 -- buying it at the counter costs.
 I.Settings.registerGroup {
@@ -222,21 +219,40 @@ end
 -- The window
 --------------------------------------------------------------------------
 
-local function text(content, header)
+-- Two panes: the list of places on the left, the journey to the one you
+-- picked on the right. The list never moves when you click it, which is the
+-- whole reason for the split -- the first version opened a stop's legs inline
+-- and pushed everything below it down the screen.
+--
+-- There is no scrolling widget in MWUI, so the list is capped and the last row
+-- shows the rest.
+
+local function text(content, template)
     return {
-        template = header and I.MWUI.templates.textHeader or I.MWUI.templates.textNormal,
+        template = template or I.MWUI.templates.textNormal,
         props = { text = content },
     }
 end
 
---- A line the player can click. Rows are the only interactive thing in the
--- window: clicking one opens its legs, clicking it again closes them.
+--- A line the player can click.
 local function row(label, onClick)
     return {
         template = I.MWUI.templates.textNormal,
         props = { text = label },
         events = { mouseClick = async:callback(onClick) },
     }
+end
+
+local function line()
+    return { template = I.MWUI.templates.horizontalLine }
+end
+
+--- Names are as long as the game made them; the column is not.
+local function fit(name, width)
+    if #name <= width then
+        return name
+    end
+    return string.sub(name, 1, width - 3) .. '...'
 end
 
 --- Shut the planner, leaving the conversation as it was.
@@ -248,7 +264,7 @@ local function close()
     if window then
         window:destroy()
         window = nil
-        expanded = nil
+        selected = nil
         showAll = false
     end
 end
@@ -284,87 +300,217 @@ end
 
 local render
 
-local function toggleExpanded(key)
-    expanded = (expanded ~= key) and key or nil
+local function pick(key)
+    selected = key
     render()
 end
 
-local function lines()
-    local content = {}
-    content[#content + 1] = text(l10n('windowTitle'), true)
-    content[#content + 1] = text(l10n('from', { place = current.origin.name }))
-    if #current.origin.modes > 0 then
-        content[#content + 1] = text(l10n('servedBy', {
-            modes = table.concat(current.origin.modes, ', '),
-        }))
+--------------------------------------------------------------------------
+-- The list of places
+--------------------------------------------------------------------------
+
+local function stopRow(stop)
+    local marker = (selected == stop.key) and '> ' or '  '
+    local price = stop.fare > 0 and tostring(stop.fare) or '-'
+    local label = string.format('%s%-28s %5s', marker, fit(stop.name, 28), price)
+    return row(label, function() pick(stop.key) end)
+end
+
+--- The places, split by what the journey asks of the traveller.
+--
+-- Sections rather than a flag on each line: what a player wants to know first
+-- is whether they will have to change at all, and a heading answers that for
+-- a whole block at once.
+local function master()
+    local shown = showAll and #current.stops or math.min(#current.stops, config.SHOWN_STOPS)
+    local direct, changing = {}, {}
+    for index = 1, shown do
+        local stop = current.stops[index]
+        local into = ((stop.modeChanges or 0) > 0) and changing or direct
+        into[#into + 1] = stopRow(stop)
     end
-    content[#content + 1] = { template = I.MWUI.templates.horizontalLine }
+
+    local content = {}
+    local function section(title, rows)
+        if #rows == 0 then
+            return
+        end
+        content[#content + 1] = text(title, I.MWUI.templates.textHeader)
+        for _, entry in ipairs(rows) do
+            content[#content + 1] = entry
+        end
+        content[#content + 1] = { template = I.MWUI.templates.interval }
+    end
 
     if #current.stops == 0 then
         content[#content + 1] = text(l10n('nowhereToGo'))
     end
+    section(l10n('sectionDirect'), direct)
+    section(l10n('sectionChanging'), changing)
 
-    for index, stop in ipairs(current.stops) do
-        if index > SHOWN and not showAll then
-            -- A line that only announced how much it was hiding, and did
-            -- nothing about it, was the least useful thing in the window.
-            content[#content + 1] = row(l10n('andMore', { count = #current.stops - SHOWN }),
-                function() showAll = true render() end)
-            break
-        end
-        local summaryKey, summaryArgs = plan.summarise(stop)
-        content[#content + 1] = row(
-            string.format('%s  --  %s', stop.name, l10n(summaryKey, summaryArgs)),
-            function() toggleExpanded(stop.key) end)
-        if expanded == stop.key then
-            for _, leg in ipairs(stop.legs) do
-                content[#content + 1] = text('      ' .. plan.describeLeg(leg))
-            end
-            -- What the legs come to and what the ticket adds, itemised. A
-            -- price the player cannot account for reads as the mod inventing
-            -- numbers.
-            if (stop.surcharge or 0) > 0 then
-                content[#content + 1] = text(string.format('      %s', l10n('surchargeNote', {
-                    base = stop.baseFare, percent = stop.surchargePercent, extra = stop.surcharge,
-                })))
-            end
-            -- A journey made entirely of walk legs has no fare, because a door
-            -- charges nobody. Saying "0 gold" would read as a bug.
-            local label = stop.fare > 0 and l10n('book', { fare = stop.fare }) or l10n('bookFree')
-            content[#content + 1] = row('      ' .. label, function() bookTo(stop) end)
-        end
-    end
-
-    content[#content + 1] = { template = I.MWUI.templates.horizontalLine }
-    if showAll and #current.stops > SHOWN then
+    if shown < #current.stops then
+        content[#content + 1] = row(l10n('andMore', { count = #current.stops - shown }),
+            function() showAll = true render() end)
+    elseif showAll and #current.stops > config.SHOWN_STOPS then
         content[#content + 1] = row(l10n('showFewer'), function() showAll = false render() end)
     end
-    content[#content + 1] = row(l10n('close'), close)
-    return content
+
+    return {
+        type = ui.TYPE.Flex,
+        props = {
+            horizontal = false,
+            arrange = ui.ALIGNMENT.Start,
+            autoSize = false,
+            size = util.vector2(config.MASTER_WIDTH, config.WINDOW_HEIGHT - 90),
+        },
+        content = ui.content(content),
+    }
+end
+
+--------------------------------------------------------------------------
+-- The journey to the place you picked
+--------------------------------------------------------------------------
+
+local function chosen()
+    if selected == nil then
+        return nil
+    end
+    for _, stop in ipairs(current.stops) do
+        if stop.key == selected then
+            return stop
+        end
+    end
+    return nil
+end
+
+--- The button, and the reason it is greyed out when it is.
+local function bookButton(stop)
+    local gold = money.held(self.object)
+    local label = stop.fare > 0 and l10n('book', { fare = stop.fare }) or l10n('bookFree')
+    if gold >= stop.fare then
+        return {
+            {
+                template = I.MWUI.templates.box,
+                content = ui.content { row(' ' .. label .. ' ', function() bookTo(stop) end) },
+            },
+        }
+    end
+    -- Shaded and unclickable rather than clickable and refused: the answer is
+    -- already known, and finding it out by being told off is worse.
+    return {
+        {
+            template = I.MWUI.templates.disabled,
+            content = ui.content {
+                { template = I.MWUI.templates.box, content = ui.content { text(' ' .. label .. ' ') } },
+            },
+        },
+        text(l10n('youHave', { gold = gold })),
+    }
+end
+
+local function detail()
+    local stop = chosen()
+    local content = {}
+    if stop == nil then
+        content[#content + 1] = text(l10n('pickAStop'))
+    else
+        content[#content + 1] = text(stop.name, I.MWUI.templates.textHeader)
+        content[#content + 1] = text(l10n(plan.summarise(stop)))
+        -- The row is named after the town; the journey may still end in its
+        -- guild hall, and being put down somewhere the list did not mention
+        -- would read as the mod losing track.
+        if stop.arrival and stop.arrival ~= stop.name then
+            content[#content + 1] = text(l10n('arrivingAt', { place = stop.arrival }))
+        end
+        content[#content + 1] = line()
+        for _, leg in ipairs(stop.legs) do
+            content[#content + 1] = text('  ' .. plan.describeLeg(leg))
+        end
+        content[#content + 1] = line()
+        content[#content + 1] = text(l10n('fareLine', { base = stop.baseFare }))
+        if (stop.surcharge or 0) > 0 then
+            content[#content + 1] = text(l10n('surchargeLine', {
+                percent = stop.surchargePercent, extra = stop.surcharge,
+            }))
+        end
+        content[#content + 1] = { template = I.MWUI.templates.interval }
+        for _, entry in ipairs(bookButton(stop)) do
+            content[#content + 1] = entry
+        end
+    end
+
+    return {
+        type = ui.TYPE.Flex,
+        props = {
+            horizontal = false,
+            arrange = ui.ALIGNMENT.Start,
+            autoSize = false,
+            size = util.vector2(config.WINDOW_WIDTH - config.MASTER_WIDTH - 40,
+                config.WINDOW_HEIGHT - 90),
+        },
+        content = ui.content(content),
+    }
+end
+
+--------------------------------------------------------------------------
+-- Putting it together
+--------------------------------------------------------------------------
+
+local function body()
+    local heading = current.origin.name
+    if #current.origin.modes > 0 then
+        heading = string.format('%s -- %s', heading, table.concat(current.origin.modes, ', '))
+    end
+
+    return {
+        template = I.MWUI.templates.boxSolid,
+        content = ui.content {
+            {
+                type = ui.TYPE.Flex,
+                props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
+                content = ui.content {
+                    text(l10n('from', { place = heading }), I.MWUI.templates.textHeader),
+                    line(),
+                    {
+                        type = ui.TYPE.Flex,
+                        props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
+                        content = ui.content {
+                            master(),
+                            { template = I.MWUI.templates.verticalLine },
+                            { template = I.MWUI.templates.interval },
+                            detail(),
+                        },
+                    },
+                    line(),
+                    row(l10n('close'), close),
+                },
+            },
+        },
+    }
 end
 
 render = function()
     if current == nil then
         return
     end
-    local layout = {
-        layer = 'Windows',
-        template = I.MWUI.templates.boxSolid,
-        props = { anchor = util.vector2(0.5, 0.5), relativePosition = util.vector2(0.5, 0.5) },
-        content = ui.content {
-            {
-                type = ui.TYPE.Flex,
-                props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
-                content = ui.content(lines()),
-            },
-        },
-    }
     if window then
-        window.layout = layout
+        -- Only the contents are replaced. The window's own position is left
+        -- alone, because the player may have dragged it somewhere they want it
+        -- and re-applying the props would snap it back to the middle.
+        window.layout.content = ui.content { body() }
         window:update()
-    else
-        window = ui.create(layout)
+        return
     end
+    window = ui.create {
+        layer = 'Windows',
+        type = ui.TYPE.Window,
+        props = {
+            size = util.vector2(config.WINDOW_WIDTH, config.WINDOW_HEIGHT),
+            anchor = util.vector2(0.5, 0.5),
+            relativePosition = util.vector2(0.5, 0.5),
+        },
+        content = ui.content { body() },
+    }
 end
 
 --------------------------------------------------------------------------
@@ -379,7 +525,7 @@ local function onPlan(data)
         return
     end
     current = data
-    expanded = nil
+    selected = nil
     showAll = false
     local key = boundKey()
     if key then

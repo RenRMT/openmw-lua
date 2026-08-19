@@ -48,33 +48,54 @@ function M.build(graph, originKey, opts)
         stops = {},
     }
 
+    -- One row per place, not per stop. A guild hall and the street outside it
+    -- are the same town to a traveller, and offering both offers Caldera
+    -- twice at the same price. The list is cheapest-first, so the first member
+    -- of a place to come up is the one worth selling.
+    local here, taken = {}, {}
+    for _, member in ipairs(graphlib.walkGroup(graph, originKey)) do
+        here[member] = true
+    end
+
     for _, stop in ipairs(route.destinations(graph, originKey, opts)) do
-        local legs = {}
-        local firstModeLabel = nil
-        for _, leg in ipairs(stop.legs) do
-            legs[#legs + 1] = legOf(graph, leg, modes)
-            if firstModeLabel == nil and leg.mode ~= 'walk' then
-                firstModeLabel = legs[#legs].modeLabel
+        local place = graphlib.place(graph, stop.key)
+        -- Somewhere you already are is not a journey, whatever the graph says
+        -- it costs: the hall across the street from this silt strider is where
+        -- the player is standing.
+        local worth = not here[stop.key] and not taken[place.key]
+        if worth then
+            taken[place.key] = true
+            local legs = {}
+            local firstModeLabel = nil
+            for _, leg in ipairs(stop.legs) do
+                legs[#legs + 1] = legOf(graph, leg, modes)
+                if firstModeLabel == nil and leg.mode ~= 'walk' then
+                    firstModeLabel = legs[#legs].modeLabel
+                end
             end
+            plan.stops[#plan.stops + 1] = {
+                key = stop.key,
+                -- The place is what the list calls it; the stop is where the
+                -- journey actually ends, and the two differ whenever the
+                -- cheapest way into a town is through its guild hall.
+                name = place.name,
+                arrival = stop.name,
+                cost = stop.cost,
+                distance = stop.distance,
+                walked = stop.walked,
+                hours = stop.hours,
+                fare = stop.fare,
+                baseFare = stop.baseFare,
+                surcharge = stop.surcharge,
+                surchargePercent = stop.surchargePercent,
+                transfers = stop.transfers,
+                vehicleLegs = stop.vehicleLegs,
+                modeChanges = stop.modeChanges,
+                firstModeLabel = firstModeLabel,
+                modes = stop.modes,
+                legs = legs,
+            }
         end
-        plan.stops[#plan.stops + 1] = {
-            key = stop.key,
-            name = stop.name,
-            cost = stop.cost,
-            distance = stop.distance,
-            walked = stop.walked,
-            hours = stop.hours,
-            fare = stop.fare,
-            baseFare = stop.baseFare,
-            surcharge = stop.surcharge,
-            surchargePercent = stop.surchargePercent,
-            transfers = stop.transfers,
-            vehicleLegs = stop.vehicleLegs,
-            modeChanges = stop.modeChanges,
-            firstModeLabel = firstModeLabel,
-            modes = stop.modes,
-            legs = legs,
-        }
         if opts.limit and #plan.stops >= opts.limit then
             break
         end

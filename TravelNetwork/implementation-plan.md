@@ -518,6 +518,48 @@ Four things the formula is arranged to get right:
   60% (60 gold) for booking it in one go" above the button. A price the player
   cannot account for reads as invented.
 
+### Phase 4d — the window, rebuilt, 2026-08-19
+
+Playing it made the first window's shape the complaint: clicking a stop opened
+its legs *inline*, which pushed every row below it down the screen and resized
+the window under the cursor. Structure was the smaller half of the problem.
+
+**Two panes.** The list of places on the left, the journey to the one you
+picked on the right. Nothing moves when you click. The Book button lives in the
+detail pane, so buying is one click from any row rather than two with a layout
+shift between them.
+
+**The list is places, not stops** — `graph.place`, which is the fold
+`interchanges` was already doing, made public and used by both. A town and the
+guild hall inside it were two rows at the same price; they are now one, named
+after whichever member is out of doors, and the detail pane says which stop the
+journey actually ends at. From Balmora that takes 32 rows to 27, and the
+42-character *Sadrith Mora, Wolverine Hall: Mage's Guild* stops being a row at
+all. **The naming rule flipped to prefer the exterior**: it used to prefer
+whichever stop the most vehicles reached, which named Caldera after its guild
+hall — the only thing any vehicle reaches there.
+
+**Where you already are is not a destination.** The origin's own walk group is
+dropped from the list, so the guild hall across the street is no longer offered
+as a journey costing nothing.
+
+**Sections, not flags.** *No change of vehicle* and *Changing vehicle*, because
+what a player wants to know first is whether they will have to change at all,
+and a heading answers that for a block at once.
+
+**An unaffordable journey is shaded** with the `disabled` template and what you
+are carrying underneath it, instead of being clickable and refused.
+
+**`ui.TYPE.Window`**, so the thing can be dragged and resized. Re-rendering
+replaces the window's *contents* only and never its props — re-applying the
+position would snap a window the player had moved back to the middle.
+
+What MWUI does not have, and what the design had to route around: **no
+scrolling widget of any kind**. The list is capped at `SHOWN_STOPS` with the
+last row opening the rest, and the window is a fixed pixel size, because a
+resizable widget needs a size to be resized from and a list with no scrollbar
+has to be a known number of lines.
+
 ### Phase 4c — the fare is the game's own, 2026-08-19
 
 `FARE_PER_UNIT` began as 0.004, which priced Balmora to Seyda Neen at 214 gold

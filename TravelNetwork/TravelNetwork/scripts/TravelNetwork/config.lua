@@ -41,6 +41,19 @@ return {
     -- is 10 + 10 + 20 per cent, not a product of three multipliers.
     FARE_LEG_SURCHARGE = 0.10,
     FARE_MODE_CHANGE_SURCHARGE = 0.20,
+
+    -- The planner window, in pixels. Fixed rather than relative because the
+    -- engine's Window widget is resized from a size, and because a list with
+    -- no scrollbar -- MWUI has none -- has to be a known number of lines.
+    -- MASTER_WIDTH is the destination list; the journey fills what is left.
+    WINDOW_WIDTH = 900,
+    WINDOW_HEIGHT = 560,
+    MASTER_WIDTH = 380,
+
+    -- How many places the list shows before offering the rest. Vanilla reaches
+    -- 27 from Balmora, which is more than fits and more than anyone reads at
+    -- once.
+    SHOWN_STOPS = 16,
     HOURS_PER_UNIT = 0.00012,
     MAX_ROUTE_LEGS = 8,
 }

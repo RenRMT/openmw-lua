@@ -66,10 +66,49 @@ function M.aPlanListsEverywhereReachableCheapestFirst()
     local g = linked()
     local built = plan.build(g, 'place:balmora')
 
-    expect.equal(#built.stops, g.stats.nodes - 1, 'every other stop in the game')
+    expect.equal(#built.stops, 27, 'places reachable from Balmora')
     for index = 2, #built.stops do
         expect.truthy(built.stops[index].cost >= built.stops[index - 1].cost,
             'stop ' .. index .. ' is no cheaper than the one before it')
+    end
+end
+
+function M.aTownAndItsGuildHallAreOneRowNotTwo()
+    -- The list is places, not stops: 33 stops become 27 rows from Balmora,
+    -- four of them guild halls folded into the town outside and one of them
+    -- the hall across the street from where the player is standing.
+    local g = linked()
+    local built = plan.build(g, 'place:balmora')
+    local seen = {}
+
+    for _, stop in ipairs(built.stops) do
+        expect.isNil(seen[stop.name], stop.name .. ' appears once')
+        seen[stop.name] = true
+    end
+
+    expect.truthy(seen['Caldera'], 'the town is offered')
+    expect.isNil(seen['Caldera, Guild of Mages'], 'the hall inside it is not offered separately')
+    expect.truthy(seen['Wolverine Hall'], 'the fort is offered')
+    expect.isNil(seen["Sadrith Mora, Wolverine Hall: Mage's Guild"], 'and not its hall')
+end
+
+function M.thePlaceYouAreStandingInIsNotADestination()
+    local g = linked()
+    for _, stop in ipairs(plan.build(g, 'place:balmora').stops) do
+        expect.truthy(stop.name ~= 'Balmora' and stop.name ~= 'Balmora, Guild of Mages',
+            'Balmora is not sold a journey to itself, ' .. stop.name)
+    end
+end
+
+function M.aRowSaysWhereTheJourneyActuallyEnds()
+    -- Folding names a row after the town; the journey may still end in the
+    -- hall, and the window has to be able to say so.
+    local g = linked()
+    for _, stop in ipairs(plan.build(g, 'place:balmora').stops) do
+        if stop.name == 'Caldera' then
+            expect.equal(stop.arrival, 'Caldera, Guild of Mages',
+                'the cheapest way into Caldera is through its guild hall')
+        end
     end
 end
 
@@ -89,7 +128,7 @@ function M.everyLegCarriesWhatAPlayerNeedsToRead()
     end
 
     expect.truthy(caldera, 'Caldera is in the plan')
-    expect.count(caldera.legs, 3, 'legs')
+    expect.count(caldera.legs, 2, 'legs')
     expect.equal(caldera.legs[2].modeLabel, 'Guild guide', 'the mode reads as a label, not an id')
     expect.equal(caldera.legs[2].to, 'Caldera, Guild of Mages', 'legs name their stops')
     expect.truthy(caldera.legs[2].operator, 'and who runs them')
@@ -122,8 +161,8 @@ function M.aJourneyOnOneVehicleNamesIt()
         end
     end
 
-    -- Balmora to Caldera is walk, guide, walk: three legs, one vehicle, and
-    -- the player is asked to change nothing.
+    -- Balmora to Caldera is a walk to the guild hall and one guide leg: two
+    -- legs, one vehicle, and the player is asked to change nothing.
     expect.equal(plan.summarise(caldera), 'journeyDirect', 'a guide journey through two doors')
     expect.equal(caldera.vehicleLegs, 1, 'vehicle legs')
     expect.equal(caldera.firstModeLabel, 'Guild guide', 'named by what carries you')

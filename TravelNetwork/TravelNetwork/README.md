@@ -18,16 +18,47 @@ other mod had already taken.
 
 Then **talk to a silt strider driver, shipmaster, gondolier or guild guide**.
 The conversation prompts you by name of key — *Press T to plan a journey from
-here* — or, if you have not bound one yet, says where to. Press it and the
-window lists every stop reachable from where they stand, cheapest first, with
-what each journey asks of you, how long it runs and what it costs. Click a stop
-to see its legs and the price of the whole journey; click again to fold it away.
-The list shows the fourteen cheapest; the line at the bottom opens the rest.
+here* — or, if you have not bound one yet, says where to.
+
+Press it and a window opens in two halves. On the left, everywhere you can get
+to, cheapest first, split into the journeys that keep you on one kind of
+vehicle and the ones that make you change:
+
+```
+From Balmora -- guide, strider
+-------------------------------------------------------------------
+NO CHANGE OF VEHICLE          | Vos
+  Caldera                 10  | 5 legs, 1 change of vehicle
+  Seyda Neen              13  | Arriving at Vos
+> Ald-ruhn                18  | ---------------------------------
+  Vivec                   19  |   Silt strider to Vivec (Selvil Sareloth)
+  Khuul                   48  |   Boat to Ebonheart (Bhukamdi)
+                              |   Boat to Tel Branora (Daynas Darys)
+CHANGING VEHICLE              |   Boat to Tel Aruhn (Rilvyn Uvelas)
+  Vivec, Arena            31  |   Boat to Vos (Daris Adram)
+  Ebonheart               36  | ---------------------------------
+  Tel Branora             62  | 100 gold in fares
+  Vos                    160  | plus 60% for booking it in one go -- 60 gold
+  ...and 11 more -- show them |
+                              | [ Travel here -- 160 gold ]
+-------------------------------------------------------------------
+Close
+```
+
+On the right, the journey to whatever you clicked: its legs, who runs each of
+them, what the fares come to and what the ticket adds. The list never moves
+when you click it. The window itself can be dragged anywhere you like.
+
+**One row is one place.** A town and the guild hall inside it are the same
+place, so *Caldera* appears once rather than twice at the same price — and the
+detail pane says which stop you actually arrive at when the cheapest way in is
+through the hall. Where you already are is not offered at all.
+
 Closing the window leaves you in the conversation, and leaving the conversation
 closes the window.
 
-A journey reads as one of four things, and the distinction is between legs and
-vehicles rather than between stops:
+Under each place, a journey reads as one of four things — the distinction being
+between legs and vehicles rather than between stops:
 
 | It says | It means |
 |---|---|
@@ -36,11 +67,13 @@ vehicles rather than between stops:
 | *3 legs, all by Silt strider* | Several legs, nothing to change onto |
 | *1 change of vehicle* | You leave one kind of transport for another |
 
-**Click the price to travel.** The fare comes out of your purse once, the
+**Click the button to travel.** The fare comes out of your purse once, the
 conversation ends, and you arrive at the far stop with the clock moved on by the
 length of the journey — every leg of it, including the changes and the walk
 through a guild hall door. You buy the journey from whoever you happen to be
-talking to, even the legs their own vehicle does not cover.
+talking to, even the legs their own vehicle does not cover. A journey you cannot
+afford is greyed out with what you are carrying underneath it, rather than
+letting you click and be told off.
 
 The key does nothing outside a travel conversation, on purpose — reading a route
 out of the air in the middle of a street is a menu, not a journey. Press it
@@ -123,6 +156,7 @@ Five places in a province, for four modes of transport.
 | `graph()` | The whole graph, built and cached on first call |
 | `rebuild()` | Discards the cache and rebuilds |
 | `interchanges()` | `{ { key, name, modes }, ... }` for stops serving more than one mode |
+| `place(g, key)` | The stop plus everything a walk away, under one name |
 | `modesAt(g, key)` / `modesWithinWalk(g, key)` | Vehicles meeting at a stop; and those one walk leg away |
 | `edgesFrom(g, key)` / `isTransfer(g, key)` | Legs leaving a stop; whether vehicles meet there |
 | `route(from, to, opts)` | The cheapest journey, or nil when there is none |
@@ -173,7 +207,13 @@ interior coordinates are cell-local. So:
 3. **Unnamed exterior cell** — merged into the nearest stop within
    `NODE_MERGE_RADIUS`, in a second pass so the result does not depend on the
    order operators were found in. Vanilla has exactly one stop that survives
-   this: the Holamayan landing, which the game never named.
+   this: the Holamayan landing, which the game never named. It would otherwise
+   be called *Azura's Coast (19, -5)*, so `data/places.lua` names it after the
+   monastery it serves.
+
+A **place** is a stop plus everything a walk leg away from it, named after
+whichever of them is out of doors — `graph.place`. That is what makes Caldera
+and its guild hall one row in the planner and one interchange in the dump.
 
 ## Booking
 
@@ -242,6 +282,7 @@ zero turns the whole thing off.
 | `scripts/TravelNetwork/player.lua` | The keybind, the settings page and the window |
 | `scripts/TravelNetwork/config.lua` | Every tunable; the two routing penalties are defaults the settings page overrides |
 | `scripts/TravelNetwork/data/modes.lua` | Which class drives what, plus the four vanilla operators whose class does not say |
+| `scripts/TravelNetwork/data/places.lua` | Names for stops the game never named. Vanilla needs one: Holamayan |
 
 ## Walking between stops
 
