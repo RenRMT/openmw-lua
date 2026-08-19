@@ -4,6 +4,14 @@
 -- global script; this asks for a plan and draws it, and holds no opinion
 -- about what a good route is.
 --
+-- The planner belongs to a conversation. Talking to a caravaner, shipmaster,
+-- gondolier or guild guide is what makes it available -- asking the person who
+-- drives the thing, rather than consulting a map in the middle of the street.
+-- Outside such a conversation the key does nothing but explain itself.
+--
+-- Lua cannot add a dialogue topic; topics are DIAL records and live in content
+-- files. What it can do is notice the conversation, which is what this does.
+--
 -- PLAYER context only.
 
 local async = require('openmw.async')
@@ -31,6 +39,8 @@ local SHOWN = 14
 
 local window = nil
 local expanded = nil
+-- The plan for the operator currently being talked to, fetched when the
+-- conversation opens so the keypress has nothing to wait for.
 local current = nil
 
 --------------------------------------------------------------------------
@@ -94,12 +104,16 @@ local function row(label, onClick)
     }
 end
 
+--- Shut the planner, leaving the conversation as it was.
+--
+-- No mode juggling: the window only ever opens inside dialogue, which already
+-- has a cursor and its own mode. Dropping modes here would end the
+-- conversation the player opened the planner from.
 local function close()
     if window then
         window:destroy()
         window = nil
         expanded = nil
-        I.UI.setMode()
     end
 end
 
@@ -166,7 +180,6 @@ render = function()
         window:update()
     else
         window = ui.create(layout)
-        I.UI.setMode('Interface', { windows = {} })
     end
 end
 
@@ -176,14 +189,30 @@ end
 
 local function onPlan(data)
     if data == nil or data.origin == nil then
-        -- Nothing to plan from: the player is somewhere the graph cannot
-        -- measure, which is worth saying rather than opening an empty box.
-        ui.showMessage(l10n('nowhereNearby'))
+        -- Not an operator: a shopkeeper, a guard, anyone. Nothing to offer,
+        -- and nothing to say either -- the player did not ask.
+        current = nil
         return
     end
     current = data
     expanded = nil
-    render()
+    ui.showMessage(l10n('plannerHint'))
+end
+
+--- Talking to someone. Ask the global script whether they run anything; the
+-- answer decides whether the key does anything for the length of this
+-- conversation.
+local function onTalk(actor)
+    core.sendGlobalEvent(events.REQUEST_PLAN, { player = self.object, actor = actor })
+end
+
+local function leaveDialogue()
+    current = nil
+    if window then
+        window:destroy()
+        window = nil
+        expanded = nil
+    end
 end
 
 local function toggle()
@@ -191,18 +220,28 @@ local function toggle()
         close()
         return
     end
-    core.sendGlobalEvent(events.REQUEST_PLAN, { player = self.object })
+    if current == nil then
+        -- Pressed somewhere the planner has nothing to say. Silence would
+        -- look like a broken keybind.
+        ui.showMessage(l10n('askAnOperator'))
+        return
+    end
+    render()
 end
 
 input.registerTriggerHandler(TRIGGER, async:callback(toggle))
 
---- The player left interface mode, by whatever route. The window goes too:
--- an element left behind would sit over the game with no way to dismiss it.
+--- Dialogue opening is what offers the planner; dialogue closing withdraws it.
+--
+-- `arg` is the actor for the modes that have a target, which is how the mod
+-- knows who is being talked to without touching the dialogue system itself.
 local function onUiModeChanged(data)
-    if window and data.newMode ~= 'Interface' then
-        window:destroy()
-        window = nil
-        expanded = nil
+    if data.newMode == 'Dialogue' and data.arg then
+        onTalk(data.arg)
+        return
+    end
+    if data.oldMode == 'Dialogue' then
+        leaveDialogue()
     end
 end
 

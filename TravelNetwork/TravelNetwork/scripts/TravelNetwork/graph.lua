@@ -146,6 +146,7 @@ function M.build(operators, opts)
         nodes = {},
         order = {},
         edges = {},
+        operators = {},
         mergeRadius = mergeRadius,
         stats = { operators = 0, excluded = 0, unplaced = 0, selfEdges = 0, edges = 0, nodes = 0 },
     }
@@ -206,6 +207,14 @@ function M.build(operators, opts)
     for _, operator in ipairs(usable) do
         local fromKey = operator.place._key
         local mode = modeFor(operator, modes)
+        -- Which stop an operator stands at. The planner opens from the
+        -- caravaner you are talking to, so it needs to get from that actor to
+        -- their place in the network without measuring anything.
+        graph.operators[lower(operator.id) or operator.id] = {
+            key = fromKey,
+            name = operator.name,
+            mode = mode,
+        }
         for _, destination in ipairs(operator.destinations) do
             local toKey = destination._key
             if toKey == fromKey then
@@ -403,6 +412,15 @@ end
 --- Legs leaving a stop.
 function M.edgesFrom(graph, key)
     return graph.edges[key] or {}
+end
+
+--- The stop an operator stands at, by record id. Case-insensitive, because
+-- the ESM's ids are inconsistent about it and the engine lowercases anyway.
+function M.stopOf(graph, recordId)
+    if type(recordId) ~= 'string' then
+        return nil
+    end
+    return graph.operators[string.lower(recordId)]
 end
 
 --- The interchanges, counted as places rather than as stops.

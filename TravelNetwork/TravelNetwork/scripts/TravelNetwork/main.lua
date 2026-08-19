@@ -6,7 +6,6 @@
 local adapter = require('scripts.TravelNetwork.adapter')
 local config = require('scripts.TravelNetwork.config')
 local events = require('scripts.TravelNetwork.events')
-local locate = require('scripts.TravelNetwork.locate')
 local plan = require('scripts.TravelNetwork.plan')
 local graph = require('scripts.TravelNetwork.graph')
 local route = require('scripts.TravelNetwork.route')
@@ -165,53 +164,28 @@ local function dumpDestinations(fromKey)
     end
 end
 
---- Where a player standing here would board.
+--- Answer a player script asking where a conversation could take them.
 --
--- Indoors and not at a stop -- a tavern, a shop -- the player's coordinates
--- are cell-local and mean nothing outside the room, so the doors are followed
--- out first and the search starts from the street. That reuses exactly the
--- walk that joins guild halls to their towns.
-local function stopNearest(g, player)
-    local cell = player.cell
-    local where = {
-        cellId = cell.id,
-        isInterior = not cell.isExterior,
-        position = player.position,
-    }
-
-    local key, distance = locate.nearest(g, where)
-    if key then
-        return key, distance
-    end
-    if not where.isInterior then
-        return nil
-    end
-
-    local exits = walk.links({ { cellId = cell.id, position = player.position } }, adapter.doorsFor)
-    if #exits == 0 then
-        return nil
-    end
-    local exit = exits[1]
-    return locate.nearest(g, {
-        cellId = exit.point.cellId,
-        isInterior = exit.point.isInterior,
-        position = exit.point.position,
-    })
-end
-
---- Answer a player script asking where it can get to.
+-- The planner opens from the operator you are talking to, so the origin is
+-- their stop -- exact, rather than the nearest thing to where the player
+-- happens to be standing. An actor who runs no vehicle gets an empty answer,
+-- which the player script turns into a line of text rather than a window.
 local function onRequestPlan(data)
     local player = data and data.player
     if player == nil then
         return
     end
     local g = current()
-    local originKey = stopNearest(g, player)
-    if originKey == nil then
+    local operator = data.actor and graph.stopOf(g, data.actor.recordId)
+    if operator == nil then
         player:sendEvent(events.PLAN, {})
         return
     end
-    player:sendEvent(events.PLAN, plan.build(g, originKey, { limit = data.limit }))
+    local built = plan.build(g, operator.key, { limit = data.limit })
+    if built then
+        built.operator = { name = operator.name, mode = operator.mode }
+    end
+    player:sendEvent(events.PLAN, built or {})
 end
 
 return {

@@ -1,4 +1,4 @@
--- Locating the player, and the plan handed to the window.
+-- Finding the operator being talked to, and the plan handed to the window.
 --
 -- The window itself is not tested: it needs the engine to draw. Everything it
 -- decides is here instead, which is the reason plan.lua produces data rather
@@ -7,7 +7,6 @@
 local expect = require('support.expect')
 local fixture = require('support.fixture')
 local graph = require('scripts.TravelNetwork.graph')
-local locate = require('scripts.TravelNetwork.locate')
 local plan = require('scripts.TravelNetwork.plan')
 local walk = require('scripts.TravelNetwork.walk')
 
@@ -25,50 +24,33 @@ local function linked()
     return g
 end
 
-local function outside(x, y, z)
-    return { isInterior = false, position = { x = x, y = y, z = z or 0 } }
+function M.theStopAnOperatorStandsAtIsKnownByRecordId()
+    -- What the planner opens from: the caravaner you are talking to, resolved
+    -- to their stop without measuring anything.
+    local g = linked()
+    local operator = graph.stopOf(g, 'navam veran')
+
+    expect.truthy(operator, 'Navam Veran is an operator')
+    expect.equal(operator.key, 'place:ald-ruhn', 'stands at Ald-ruhn')
+    expect.equal(operator.mode, 'strider', 'and drives a silt strider')
 end
 
-function M.standingAtAStopFindsThatStop()
+function M.anOperatorIsFoundWhateverTheCasingOfTheId()
+    -- The ESM stores some ids capitalised and some not; the engine lowercases
+    -- what it hands back. Neither side should have to care.
     local g = linked()
-    local balmora = g.nodes['place:balmora'].position
-    local key, distance = locate.nearest(g, outside(balmora.x + 40, balmora.y - 30, balmora.z))
-
-    expect.equal(key, 'place:balmora', 'nearest stop')
-    expect.truthy(distance < 100, 'and it is right here')
+    expect.truthy(graph.stopOf(g, 'Nevosi Hlan'), 'as the ESM spells it')
+    expect.truthy(graph.stopOf(g, 'nevosi hlan'), 'as the engine reports it')
 end
 
-function M.standingInTheWildsFindsTheNearestStop()
+function M.someoneWhoRunsNothingIsNotAnOperator()
     local g = linked()
-    local balmora = g.nodes['place:balmora'].position
-    local key = locate.nearest(g, outside(balmora.x + 9000, balmora.y, balmora.z))
-
-    expect.equal(key, 'place:balmora', 'still Balmora, from nine thousand units out')
+    expect.isNil(graph.stopOf(g, 'fargoth'), 'a townsman runs no vehicle')
+    expect.isNil(graph.stopOf(g, nil), 'and neither does nobody')
 end
 
-function M.standingInsideAStopFindsIt()
-    local g = linked()
-    local key, distance = locate.nearest(g, {
-        cellId = 'Balmora, Guild of Mages', -- the engine's casing varies; ours must not care
-        isInterior = true,
-        position = { x = 0, y = 0, z = 0 },
-    })
-
-    expect.equal(key, 'cell:balmora, guild of mages', 'the hall itself')
-    expect.equal(distance, 0, 'you are standing in it')
-end
-
-function M.standingInSomeOtherRoomFindsNothing()
-    -- A tavern is not a stop, and its coordinates mean nothing outside its own
-    -- walls. Guessing a stop from them would put the player at whichever stop
-    -- happened to sit near the origin of an unrelated worldspace; the caller
-    -- has to walk the doors out first.
-    local g = linked()
-    expect.isNil(locate.nearest(g, {
-        cellId = 'balmora, south wall cornerclub',
-        isInterior = true,
-        position = { x = 0, y = 0, z = 0 },
-    }), 'no stop guessed from inside an unrelated room')
+function M.theExcludedTestOperatorIsNotSelectable()
+    expect.isNil(graph.stopOf(linked(), 'todd'), "Bethesda's test NPC stays out")
 end
 
 function M.aPlanNamesWhereItStartsAndWhatServesIt()

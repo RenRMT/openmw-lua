@@ -5,11 +5,17 @@ directed graph instead of a set of unrelated dialogue menus: plan a multi-leg
 route from anywhere, see where you can transfer between silt strider, boat and
 guild guide, and book the whole journey in one go.
 
-**Finish line.** Press a key anywhere and get the route from your current
-position to any named stop — legs, transfers, distance, estimated arrival time.
-Stand next to an operator, press book, and be taken the whole way, with time
-advanced and fare deducted per leg. Nothing else. When that works, the mod is
-done.
+**Finish line.** Talk to a silt strider driver, shipmaster, gondolier or guild
+guide, press the planner key, and get the route from their stop to any named
+stop — legs, transfers, distance, estimated arrival time. Press book and be
+taken the whole way, with time advanced and fare deducted per leg. Nothing
+else. When that works, the mod is done.
+
+*Revised 2026-08-19.* This began as "press a key anywhere and plan from where
+you are standing". Reading a route out of thin air in the middle of a street is
+a menu, not a journey; asking the person who drives the thing is the same
+information with a reason to be there. It also makes the origin exact rather
+than the nearest guess.
 
 **Explicit anti-goal.** No framework/content split, no pack API, no extension
 points. The mode table is a Lua file in this mod that names silt striders. If
@@ -360,9 +366,19 @@ towns. Walk legs keep their measured distance; they were never taken across a
 seam.
 
 **Phase 3 — the planner UI. Done, 2026-08-19.** `player.lua` holds the keybind,
-the settings page and the window; `plan.lua` and `locate.lua` hold everything it
-decides, and are pure, which is what keeps the untestable part down to drawing.
+the settings page and the window; `plan.lua` holds everything it decides and is
+pure, which keeps the untestable part down to drawing.
 
+- **The planner belongs to a conversation.** Talking to an operator fetches the
+  plan and offers it; the key opens it; leaving dialogue withdraws it. Pressed
+  anywhere else the key explains itself rather than doing nothing, since a
+  silent keybind reads as a broken one.
+- **Lua cannot add a dialogue topic** — topics are DIAL records and live in
+  content files, which a script-only mod has none of. What it can do is notice
+  the conversation: `UiModeChanged` reports `newMode = 'Dialogue'` with `arg`
+  set to the actor, and `graph.stopOf` turns that actor into their stop.
+- **The origin is the operator's own stop**, not the nearest thing to where the
+  player happens to be standing. Exact, and it needs no measuring.
 - **The keybind is a registered trigger** bound through the `inputBinding`
   settings renderer. Nothing is bound by default: any key this mod chose would
   be one some other mod had already taken.
@@ -370,22 +386,23 @@ decides, and are pure, which is what keeps the untestable part down to drawing.
   lives in the global script because only global scripts walk cells; the window
   lives in the player script because only local scripts draw. What travels
   between them is names and numbers, nothing needing the engine to read.
-- **Standing indoors somewhere that is not a stop**, the planner follows the
-  doors out and plans from the street — the same walk that joins guild halls to
-  their towns, reused. `locate.nearest` refuses to guess from inside an
-  unrelated room, because interior coordinates would put the player at whichever
-  stop happened to sit near another worldspace's origin.
-- The window closes on its own key, on its Close row, and on leaving interface
-  mode by any route.
+- No UI mode juggling: the window only ever opens inside dialogue, which already
+  has a cursor. Dropping modes to close it would end the conversation it was
+  opened from.
 
-**This is the point the plan called worth using**, and it is: the mod now
-answers "how do I get to Dagon Fel from here" in a keypress. Booking is still
-vanilla dialogue, leg by leg.
+`locate.lua` was written for this phase and deleted at the end of it. It found
+the stop nearest the player, which the dialogue-gated design no longer asks
+about; `graph.stopOf` replaced it with an exact answer.
 
-**Phase 4 — booking.** With an operator within `BOOKING_RADIUS` (found via
-`nearby.actors` filtered on `servicesOffered.Travel`), offer "travel the whole
-way": deduct the summed fare, then per leg `teleport` to the destination and
-`world.advanceTime(legHours)`.
+**This is the point the plan called worth using**, and it is: ask a caravaner
+where you can get to, and the answer includes the boat you would change onto.
+Booking is still vanilla dialogue, leg by leg.
+
+**Phase 4 — booking.** In the conversation the planner was opened from, offer
+"travel the whole way": deduct the summed fare, then per leg `teleport` to the
+destination and `world.advanceTime(legHours)`. The operator is whoever is being
+talked to, so `BOOKING_RADIUS` and the `nearby.actors` search phase 3 was
+expected to need are both moot — delete the constant if nothing else claims it.
 
 **Walk legs are teleported too** (decided 2026-08-18). The player books at
 Balmora's silt strider and arrives in Caldera; the mod walks them through the

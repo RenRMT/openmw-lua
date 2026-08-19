@@ -15,13 +15,16 @@ build order and the decisions behind it.
 Nothing is bound by default, since any key this mod picked would be one some
 other mod had already taken.
 
-Press it anywhere. The window lists every stop you can reach from where you are
-standing, cheapest first, with how many changes each takes, how long, and what
-it costs. Click a stop to see its legs; click again to fold it away. Escape
-closes the window, as does the same key.
+Then **talk to a silt strider driver, shipmaster, gondolier or guild guide**.
+The planner is part of that conversation: press the key and the window lists
+every stop reachable from where they stand, cheapest first, with how many
+changes each journey takes, how long it runs and what it costs. Click a stop to
+see its legs; click again to fold it away. Closing the window leaves you in the
+conversation, and leaving the conversation closes the window.
 
-Standing indoors somewhere that is not itself a stop — a tavern, a shop — the
-planner follows the doors out and plans from the street.
+The key does nothing outside a travel conversation, on purpose — reading a route
+out of the air in the middle of a street is a menu, not a journey. Press it
+anyway and it will say so rather than sit there looking broken.
 
 ## Setup
 
