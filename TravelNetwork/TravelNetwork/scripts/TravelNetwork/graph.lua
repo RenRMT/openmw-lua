@@ -290,10 +290,43 @@ function M.link(graph, links)
                 M.addEdge(graph, fromKey, toKey, 'walk', total)
                 M.addEdge(graph, toKey, fromKey, 'walk', total)
                 graph.stats.walkLegs = (graph.stats.walkLegs or 0) + 2
+                -- Where this stop stands in the world. An interior's own
+                -- coordinates are cell-local and cannot be compared with
+                -- anything outside it; the street it opens onto can.
+                graph.nodes[fromKey].anchor = {
+                    x = to.position.x, y = to.position.y, z = to.position.z,
+                }
             end
         end
     end
+    M.remeasure(graph)
     return M.sort(graph)
+end
+
+--- Re-measure vehicle legs against where their stops stand in the world.
+--
+-- A leg touching an interior was measured across two coordinate systems with
+-- nothing to do with each other, which made guild guides look almost free:
+-- Balmora to Ald-ruhn read as 3406 units, because that is how far apart two
+-- guild halls happen to sit inside their own cells. Measured between the
+-- streets they open onto, it reads as the journey it actually is.
+--
+-- Walk legs keep the distance they were built with. They were never measured
+-- across a seam -- each half was taken within one cell -- and their two ends
+-- anchor to the same place by construction, so re-measuring would zero them.
+function M.remeasure(graph)
+    local anchored = 0
+    for _, edges in pairs(graph.edges) do
+        for _, edge in ipairs(edges) do
+            local from, to = graph.nodes[edge.from], graph.nodes[edge.to]
+            if edge.mode ~= 'walk' and (from.anchor or to.anchor) then
+                edge.distance = distance(from.anchor or from.position, to.anchor or to.position)
+                anchored = anchored + 1
+            end
+        end
+    end
+    graph.stats.remeasured = anchored
+    return graph
 end
 
 --- The modes meeting at a stop, sorted. More than one means you can change

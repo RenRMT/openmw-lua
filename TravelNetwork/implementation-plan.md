@@ -334,11 +334,30 @@ assembling the graph.
 
 Still no UI, no routing, no gameplay.
 
-**Phase 2 — routing.** Dijkstra over the directed graph with a configurable cost
-mixing distance and a per-transfer penalty, plus a mode-change penalty so a
-route does not bounce between boat and strider to save 30 units. Pure Lua over
-the graph table, so the entire phase is unit-testable against a fixture. Ship
-`route(fromKey, toKey)` and `transfersAt(nodeKey)` on the interface.
+**Phase 2 — routing. Done, 2026-08-19.** `route.lua`, pure like the rest.
+Dijkstra over **(stop, mode) pairs** rather than stops alone, because what a leg
+costs depends on how you arrived — staying on one silt strider is free where
+changing to a boat is not, and a search that only remembered its position could
+not tell those apart. 33 stops and five modes make that cheap.
+
+Cost is distance plus `TRANSFER_PENALTY` per change and `MODE_CHANGE_PENALTY`
+when the kind of vehicle changes, all in game units, so a penalty reads as
+"worth this much of a detour". `MAX_ROUTE_LEGS` bounds the search.
+
+On the interface: `route(from, to)`, `destinations(from)` (everywhere reachable,
+cheapest first — what phase 3's list needs), `transfersAt(key)`, plus
+`dumpRoute` and `dumpDestinations` for the console.
+
+**Routing found a bug in phase 1's distances.** A leg between two interiors was
+measured across two cell-local coordinate systems: Balmora to Ald-ruhn by guild
+guide read as 3406 units, because that is how far apart the two halls sit inside
+their own cells. Guides looked nearly free and the router sent everyone through
+them. Stops now carry an `anchor` — for a stop indoors, the position of the
+street its walk link opens onto — and `graph.remeasure` re-measures every
+vehicle leg against those. The guide leg between Balmora and Ald-ruhn now reads
+73046 units, to the unit the same as the silt strider leg between the same two
+towns. Walk legs keep their measured distance; they were never taken across a
+seam.
 
 **Phase 3 — the planner UI.** Player script, keybind from settings, an MWUI
 window listing reachable stops from the nearest node, sorted by cost, each

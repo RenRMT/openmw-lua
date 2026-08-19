@@ -7,6 +7,7 @@
 local expect = require('support.expect')
 local fixture = require('support.fixture')
 local graph = require('scripts.TravelNetwork.graph')
+local route = require('scripts.TravelNetwork.route')
 local walk = require('scripts.TravelNetwork.walk')
 
 local M = {}
@@ -224,6 +225,89 @@ function M.mournholdIsNotInTheNetwork()
         expect.falsy(string.find(string.lower(g.nodes[key].name), 'mournhold', 1, true),
             'no Mournhold stop')
     end
+end
+
+function M.aGuideLegIsMeasuredBetweenTheTownsItJoins()
+    -- The bug routing found: a guild hall is an interior, so a leg between two
+    -- of them was measured across two cell-local coordinate systems. Balmora
+    -- to Ald-ruhn read as 3406 units -- how far apart the two halls sit inside
+    -- their own cells -- and made every guide route look nearly free.
+    --
+    -- Anchored to the streets outside, a guide leg reads as the same journey
+    -- the silt strider makes between the same two towns, to the unit.
+    local g = linked()
+    local byGuide, byStrider = nil, nil
+    for _, leg in ipairs(graph.edgesFrom(g, 'cell:balmora, guild of mages')) do
+        if leg.to == 'cell:ald-ruhn, guild of mages' then
+            byGuide = leg.distance
+        end
+    end
+    for _, leg in ipairs(graph.edgesFrom(g, 'place:balmora')) do
+        if leg.to == 'place:ald-ruhn' then
+            byStrider = leg.distance
+        end
+    end
+
+    expect.truthy(byGuide and byStrider, 'both legs exist')
+    expect.near(byGuide, byStrider, 1, 'the guide covers the ground the strider does')
+    expect.greater(byGuide, 50000, 'and it is a real journey, not a few paces')
+end
+
+function M.noVehicleLegIsImplausiblyShort()
+    -- A guard on the same class of bug: the shortest ride in the game is Tel
+    -- Mora to Vos at 7000 units. Anything under a thousand would mean a leg
+    -- measured across a seam again.
+    local g = linked()
+    for _, key in ipairs(g.order) do
+        for _, leg in ipairs(graph.edgesFrom(g, key)) do
+            if leg.mode ~= 'walk' then
+                expect.greater(leg.distance, 1000,
+                    g.nodes[leg.from].name .. ' -> ' .. g.nodes[leg.to].name)
+            end
+        end
+    end
+end
+
+function M.everyStopIsReachableFromBalmora()
+    -- The network is one piece: from Balmora's silt strider every other stop
+    -- in the game can be reached, Holamayan and Raven Rock included.
+    local g = linked()
+    local found = route.destinations(g, 'place:balmora')
+    expect.equal(#found, g.stats.nodes - 1, 'stops reachable from Balmora')
+end
+
+function M.calderaIsReachedByGuideAndOnlyByGuide()
+    local g = linked()
+    local found = route.find(g, 'place:balmora', 'place:caldera')
+
+    expect.count(found.legs, 3, 'legs')
+    expect.equal(table.concat(found.modes, '+'), 'walk+guide+walk', 'walk in, ride, walk out')
+    expect.equal(found.fare > 0, true, 'the guide charges; the doors do not')
+end
+
+function M.crossingTheIslandUsesTheInterchanges()
+    -- Seyda Neen to Dagon Fel: striders up the west road, then the boat from
+    -- Khuul, which is one of the three places the two networks touch.
+    local g = linked()
+    local found = route.find(g, 'place:seyda neen', 'place:dagon fel')
+
+    expect.count(found.legs, 4, 'legs')
+    expect.equal(found.legs[#found.legs].mode, 'boat', 'arrives by boat')
+    expect.equal(g.nodes[found.legs[#found.legs].from].name, 'Khuul', 'changing at Khuul')
+end
+
+function M.theHolamayanBoatIsTheOnlyWayToTheMonastery()
+    local g = linked()
+    local landing = nil
+    for _, key in ipairs(g.order) do
+        if string.sub(key, 1, 3) == 'at:' then
+            landing = key
+        end
+    end
+    local found = route.find(g, 'place:ebonheart', landing)
+
+    expect.count(found.legs, 1, 'legs from Ebonheart')
+    expect.equal(found.legs[1].mode, 'boat', 'by boat')
 end
 
 return M

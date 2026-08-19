@@ -4,7 +4,9 @@
 -- no gameplay yet.
 
 local adapter = require('scripts.TravelNetwork.adapter')
+local config = require('scripts.TravelNetwork.config')
 local graph = require('scripts.TravelNetwork.graph')
+local route = require('scripts.TravelNetwork.route')
 local walk = require('scripts.TravelNetwork.walk')
 
 local TAG = '[TravelNetwork]'
@@ -106,6 +108,60 @@ local function dumpInterchanges()
     end
 end
 
+--- The cheapest journey between two stops, by key.
+local function findRoute(fromKey, toKey, opts)
+    return route.find(current(), fromKey, toKey, opts)
+end
+
+local function describe(g, leg)
+    return string.format('    %-8s %-34s -> %-34s %7.0f  %s', leg.mode,
+        g.nodes[leg.from].name, g.nodes[leg.to].name, leg.distance,
+        leg.operatorName or leg.operator or 'on foot')
+end
+
+--- Print a journey, or say plainly that there is not one.
+local function dumpRoute(fromKey, toKey, opts)
+    local g = current()
+    if g.nodes[fromKey] == nil then
+        out('no stop keyed %s', tostring(fromKey))
+        return
+    end
+    if g.nodes[toKey] == nil then
+        out('no stop keyed %s', tostring(toKey))
+        return
+    end
+
+    local found = findRoute(fromKey, toKey, opts)
+    if found == nil then
+        out('%s -> %s: no route within %d legs',
+            g.nodes[fromKey].name, g.nodes[toKey].name, config.MAX_ROUTE_LEGS)
+        return
+    end
+
+    out('%s -> %s: %d leg(s), %d transfer(s), %.0f units, %.1f h, %d gold',
+        g.nodes[fromKey].name, g.nodes[toKey].name, #found.legs, found.transfers,
+        found.distance, found.hours, found.fare)
+    for _, leg in ipairs(found.legs) do
+        out('%s', describe(g, leg))
+    end
+end
+
+--- Everywhere you can get to from a stop, cheapest first. What the phase 3
+-- planner will show, in the only interface phase 2 has.
+local function dumpDestinations(fromKey)
+    local g = current()
+    if g.nodes[fromKey] == nil then
+        out('no stop keyed %s', tostring(fromKey))
+        return
+    end
+    local list = route.destinations(g, fromKey)
+    out('from %s: %d stop(s) reachable', g.nodes[fromKey].name, #list)
+    for _, stop in ipairs(list) do
+        out('  %-46s %d leg(s) %-24s %.1f h  %d gold', stop.name, #stop.legs,
+            table.concat(stop.modes, '+'), stop.hours, stop.fare)
+    end
+end
+
 return {
     interfaceName = 'TravelNetwork',
     interface = {
@@ -116,6 +172,11 @@ return {
         dumpInterchanges = dumpInterchanges,
         -- Queries re-exported so a caller holding a graph does not have to
         -- require an internal module to ask anything about it.
+        route = findRoute,
+        destinations = function(fromKey, opts) return route.destinations(current(), fromKey, opts) end,
+        transfersAt = function(key) return route.transfersAt(current(), key) end,
+        dumpRoute = dumpRoute,
+        dumpDestinations = dumpDestinations,
         modesAt = graph.modesAt,
         modesWithinWalk = graph.modesWithinWalk,
         edgesFrom = graph.edgesFrom,
