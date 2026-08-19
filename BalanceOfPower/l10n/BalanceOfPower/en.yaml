@@ -89,6 +89,14 @@ windowKey: "Open the standings"
 windowKeyDescription: |-
   The key that opens the window. Nothing is bound until you bind one.
 
+# A second binding on the same trigger. The engine's binding row records
+# whatever is pressed, so this one takes a key as readily as a button -- it
+# is where a controller player puts theirs, not a row that refuses a key.
+windowController: "Open the standings (controller)"
+windowControllerDescription: |-
+  A second button for the window, for playing on a controller. Either this
+  or the key above will open it.
+
 # --- the window itself ----------------------------------------------------
 windowTitle: "Balance of Power"
 standingsHeading: "Standings"
