@@ -46,9 +46,13 @@ return {
     -- engine's Window widget is resized from a size, and because a list with
     -- no scrollbar -- MWUI has none -- has to be a known number of lines.
     -- MASTER_WIDTH is the destination list; the journey fills what is left.
-    WINDOW_WIDTH = 900,
+    -- Sized to the longest thing each pane actually holds: "Vivec, Foreign
+    -- Quarter" on the left, a leg naming its operator on the right. The font
+    -- is proportional, so these are close rather than exact.
+    WINDOW_WIDTH = 640,
     WINDOW_HEIGHT = 560,
-    MASTER_WIDTH = 380,
+    MASTER_WIDTH = 260,
+    NAME_COLUMN = 24,
 
     -- How many places the list shows before offering the rest. Vanilla reaches
     -- 27 from Balmora, which is more than fits and more than anyone reads at

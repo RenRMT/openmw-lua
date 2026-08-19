@@ -560,6 +560,37 @@ last row opening the rest, and the window is a fixed pixel size, because a
 resizable widget needs a size to be resized from and a list with no scrollbar
 has to be a known number of lines.
 
+### Phase 4e — what the second session found, 2026-08-19
+
+**The window was far too wide.** 900x560 with both columns half empty. Sized to
+what the panes actually hold — the longest place name on the left, a leg naming
+its operator on the right — that is 640 wide with a 260 list column. The font
+is proportional, so the numbers are close rather than exact, and they are in
+`config.lua` where they can be argued with.
+
+**The planner key died after using vanilla travel.** The cause is a distinction
+the mod had not drawn: leaving `Dialogue` is not the same as ending the
+conversation. Every service an operator offers -- vanilla travel, barter,
+persuasion -- opens as its own mode on top and fires `UiModeChanged` with
+`oldMode = 'Dialogue'`, which the mod took as the conversation being over and
+threw the plan away. Backing out returns the player to the conversation they
+were already having, and no greeting fires, so nothing ever put the plan back.
+
+Three changes, deliberately overlapping:
+
+- **Only `newMode == nil` ends a conversation.** Any other mode change closes
+  the window and keeps the plan.
+- **The actor is remembered from the greeting**, and a resumed `Dialogue`
+  without an `arg` re-asks using it. Persuasion came back with an `arg` and
+  travel did not, and the mod should not have to know which does which.
+- **The key repairs itself.** Pressed with no plan in hand while still in
+  `Dialogue`, it asks for one and opens the window when it lands. Whatever the
+  engine reports or fails to report on the way back from a service window, the
+  key works.
+
+The engine behaviour is in the repo notes §11 -- it will catch any mod that
+gates on being in conversation.
+
 ### Phase 4c — the fare is the game's own, 2026-08-19
 
 `FARE_PER_UNIT` began as 0.004, which priced Balmora to Seyda Neen at 214 gold

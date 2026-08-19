@@ -398,6 +398,17 @@ a shipped settings page.)*
   apply mid-game rather than at next load.
 - **`ui.showMessage(msg, options)`** — `options.showInDialogue` only. Local
   context, so a global script cannot call it.
+- **A service window is a mode change away from `Dialogue`, and backing out
+  of it does not always re-announce the actor** *(observed in game
+  2026-08-19)*. Opening vanilla travel, barter or persuasion from a
+  conversation fires `UiModeChanged` with `oldMode = 'Dialogue'`; the
+  conversation is still there underneath and the player returns to it. **Do not
+  treat leaving `Dialogue` as the conversation ending** — a script that does
+  goes dead for the rest of it. `newMode == nil`, every window closed, is the
+  signal that it really ended. On the way back the mod saw no usable `arg`
+  after the travel menu but did after persuasion, so remember the actor from
+  the greeting rather than expecting to be told again. *(Which of the two --
+  no event, or an event without `arg` — was not distinguished.)*
 - **`I.UI.setMode(mode, options)` replaces the whole mode stack, and called
   with no argument drops every mode** *(docs-checked 2026-08-19)* — which is
   how a script closes a conversation it is in the middle of.

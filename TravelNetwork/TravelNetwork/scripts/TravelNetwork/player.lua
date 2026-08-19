@@ -52,6 +52,9 @@ local l10n = core.l10n(L10N, 'en')
 local window = nil
 -- The place whose journey the right-hand pane is showing.
 local selected = nil
+-- Set when the key was pressed before a plan had arrived: open the window as
+-- soon as one does, rather than making the player press again.
+local openWhenReady = false
 -- Whether the list is showing everything or only the first SHOWN_STOPS of it.
 local showAll = false
 -- The plan for the operator currently being talked to, fetched when the
@@ -273,6 +276,7 @@ end
 local function leaveDialogue()
     current = nil
     interlocutor = nil
+    openWhenReady = false
     close()
 end
 
@@ -312,7 +316,8 @@ end
 local function stopRow(stop)
     local marker = (selected == stop.key) and '> ' or '  '
     local price = stop.fare > 0 and tostring(stop.fare) or '-'
-    local label = string.format('%s%-28s %5s', marker, fit(stop.name, 28), price)
+    local label = string.format('%s%-' .. config.NAME_COLUMN .. 's %5s',
+        marker, fit(stop.name, config.NAME_COLUMN), price)
     return row(label, function() pick(stop.key) end)
 end
 
@@ -524,9 +529,23 @@ local function onPlan(data)
         current = nil
         return
     end
+    -- A plan already in hand means this is the same conversation resumed --
+    -- back out of the vanilla travel menu and the greeting is not repeated,
+    -- so neither is the hint.
+    local resumed = current ~= nil
     current = data
     selected = nil
     showAll = false
+
+    if openWhenReady then
+        openWhenReady = false
+        render()
+        return
+    end
+    if resumed then
+        return
+    end
+
     local key = boundKey()
     if key then
         ui.showMessage(l10n('plannerHint', { key = key }))
@@ -577,9 +596,17 @@ local function toggle()
         return
     end
     if current == nil then
-        -- Pressed somewhere the planner has nothing to say. It says nothing:
-        -- a key that answers back every time it is brushed in combat is worse
-        -- than one that looks inert outside the conversation it belongs to.
+        -- Still talking to someone, but with no plan in hand: ask for one and
+        -- open it when it lands. This is the belt to the mode handler's
+        -- braces -- whatever the engine does or does not report on the way
+        -- back from a service window, the key works.
+        if interlocutor and I.UI.getMode() == 'Dialogue' then
+            openWhenReady = true
+            onTalk(interlocutor)
+        end
+        -- Otherwise pressed somewhere the planner has nothing to say, and it
+        -- says nothing: a key that answers back every time it is brushed in
+        -- combat is worse than one that is inert where it does not belong.
         return
     end
     render()
@@ -587,16 +614,34 @@ end
 
 input.registerTriggerHandler(TRIGGER, async:callback(toggle))
 
---- Dialogue opening is what offers the planner; dialogue closing withdraws it.
+--- Dialogue opening is what offers the planner; dialogue *ending* withdraws
+-- it.
 --
 -- `arg` is the actor for the modes that have a target, which is how the mod
 -- knows who is being talked to without touching the dialogue system itself.
+--
+-- The distinction between leaving Dialogue and ending the conversation is the
+-- whole of this function. Every service an operator offers -- vanilla travel,
+-- barter, persuasion -- opens as its own mode on top, which reads as leaving
+-- Dialogue and is not: back out of the vanilla travel menu and the player is
+-- returned to the conversation they were already having. Treating that as the
+-- end left the planner key dead for the rest of it.
 local function onUiModeChanged(data)
-    if data.newMode == 'Dialogue' and data.arg then
-        onTalk(data.arg)
+    if data.newMode == 'Dialogue' then
+        if data.arg then
+            onTalk(data.arg)
+        elseif interlocutor and current == nil then
+            -- Resumed without being told who by. The engine names the actor
+            -- when a conversation opens; it need not name them again.
+            onTalk(interlocutor)
+        end
         return
     end
-    if data.oldMode == 'Dialogue' then
+
+    -- Something else owns the screen. The planner goes away with it, but the
+    -- conversation underneath does not: only every window closing ends that.
+    close()
+    if data.newMode == nil then
         leaveDialogue()
     end
 end
