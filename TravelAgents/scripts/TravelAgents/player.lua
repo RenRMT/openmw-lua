@@ -24,13 +24,48 @@ local ROUTING = 'SettingsPlayerTravelAgentsRouting'
 local FARES = 'SettingsPlayerTravelAgentsFares'
 local TRIGGER = 'TravelAgentsPlanner'
 
--- The id the binding is filed under.
+-- The ids the bindings are filed under. Two of them, both firing the same
+-- trigger: bindings are keyed by id rather than by what they fire, so a
+-- keyboard key and a controller button can be bound at once and either one
+-- opens the planner.
 local BINDING = 'TravelAgentsPlannerBinding'
+local CONTROLLER_BINDING = 'TravelAgentsPlannerControllerBinding'
 local BINDINGS_SECTION = 'OMWInputBindings'
 
 -- The engine's own labels for these live in a local table in that file, so
 -- the few that are not keyboard keys are spelled out again here.
 local MOUSE_BUTTONS = { [1] = 'Left', [2] = 'Middle', [3] = 'Right', [4] = '4', [5] = '5' }
+
+-- Controller buttons, code to label.
+--
+-- Built by asking `input.CONTROLLER_BUTTON` for each name rather than by
+-- iterating it: that table is read-only *userdata*, so `pairs` over it is an
+-- error rather than an empty loop, and this runs at load. Indexing is what
+-- the userdata is for.
+--
+-- The names match OpenMW's own Controls page so the two read alike, and the
+-- list runs past the sixteenth button, which the engine's hand-written one
+-- stops at.
+local CONTROLLER_BUTTONS = {}
+for name, label in pairs({
+    A = 'A', B = 'B', X = 'X', Y = 'Y',
+    Back = 'Back', Guide = 'Guide', Start = 'Start',
+    LeftStick = 'Left Stick', RightStick = 'Right Stick',
+    LeftShoulder = 'LB', RightShoulder = 'RB',
+    DPadUp = 'D-pad Up', DPadDown = 'D-pad Down',
+    DPadLeft = 'D-pad Left', DPadRight = 'D-pad Right',
+    Misc1 = 'Misc 1', Touchpad = 'Touchpad',
+    Paddle1 = 'Paddle 1', Paddle2 = 'Paddle 2',
+    Paddle3 = 'Paddle 3', Paddle4 = 'Paddle 4',
+}) do
+    -- Behind a pcall because a read-only table can be the strict kind, which
+    -- raises on a key it has never heard of. The paddles and the touchpad
+    -- are 0.51 names; an older engine simply will not have them.
+    local ok, code = pcall(function() return input.CONTROLLER_BUTTON[name] end)
+    if ok and code ~= nil then
+        CONTROLLER_BUTTONS[code] = label
+    end
+end
 
 local l10n = core.l10n(L10N, 'en')
 
@@ -91,6 +126,19 @@ I.Settings.registerGroup {
             -- trigger it fires, which is why that is registered first. No key
             -- is bound by default -- the player picks one on this page.
             default = BINDING,
+            argument = { type = 'trigger', key = TRIGGER },
+        },
+        {
+            -- The same trigger under a second id, so a controller can reach
+            -- the planner without giving up the keyboard key. The renderer
+            -- records whatever is pressed, so this row will take a key as
+            -- readily as a button -- it is the row a controller player fills
+            -- in, not a row that refuses anything else.
+            key = 'plannerController',
+            name = 'plannerController',
+            description = 'plannerControllerDescription',
+            renderer = 'inputBinding',
+            default = CONTROLLER_BINDING,
             argument = { type = 'trigger', key = TRIGGER },
         },
     },
@@ -173,10 +221,9 @@ local function preferences()
     }
 end
 
--- The keybind, as the player sees it
--- @return the label, or nil when nothing is bound
-local function boundKey()
-    local id = storage.playerSection(GROUP):get('plannerKey') or BINDING
+--- What one binding reads as, or nil when that row is empty.
+local function labelOf(settingKey, fallbackId)
+    local id = storage.playerSection(GROUP):get(settingKey) or fallbackId
     local binding = storage.playerSection(BINDINGS_SECTION):get(id)
     if not binding or not binding.button then
         return nil
@@ -188,9 +235,33 @@ local function boundKey()
         return string.format('Mouse %s', MOUSE_BUTTONS[binding.button] or binding.button)
     end
     if binding.device == 'controller' then
-        return l10n('controllerButton')
+        return l10n('controllerButton',
+            { button = CONTROLLER_BUTTONS[binding.button] or binding.button })
     end
     return nil
+end
+
+--- The keybind, as the player sees it.
+-- Both rows if both are filled in, since either one opens the planner and a
+-- hint naming only one of them is wrong for whoever bound the other.
+-- @return the label, or nil when nothing is bound
+local function boundKey()
+    local labels = {}
+    local keyboard = labelOf('plannerKey', BINDING)
+    local controller = labelOf('plannerController', CONTROLLER_BINDING)
+    if keyboard then
+        labels[#labels + 1] = keyboard
+    end
+    if controller and controller ~= keyboard then
+        labels[#labels + 1] = controller
+    end
+    if #labels == 0 then
+        return nil
+    end
+    if #labels == 1 then
+        return labels[1]
+    end
+    return l10n('eitherBinding', { first = labels[1], second = labels[2] })
 end
 
 -- Two window panes: the list of places on the left, the journey to the one you
@@ -312,13 +383,8 @@ end
 local function stopRow(stop)
     local marker = (selected == stop.key) and '> ' or '  '
     local price = stop.fare > 0 and tostring(stop.fare) or '-'
-    -- The tab already says how many times the traveller changes; the mark
-    -- says whether any of those changes is onto a different kind of vehicle.
-    -- Boarding a second silt strider and boarding a boat both count as one
-    -- change, and only one of them means finding a different dock.
-    local change = ((stop.modeChanges or 0) > 0) and '+' or ' '
-    local label = string.format('%s%-' .. config.NAME_COLUMN .. 's %5s %s',
-        marker, fit(stop.name, config.NAME_COLUMN), price, change)
+    local label = string.format('%s%-' .. config.NAME_COLUMN .. 's %5s',
+        marker, fit(stop.name, config.NAME_COLUMN), price)
     return row(label, function() pick(stop.key) end)
 end
 
@@ -452,24 +518,7 @@ local function destinations()
         },
     }
 
-    -- The legend earns its row only when something on this page carries the
-    -- mark, which on the direct tab is never.
-    local marked = false
-    for index = first, last do
-        if (stops[index].modeChanges or 0) > 0 then
-            marked = true
-            break
-        end
-    end
-
     local body = grid
-    if marked then
-        body = {
-            type = ui.TYPE.Flex,
-            props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
-            content = ui.content { text(l10n('changeMarker')), grid },
-        }
-    end
 
     if pages < 2 then
         return body

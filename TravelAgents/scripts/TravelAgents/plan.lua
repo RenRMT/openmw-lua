@@ -97,15 +97,19 @@ function M.build(graph, originKey, opts)
     return plan
 end
 
---- How many times a journey puts the traveller off one vehicle and onto
--- another.
+--- How many times a journey puts the traveller onto a different kind of
+-- vehicle.
 --
--- Counted in vehicles boarded, not legs travelled: `stop.transfers` counts
--- every leg including the walk to the dock, and walking to the dock is not a
--- change of vehicle. A journey made entirely on foot boards nothing and so
--- changes nothing.
+-- Boarding a second silt strider is not a change; leaving one for a boat is.
+-- The question this answers is whether the traveller has to find a different
+-- kind of dock, not how many times they get off, so riding three striders in
+-- a row counts as none.
+--
+-- Neither `transfers` nor `vehicleLegs` says this. `transfers` counts every
+-- leg including the walk to the dock, and the walk to the dock is not a
+-- change of anything.
 function M.changes(stop)
-    return math.max((stop.vehicleLegs or 0) - 1, 0)
+    return stop.modeChanges or 0
 end
 
 --- The same, but with everything at or past `most` sharing its answer.

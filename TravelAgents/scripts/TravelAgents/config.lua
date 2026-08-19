@@ -50,4 +50,17 @@ return {
     MAX_CHANGE_TAB = 3,
     HOURS_PER_UNIT = 0.00012,
     MAX_ROUTE_LEGS = 8,
+
+    -- Real seconds of cell walking to do per frame while building the graph.
+    -- Small enough to disappear into a frame's slack at any playable frame
+    -- rate; the whole walk is nine thousand cells on a load order with a
+    -- mainland in it, so this trades a second or two of background work for
+    -- never stalling.
+    BUILD_SLICE_SECONDS = 0.002,
+
+    -- Records to read before looking at the clock, while working out which
+    -- ones offer travel at all. There are more records than cells and each
+    -- is far cheaper, so checking after every one would spend more time
+    -- asking the time than reading records.
+    SCAN_RECORDS_PER_CHECK = 256,
 }
