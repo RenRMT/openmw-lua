@@ -161,26 +161,38 @@ end
 -- some operators and silently lost others.
 --
 -- @param checkpoint called every so often, to give the frame back
+-- @return the id-to-record map, and the record kinds worth walking cells for
 local function offersTravel(checkpoint)
     local wanted = {}
+    local kinds = {}
     local since = 0
     for _, kind in ipairs(RECORD_KINDS) do
+        local any = false
         for index = 1, #kind.records do
             local record = kind.records[index]
             local destinations = record and record.travelDestinations
             if destinations and #destinations > 0 and type(record.id) == 'string' then
                 wanted[string.lower(record.id)] = record
+                any = true
             end
             -- Not every record: reading the clock is itself a call, and
             -- there are more records here than cells to walk afterwards.
             since = since + 1
             if since >= config.SCAN_RECORDS_PER_CHECK then
                 since = 0
-                checkpoint()
+                checkpoint('records', since)
             end
         end
+        -- Asking every cell for its creatures when no creature record in the
+        -- load order offers travel is half the walk spent on a question whose
+        -- answer cannot matter. Nothing in Morrowind, Tribunal, Bloodmoon or
+        -- Tamriel Rebuilt travels by creature -- but a mod may, and then the
+        -- pass above finds it and this turns itself back on.
+        if any then
+            kinds[#kinds + 1] = kind
+        end
     end
-    return wanted
+    return wanted, kinds
 end
 
 --- The cell walk, as a coroutine that gives the frame back.
@@ -203,15 +215,22 @@ function M.operatorScan()
 
         -- Both phases give the frame back through this. A nil deadline is
         -- how a caller says "run it out", and then nothing ever yields.
-        local function checkpoint()
+        --
+        -- Yields carry how far along the scan is, so the driver can say what
+        -- rate it is managing rather than leaving it to be guessed at.
+        local function checkpoint(phase, done, total)
             if deadline and core.getRealTime() >= deadline then
-                deadline = coroutine.yield()
+                deadline = coroutine.yield(phase, done, total)
             end
         end
 
-        local wanted = offersTravel(checkpoint)
-        for _, cell in ipairs(world.cells) do
-            for _, kind in ipairs(RECORD_KINDS) do
+        local wanted, kinds = offersTravel(checkpoint)
+
+        local cells = world.cells
+        local cellCount = #cells
+        for index = 1, cellCount do
+            local cell = cells[index]
+            for _, kind in ipairs(kinds) do
                 local ok, objects = pcall(cell.getAll, cell, kind.objectType)
                 if ok and objects then
                     for _, object in ipairs(objects) do
@@ -228,7 +247,7 @@ function M.operatorScan()
             end
             -- Between cells, never inside one: a half-scanned cell would have
             -- to be resumed mid-list, and the list is the engine's.
-            checkpoint()
+            checkpoint('cells', index, cellCount)
         end
         return operators
     end)

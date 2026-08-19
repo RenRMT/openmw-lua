@@ -52,6 +52,7 @@ local scanStarted = nil
 -- on someone else's load order is to say so when the graph is ready.
 local slices = 0
 local longestSlice = 0
+local lastReport = 0
 
 --- Everything after the cell walk: cheap, and not worth slicing.
 --
@@ -85,7 +86,7 @@ local function advance(budget)
         scanStarted = core.getRealTime()
     end
     local sliceStarted = core.getRealTime()
-    local ok, result = coroutine.resume(scan, budget and (sliceStarted + budget) or nil)
+    local ok, result, done, total = coroutine.resume(scan, budget and (sliceStarted + budget) or nil)
     local slice = core.getRealTime() - sliceStarted
     if slice > longestSlice then
         longestSlice = slice
@@ -100,6 +101,17 @@ local function advance(budget)
     end
     if coroutine.status(scan) == 'dead' then
         return assemble(result or {})
+    end
+
+    -- Say how it is going, occasionally. Without this the only way to know
+    -- whether the budget is being spent is to wait and see whether the graph
+    -- ever turns up, which is what happened.
+    local now = core.getRealTime()
+    if now - lastReport >= config.BUILD_REPORT_SECONDS then
+        lastReport = now
+        out('  building: %s %s/%s, %d slice(s) in %.0fs, longest %.0fms',
+            tostring(result), tostring(done), tostring(total or '?'),
+            slices, now - (scanStarted or now), longestSlice * 1000)
     end
     return nil
 end

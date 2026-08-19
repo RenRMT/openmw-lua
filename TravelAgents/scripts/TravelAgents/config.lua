@@ -56,7 +56,14 @@ return {
     -- rate; the whole walk is nine thousand cells on a load order with a
     -- mainland in it, so this trades a second or two of background work for
     -- never stalling.
-    BUILD_SLICE_SECONDS = 0.002,
+    -- Raised from 2ms after a real run: at 2ms the build had not finished
+    -- after 90 seconds of play, so whatever the per-frame rate turns out to
+    -- be, it was far below the arithmetic. 5ms is under a third of a frame
+    -- at 60fps and four times the work per frame.
+    BUILD_SLICE_SECONDS = 0.005,
+
+    -- How often the build says how far it has got, in real seconds.
+    BUILD_REPORT_SECONDS = 5,
 
     -- Records to read before looking at the clock, while working out which
     -- ones offer travel at all. There are more records than cells and each
