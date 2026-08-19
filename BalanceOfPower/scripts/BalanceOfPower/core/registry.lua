@@ -95,6 +95,21 @@ local function checkNumber(value, context, what, default)
     return value
 end
 
+-- The kinds of faction the framework knows how to treat differently.
+-- A typo here would otherwise register a faction as an ordinary one and
+-- silently drop every behaviour the pack was asking for.
+local FACTION_TYPES = {
+    [config.FACTION_TYPE_INVADER] = true,
+}
+
+local function checkFactionType(value, context)
+    if type(value) ~= 'string' or not FACTION_TYPES[value] then
+        fail(context, string.format('type must be one of: %s -- got %s',
+            config.FACTION_TYPE_INVADER, tostring(value)))
+    end
+    return value
+end
+
 local function checkPositive(value, context, what, default)
     local number = checkNumber(value, context, what, default)
     if number == nil then
@@ -131,48 +146,6 @@ local function copyStrings(value, context, what)
             fail(context, string.format('%s[%d] must be a string, got %s', what, i, type(entry)))
         end
         out[i] = entry
-    end
-    return out
-end
-
---- A faction's patrol roster: record ids the framework never interprets,
--- each carrying the tier at which it becomes available.
---
--- Two authoring forms, and the plain one is not a shortcut to be
--- migrated away from. `'hlaalu guard'` is a tier-1 entry and reads
--- better than `{ id = 'hlaalu guard', tier = 1 }` for the many factions
--- whose patrols are all the same calibre; the table form is for the
--- faction that fields something worse or better as its projection
--- changes.
---
--- Tiers are numbers rather than names on purpose. A name is content --
--- one pack's "veteran" is another's "housecarl" -- and the framework
--- would then be storing a vocabulary it can't check and doesn't use.
-local function normalizeRoster(value, context)
-    if value == nil then
-        return {}
-    end
-    checkTable(value, context, 'patrolRoster')
-
-    local out = {}
-    for index, entry in ipairs(value) do
-        local what = string.format('patrolRoster[%d]', index)
-        if type(entry) == 'string' then
-            out[index] = { id = checkString(entry, context, what), tier = 1 }
-        elseif type(entry) == 'table' then
-            local tier = checkNumber(entry.tier, context, what .. '.tier', 1)
-            if tier < 1 then
-                fail(context, what .. '.tier must be 1 or greater')
-            end
-            out[index] = {
-                id = checkString(entry.id, context, what .. '.id'),
-                tier = math.floor(tier),
-            }
-        else
-            fail(context, string.format(
-                '%s must be a record id or { id = ..., tier = ... }, got %s',
-                what, type(entry)))
-        end
     end
     return out
 end
@@ -306,13 +279,19 @@ local function newFaction(id, recordId, landmass)
         -- no ground and projects nothing.
         territorial = false,
         growthPerDay = config.DEFAULT_GROWTH_PER_DAY,
+        -- What kind of thing this is. nil is an ordinary participant in
+        -- the politics; FACTION_TYPE_INVADER is an outside threat that
+        -- drifts not at all, reacts to nobody and fights everyone.
+        type = nil,
+        -- How far this faction's fortunes swing, as a multiple of
+        -- FORTUNE_SWING. 0 pins it to exactly what its ground supports.
+        volatility = config.DEFAULT_VOLATILITY,
         -- Opt in to fighting. See core/hostility.lua for what it means.
         hostile = false,
         landmass = landmass,
         -- Filled in by registerLandmass from the settlements naming this
         -- faction. A faction holds seats; it has no geography of its own.
         seats = {},
-        patrolRoster = {},
     }
 end
 
@@ -340,24 +319,9 @@ function M.ensureFactions()
     return added
 end
 
--- Roster entries are deduplicated by record id, and the first arrival
--- keeps its tier -- two packs listing the same guard is ordinary.
-local function mergeRoster(faction, entries)
-    local seen = {}
-    for _, entry in ipairs(faction.patrolRoster) do
-        seen[entry.id] = true
-    end
-    for _, entry in ipairs(entries) do
-        if not seen[entry.id] then
-            seen[entry.id] = true
-            faction.patrolRoster[#faction.patrolRoster + 1] = entry
-        end
-    end
-end
-
 -- Scalars a pack may set. The first pack to set one keeps it, because
 -- which pack won would otherwise depend on load order.
-local TUNABLE = { 'growthPerDay', 'hostile', 'recordId', 'landmass' }
+local TUNABLE = { 'growthPerDay', 'hostile', 'recordId', 'landmass', 'type', 'volatility' }
 
 local function applyTuning(faction, tuning, ctx)
     for _, field in ipairs(TUNABLE) do
@@ -371,7 +335,6 @@ local function applyTuning(faction, tuning, ctx)
             end
         end
     end
-    mergeRoster(faction, tuning.patrolRoster)
 end
 
 --- Validate a faction entry into a staged operation.
@@ -389,6 +352,10 @@ local function prepareFaction(def, context, fallbackLandmass, staged)
         log.warn('%s: `extend` is obsolete and ignored -- factions come from the game\'s '
             .. 'records, so no pack owns one', ctx)
     end
+    if def.patrolRoster ~= nil then
+        log.warn('%s: `patrolRoster` is obsolete and ignored -- the framework no longer '
+            .. 'decides what stands in a cell, so nothing here would read it', ctx)
+    end
     rejectRecordOwned(def, ctx)
 
     if staged[id] then
@@ -401,9 +368,10 @@ local function prepareFaction(def, context, fallbackLandmass, staged)
         landmass = def.landmass or fallbackLandmass,
         tuning = {
             growthPerDay = checkNumber(def.growthPerDay, ctx, 'growthPerDay', nil),
+            volatility = checkNumber(def.volatility, ctx, 'volatility', nil),
+            type = def.type ~= nil and checkFactionType(def.type, ctx) or nil,
             hostile = def.hostile == true or nil,
             recordId = def.recordId and checkString(def.recordId, ctx, 'recordId') or nil,
-            patrolRoster = normalizeRoster(def.patrolRoster, ctx),
         },
         ctx = ctx,
     }
@@ -753,6 +721,14 @@ function M.sortedFactionIds()
     end
     table.sort(ids)
     return ids
+end
+
+--- Whether a faction is an outside threat rather than a participant in
+-- the politics. One place for the comparison, so nothing else has to
+-- know the type is spelled as a string.
+function M.isInvader(factionId)
+    local faction = M.factions[factionId]
+    return faction ~= nil and faction.type == config.FACTION_TYPE_INVADER
 end
 
 function M.countFactions()

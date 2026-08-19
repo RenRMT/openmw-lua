@@ -33,10 +33,10 @@ M.MAP_WINDOW_RADIUS = 6
 -- The anchor the derived starting power is expressed against: a faction
 -- with the average holdings starts here.
 --
--- Only ratios matter mechanically, so this number is arbitrary -- but six
--- other constants are calibrated against it (SEAT_FLOOR, MIN_CLAIM_POWER,
--- PROJECTION_HORIZON_POWER, FRONTIER_GENERATION_POWER, and the two patrol
--- power steps). Changing it means changing all of them.
+-- Only ratios matter mechanically, so this number is arbitrary -- but
+-- five other constants are calibrated against it (SEAT_FLOOR,
+-- MIN_CLAIM_POWER, PROJECTION_HORIZON_POWER, FRONTIER_GENERATION_POWER
+-- and POWER_PER_HELD_SCORE). Changing it means changing all of them.
 M.DEFAULT_BASE_POWER = 50
 
 -- Starting power is derived from a faction's seats rather than authored.
@@ -52,6 +52,25 @@ M.DEFAULT_BASE_POWER = 50
 -- first one. At 0 the farms count for nothing; at 1 a dozen of them
 -- outweigh a city.
 M.POWER_DEPTH_SHARE = 0.25
+
+-- The same damping, for ground a faction actually holds rather than the
+-- seats it was built with. Held cells carry no individual weight the way
+-- settlements do, so depth is damped with an exponent instead of a
+-- share:
+--
+--   heldScore = sum over regions( cells held there ^ DEPTH_EXPONENT )
+--
+-- Below 1 the curve is concave, which is the whole point: the tenth cell
+-- in a region is worth much less than the first, so breadth beats depth
+-- and the strongest faction cannot compound its way across the map. At 1
+-- it is a plain cell count and the feedback loop has no brake at all.
+M.POWER_DEPTH_EXPONENT = 0.5
+
+-- What one unit of held score is worth in power, on top of the seat
+-- baseline. This is the gain on the territory feedback loop: raise it and
+-- winning ground matters more, until borders latch to whoever moved
+-- first; lower it and territory stops being worth fighting over.
+M.POWER_PER_HELD_SCORE = 5
 
 -- What a faction with no ground starts with, as a share of an average
 -- landholder. Also the compression knob: raising it narrows the spread
@@ -98,6 +117,103 @@ M.DEFAULT_GROWTH_PER_DAY = 0
 -- Factions with ambient growth are better considered an outside threat
 -- instead of a contended in the balance of power between factions.
 M.GROWTH_PROPAGATES = false
+
+--------------------------------------------------------------------------
+-- Drift
+--------------------------------------------------------------------------
+--
+-- The loop that makes territory worth holding. Power decides who takes
+-- ground; drift runs the arrow back the other way, so ground held raises
+-- the standing that took it and ground lost lowers it. Without it power
+-- only ever moves when something outside the framework awards it, and a
+-- map that has finished resolving never moves again.
+--
+-- The target is a faction's CAPACITY -- what its holdings support --
+-- displaced by its FORTUNE, a slow curve derived from its id and the day
+-- index. Power is not set to the target but tracked toward it, so the
+-- system has a lag and cannot oscillate on its own.
+
+-- The master switch. Off, power moves only when awarded: growth, quest
+-- hooks and console commands still work, and nothing drifts.
+M.DRIFT_ENABLED = true
+
+-- What fraction of the remaining gap a faction closes each day. An
+-- exponential approach, so this is a rate and not a step: 0.02 is
+-- roughly a five-week half-life, which is slow enough that a border
+-- moving is felt over a season rather than a week.
+--
+-- Zero switches the whole subsystem off, fortune included -- reversion
+-- is the carrier for both, and a fortune that displaced a target nothing
+-- ever moved toward would do nothing at all.
+M.POWER_REVERSION_RATE = 0.02
+
+-- How far fortune carries a faction's target above or below its
+-- capacity, as a fraction of DEFAULT_BASE_POWER. This is the amplitude
+-- of the curve, not a per-day step: a faction spends months on the good
+-- side of it and months on the bad.
+--
+-- Bounded by construction, which is the property that keeps a long game
+-- stable. Fortune displaces the TARGET rather than being added to power
+-- each day; an integrated daily nudge is a random walk and wanders off
+-- over a few thousand days, while a bounded target tracked with a lag
+-- cannot go anywhere the target does not.
+M.FORTUNE_SWING = 0.20
+
+-- How many octaves of value noise the fortune curve sums. Each octave
+-- doubles the frequency and halves the amplitude, so more octaves means
+-- a rougher curve with the same range -- the layers are normalized
+-- against their own total.
+M.FORTUNE_OCTAVES = 3
+
+-- The period of the slowest octave, in days. A faction's luck holds a
+-- direction for roughly half of this, so it wants to be seasons rather
+-- than weeks: a curve that turns over every fortnight reads as noise
+-- rather than as fortune.
+M.FORTUNE_PERIOD_DAYS = 120
+
+-- Per-faction multiplier on fortune's amplitude, when a pack's faction
+-- definition doesn't say otherwise. A pack raises it for a faction whose
+-- fortunes should swing (a smuggling ring, a cult) and sets it to 0 for
+-- one that should sit exactly where its ground puts it.
+M.DEFAULT_VOLATILITY = 1
+
+-- Whether drift drags other factions along the reaction table the way an
+-- awarded change does. Off, for the reason GROWTH_PROPAGATES is off, only
+-- more so: growth touches the handful of factions a pack gave a rate,
+-- and drift touches every faction every day.
+M.DRIFT_PROPAGATES = false
+
+--------------------------------------------------------------------------
+-- Invaders
+--------------------------------------------------------------------------
+--
+-- A faction registered with `type = 'invader'` is an outside threat
+-- rather than a participant in the politics. Three differences, and they
+-- all follow from that one idea:
+--
+--   * it does not drift -- no capacity target, no fortune, so its ramp
+--     is its growth and nothing pulls back against it;
+--   * it takes no part in the reaction table in either direction;
+--   * it fights everyone, without needing the `hostile` flag.
+--
+-- The payoff is that a setback dealt by content is PERMANENT. An award
+-- against an ordinary faction decays back toward its capacity; an
+-- invader has no target to decay toward, so the ramp simply resumes from
+-- lower down.
+
+M.FACTION_TYPE_INVADER = 'invader'
+
+-- Whether an invader's power change drags other factions along the
+-- reaction table. Off, and kept as a switch for the same reason
+-- GROWTH_PROPAGATES is: the wiring exists and the default is a decision
+-- rather than an oversight.
+--
+-- Turned on, the appealing half is that a blow struck against an invader
+-- heartens everyone who hates it. What it costs is exactly the coupling
+-- the type was introduced to remove -- an invader that climbs every day
+-- drags the whole map down with it, which is the failure GROWTH_PROPAGATES
+-- already ships off to avoid.
+M.INVADER_MOVES_OTHERS = false
 
 --------------------------------------------------------------------------
 -- Hostility
@@ -366,65 +482,6 @@ M.STRAIN_EVENT_THRESHOLD = 100
 -- FRONTIER_COOLDOWN_DAYS in mind -- the cooldown is what damps it.
 M.STRAIN_DEFENCE_PENALTY = 0
 
--- How much of its patrol group size a strained faction loses, as a
--- fraction. Never below one member: a faction on the ground still has
--- somebody on the road.
---
--- Off by default. This is the visible half -- thin control that looks
--- thin -- and it is deliberately the framework doing less rather than
--- more, so what fills the gap is an extension's business.
-M.STRAIN_PATROL_PENALTY = 0
-
---------------------------------------------------------------------------
--- Patrols
---------------------------------------------------------------------------
---
--- Patrols are the only way any of this is visible without a console. A
--- player never reads a projection number; they notice that the road out
--- of Balmora has Hlaalu guards on it and the road out of Ald-Ruhn does
--- not, and that somewhere south of Ghostgate that stopped being true.
---
--- These govern the *decision* to spawn, which is all core/patrol.lua
--- makes. Placing actors and clearing them up is a separate concern with
--- separate constants.
-
--- Chance that an eligible faction fields a patrol in a given cell on a
--- given day. Rolled once per faction per cell per day, not per visit --
--- see core/patrol.lua on why the roll is seeded rather than random.
-M.PATROL_SPAWN_CHANCE = 0.35
-
--- Projection required before a faction patrols a cell it does not own.
--- Only belligerent factions do this at all; it is what makes an invader
--- appear on ground still held by somebody else, which is the visible
--- signal that a border is under pressure.
-M.PATROL_MIN_PROJECTION = 5
-
--- Projection per additional patrol member, above the first.
-M.PATROL_POWER_PER_MEMBER = 40
-
--- However strong a faction becomes. A dozen guards on one road is a
--- performance problem and reads as an army rather than a patrol.
-M.PATROL_MAX_MEMBERS = 4
-
--- Projection per roster tier. Tier 1 is available everywhere a faction
--- patrols at all; each further tier unlocks at another multiple of this,
--- capped by what the faction's roster actually defines.
---
--- This is how strength scales, in preference to mutating an actor's
--- level or stats. A record's level is one number among many -- health,
--- attributes and skills do not follow it -- so scaling that way means
--- hand-rolling character generation, while a roster tier is data a pack
--- can author and read back.
-M.PATROL_POWER_PER_TIER = 60
-
--- Days before the same cell will field another patrol.
---
--- Not primarily about density. Without it, walking out of a cell and
--- back in is an unbounded source of gear and gold, because every patrol
--- carries a vanilla record's inventory. The cooldown is what stops the
--- spawn system being a loot printer.
-M.PATROL_COOLDOWN_DAYS = 3
-
 --------------------------------------------------------------------------
 -- Daily tick
 --------------------------------------------------------------------------
@@ -439,5 +496,72 @@ M.TICK_POLL_HOURS = 1
 -- sleeps through a month doesn't stall the frame resolving thirty days
 -- of territory rolls at once.
 M.MAX_CATCHUP_DAYS = 7
+
+--------------------------------------------------------------------------
+-- Tribute
+--------------------------------------------------------------------------
+--
+-- Gold a faction's own member hands over, turned into standing. The one
+-- lever the player has on the simulation without a quest mod in the way.
+--
+-- Worth knowing what it does *not* do: an award to an ordinary faction
+-- decays back toward its capacity at POWER_REVERSION_RATE, so buying a
+-- house to the top of the table does not keep it there. Tribute lifts a
+-- faction while it spends the standing on taking ground; ground held is
+-- the only thing that makes the lift permanent. An invader has no
+-- capacity to revert toward, which is exactly why a payment against one
+-- sticks and a payment to one would too.
+
+-- Power from one unit of gold, before diminishing returns and rank.
+M.TRIBUTE_POWER_PER_UNIT = 0.5
+
+-- The diminishing return. Below 1 the curve is concave, so a hundred
+-- gold is worth far less than a hundred times one gold -- at 0.5 it is
+-- worth ten times, because the exponent is a square root.
+--
+-- This is what stops tribute being a slider the player drags to win.
+-- Buying a Great House one more point of standing costs more every time,
+-- and the cost climbs quadratically, so there is no amount of gold that
+-- makes the map stop mattering.
+M.TRIBUTE_EXPONENT = 0.5
+
+-- What a faction's own hierarchy is worth. A rank-1 member's gold counts
+-- for MIN, the highest rank the faction defines counts for MAX, and the
+-- ranks between interpolate.
+--
+-- The point is that tribute is not simply a gold sink: the same purse
+-- moves more standing in the hands of someone the faction actually
+-- listens to, so rising through a faction is worth something to the
+-- simulation and not only to the player's inventory.
+M.TRIBUTE_RANK_MULTIPLIER_MIN = 1
+M.TRIBUTE_RANK_MULTIPLIER_MAX = 3
+
+-- The amounts the tribute window offers, smallest first. Buttons rather
+-- than a free entry field: MWUI has no numeric input worth the name, and
+-- three fixed steps read better than a text box the player has to fight.
+M.TRIBUTE_AMOUNTS = { 10, 100, 1000 }
+
+--------------------------------------------------------------------------
+-- Presentation
+--------------------------------------------------------------------------
+
+-- The l10n context, which is the directory name under l10n/. Every
+-- string the player ever sees is resolved through it.
+M.L10N_CONTEXT = 'BalanceOfPower'
+
+-- The settings page key. Both groups -- the global simulation one and
+-- the per-player notification one -- register onto this single page, so
+-- the player finds everything the framework offers in one place.
+M.SETTINGS_PAGE = 'BalanceOfPower'
+
+-- The tribute window, in pixels.
+M.WINDOW_WIDTH = 640
+M.WINDOW_HEIGHT = 480
+
+-- How many factions the standings column lists before it stops. Vanilla
+-- registers 25 and a content-heavy load order will register more; a
+-- window that grows without limit stops being readable long before it
+-- stops fitting on the screen.
+M.WINDOW_MAX_STANDINGS = 16
 
 return M

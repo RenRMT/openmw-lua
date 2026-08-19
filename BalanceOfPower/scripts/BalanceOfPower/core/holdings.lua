@@ -199,6 +199,64 @@ local function ensureHeld()
 end
 
 --------------------------------------------------------------------------
+-- What held ground is worth
+--------------------------------------------------------------------------
+
+--- The held-territory counterpart to a seat score: breadth and depth
+-- over the ownership map rather than over the registry.
+--
+-- Scored the same way seats are, and for the same reason -- ten cells
+-- stacked in one region must be worth less than ten regions holding one
+-- each, or the strongest faction runs away with the map. Held cells have
+-- no individual weight the way settlements do, so depth is damped with
+-- an exponent instead of a share:
+--
+--   score = sum over regions( count ^ POWER_DEPTH_EXPONENT )
+--
+-- which is concave, so the second cell in a region is worth less than
+-- the first and the tenth much less again.
+function M.heldScoreOf(factionId)
+    ensureHeld()
+    local profile = heldProfiles[factionId]
+    if not profile then
+        return 0
+    end
+    local score = 0
+    for _, count in pairs(profile.regionCounts) do
+        score = score + count ^ config.POWER_DEPTH_EXPONENT
+    end
+    return score
+end
+
+--- The standing a faction's holdings support -- the target drift pulls
+-- its power toward.
+--
+-- Two terms, and the split is what keeps the feedback loop from being a
+-- runaway. The seat baseline is fixed and cannot be taken away; only the
+-- held term moves, so winning ground raises a faction by a bounded
+-- amount rather than multiplying what it already had.
+--
+-- A faction that cannot hold ground at all -- a guild, anything with no
+-- seats -- is anchored to its baseline instead. Reading a capacity off
+-- an ownership map it can never appear on would pin it to the floor for
+-- the whole game and make an award to one pointless, and quest hooks
+-- attach to exactly those factions.
+function M.capacityOf(factionId)
+    local faction = registry.factions[factionId]
+    if not faction then
+        return 0
+    end
+
+    local baseline = M.basePowerOf(factionId)
+    if not faction.territorial then
+        return baseline
+    end
+
+    local held = M.heldScoreOf(factionId)
+    return baseline + config.POWER_PER_HELD_SCORE * held
+end
+
+--------------------------------------------------------------------------
 -- Standings
 --------------------------------------------------------------------------
 

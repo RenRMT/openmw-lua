@@ -7,6 +7,7 @@
 -- (see `version`). Anything a pack needs and can't get here is a gap.
 
 local config = require('scripts.BalanceOfPower.core.config')
+local drift = require('scripts.BalanceOfPower.core.drift')
 local driver = require('scripts.BalanceOfPower.core.driver')
 local events = require('scripts.BalanceOfPower.core.events')
 local frontier = require('scripts.BalanceOfPower.core.frontier')
@@ -14,7 +15,6 @@ local holdings = require('scripts.BalanceOfPower.core.holdings')
 local hostility = require('scripts.BalanceOfPower.core.hostility')
 local log = require('scripts.BalanceOfPower.core.log')
 local mapdump = require('scripts.BalanceOfPower.core.mapdump')
-local patrol = require('scripts.BalanceOfPower.core.patrol')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -269,6 +269,41 @@ function M.isStrained(factionId)
     return holdings.isStrained(factionId)
 end
 
+--- The standing a faction's holdings support -- what drift pulls its
+-- power toward, before that day's fortune displaces it.
+--
+-- The gap between this and getPower() is the whole state of a faction's
+-- trajectory: above capacity it is falling, below it is climbing. A UI
+-- drawing an arrow reads exactly these two.
+function M.getCapacity(factionId)
+    return holdings.capacityOf(factionId)
+end
+
+--- What a faction's held ground is worth, damped for depth: breadth
+-- across regions counts for more than stacking cells in one.
+function M.getHeldScore(factionId)
+    return holdings.heldScoreOf(factionId)
+end
+
+--- Where a faction's luck stands on a given day, in power, positive or
+-- negative. Derived from the faction id and the day alone, so it is the
+-- same answer every time it is asked and costs no save state.
+function M.getFortune(factionId, day)
+    return drift.fortuneOf(factionId, day or M.getCurrentDay())
+end
+
+--- Whether power drifts for this faction at all. False for an invader,
+-- and false for everyone when the player has switched drift off.
+function M.driftAppliesTo(factionId)
+    return drift.appliesTo(factionId)
+end
+
+--- Whether a faction is an outside threat rather than a participant in
+-- the politics: no drift, no reactions, hostile to everyone.
+function M.isInvader(factionId)
+    return registry.isInvader(factionId)
+end
+
 --- The day a faction most recently became strained, or nil. Subtract
 -- from getCurrentDay() for a duration; as with surroundedSince, the
 -- framework keeps no streak of its own.
@@ -308,33 +343,6 @@ end
 -- enough -- worth checking after flagging one.
 function M.enemiesOf(factionId)
     return hostility.enemiesOf(factionId)
-end
-
---------------------------------------------------------------------------
--- Patrols
---------------------------------------------------------------------------
-
---- What should be standing in a territory on a given day, or nil.
---
---   { territory, day, groups = { {
---       faction, projection, count, tier,
---       records = { recordId, ... },       -- exactly `count` of them
---       hostileToPlayer,
---       fights = { factionId, ... },       -- other groups in this plan
---   }, ... } }
---
--- Decisions only: this creates nothing and touches no actor. `records`
--- are the ids the faction's pack authored, in its own vocabulary; the
--- framework has never looked inside them.
---
--- Stable for a given territory and day rather than rolled fresh, so
--- re-entering a cell gives the same patrol back instead of making every
--- patrol a renewable source of whatever its records carry.
---
--- @param opts table|nil { lastSpawnedDay = number } to apply the
---        per-cell cooldown; omit if nothing has spawned here
-function M.planPatrol(territoryId, day, opts)
-    return patrol.plan(territoryId, day, opts)
 end
 
 --------------------------------------------------------------------------
@@ -401,19 +409,32 @@ function M.dump()
         local id = standing.id
         local faction = registry.factions[id]
         local tags = faction.territorial and '' or ' [non-territorial]'
+        if registry.isInvader(id) then
+            tags = tags .. ' [invader]'
+        end
         if (faction.growthPerDay or 0) ~= 0 then
             tags = tags .. string.format(' [%+.2f/day]', faction.growthPerDay)
         end
         if hostility.isBelligerent(id) then
             -- The enemy list, not just the flag: a hostile faction with
-            -- nobody it hates enough looks like a working one until you
-            -- watch it walk past a rival patrol.
+            -- nobody it hates enough reads as a working one right up
+            -- until you notice it never fights anybody.
             local enemies = hostility.enemiesOf(id)
             tags = tags .. ' [hostile: '
                 .. (#enemies > 0 and table.concat(enemies, ', ') or 'player only') .. ']'
         end
-        log.info('  %-20s power %7.2f  territories %4d  regions %3d  strain %5.1f%s',
-            faction.displayName, standing.power, standing.territories,
+        -- Power against capacity is the whole of a faction's trajectory,
+        -- and the pair you read while tuning drift: the arrow says which
+        -- way today's number is heading and how far it has to go.
+        local capacity = holdings.capacityOf(id)
+        local arrow = ' '
+        if drift.appliesTo(id) then
+            arrow = (capacity > standing.power and '^')
+                or (capacity < standing.power and 'v') or '='
+        end
+        log.info('  %-20s power %7.2f %s cap %7.2f  territories %4d  regions %3d  '
+            .. 'strain %5.1f%s',
+            faction.displayName, standing.power, arrow, capacity, standing.territories,
             standing.regions, standing.strain, tags)
     end
     log.info('--------------------------------------------------------')

@@ -9,7 +9,8 @@
 -- So this file is one rule, applied to data content packs author:
 --
 --   a faction fights nobody, unless it is flagged hostile,
---   in which case it fights whoever it genuinely hates.
+--   in which case it fights whoever it genuinely hates,
+--   and an invader fights everyone.
 --
 -- The payoff is that three separate features collapse into one
 -- threshold. A hostile invader, a per-faction enemies list, and a
@@ -24,10 +25,14 @@ local registry = require('scripts.BalanceOfPower.core.registry')
 
 local M = {}
 
---- Whether a faction fights at all: its own flag, or the global override.
+--- Whether a faction fights at all: its type, its own flag, or the
+-- global override.
 function M.isBelligerent(factionId)
     if config.ALL_FACTIONS_HOSTILE then
         return registry.factions[factionId] ~= nil
+    end
+    if registry.isInvader(factionId) then
+        return true
     end
     local faction = registry.factions[factionId]
     return faction ~= nil and faction.hostile == true
@@ -60,6 +65,18 @@ function M.isHostile(factionId, towardId)
     if not M.isBelligerent(factionId) then
         return false
     end
+
+    -- An invader fights everyone, and is the reason the threshold rule
+    -- needed a second case rather than a warmer number. Hostility read
+    -- off a reaction row lets a faction whose row is a shade too warm
+    -- walk past someone it should be fighting: vanilla puts the Camonna
+    -- Tong at -1 with the Sixth House, and never gave the Sixth House any
+    -- opinion of the Morag Tong at all. An invader is not making that
+    -- kind of judgement, so it does not consult the row.
+    if registry.isInvader(factionId) then
+        return true
+    end
+
     return power.regardOf(factionId, towardId) <= config.HOSTILITY_REACTION_THRESHOLD
 end
 
@@ -72,7 +89,7 @@ end
 --- Every registered faction the given one attacks on sight, sorted.
 -- Diagnostic: the list is short and its being empty is the failure worth
 -- seeing, since a hostile faction with nobody to fight looks identical
--- to a working one until you watch it ignore a rival patrol.
+-- to a working one right up until you notice it never fights anybody.
 function M.enemiesOf(factionId)
     local out = {}
     for _, id in ipairs(registry.sortedFactionIds()) do
