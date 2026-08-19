@@ -9,10 +9,16 @@ settingsPage: "Travel Agents"
 settingsPageDescription: "Plan journeys across travel modes."
 
 plannerGroup: "Planner"
-plannerGroupDescription: "The key that opens the journey planner."
+plannerGroupDescription: "What opens the journey planner. Either row will do it, so a controller can have its own button without giving up the key."
 
 plannerKey: "Open planner"
 plannerKeyDescription: "Plan your travels."
+
+# A second binding on the same trigger. The engine's binding row records
+# whatever is pressed, so this one will take a key as readily as a button --
+# it is where a controller player puts theirs, not a row that refuses a key.
+plannerController: "Open planner (controller)"
+plannerControllerDescription: "A second button for the planner, for playing on a controller."
 
 routingGroup: "Routing"
 routingGroupDescription: "What the planner will go out of its way to avoid. Distances in game units."
@@ -59,7 +65,11 @@ pickAStop: "Pick a place to see the journey."
 arrivingAt: "Arriving at {place}"
 plannerHint: "Press {key} to plan a journey from here."
 plannerUnbound: "Bind a key under Options, Scripts, Travel Agents to plan a journey."
-controllerButton: "your controller button"
+# Named from the engine's own button constants, so an unusual pad still
+# reads as something rather than a number.
+controllerButton: "Controller {button}"
+# Shown when both rows are filled in: either one opens the planner.
+eitherBinding: "{first} or {second}"
 close: "Close"
 
 # --- how a journey reads --------------------------------------------------
