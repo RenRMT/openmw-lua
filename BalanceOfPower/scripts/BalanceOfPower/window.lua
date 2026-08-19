@@ -32,6 +32,14 @@ local l10n = core.l10n(config.L10N_CONTEXT, 'en')
 local GROUP = 'SettingsPlayerBalanceOfPowerWindow'
 local TRIGGER = 'BalanceOfPowerWindow'
 
+-- The ids the two bindings are filed under. Both fire the same trigger:
+-- the engine keys a binding by its own id rather than by what it fires, so
+-- a key and a controller button can be bound at once and either opens the
+-- window. They have to be distinct ids -- two rows sharing one would write
+-- over each other, and binding the second would silently unbind the first.
+local BINDING = 'BalanceOfPowerWindowBinding'
+local CONTROLLER_BINDING = 'BalanceOfPowerWindowControllerBinding'
+
 local window = nil
 -- The last snapshot the framework sent. nil until one arrives, which is
 -- why a key press asks for one rather than assuming it has one.
@@ -67,9 +75,24 @@ if I.Settings then
                 key = 'windowKey',
                 name = 'windowKey',
                 description = 'windowKeyDescription',
-                -- Nothing is bound by default: a framework has no business
-                -- claiming a key the player has plans for.
-                default = '',
+                -- The value is the slot the binding is filed under, not a
+                -- button: nothing is bound until the player binds it, which
+                -- is the right default for a framework with no business
+                -- claiming a key somebody has plans for.
+                default = BINDING,
+                renderer = 'inputBinding',
+                argument = { key = TRIGGER, type = 'trigger' },
+            },
+            {
+                -- The same trigger under a second slot, so a controller can
+                -- reach the window without giving up the key. The engine's
+                -- row records whatever is pressed, so this one takes a key
+                -- as readily as a button -- it is where a controller player
+                -- puts theirs, not a row that refuses anything else.
+                key = 'windowController',
+                name = 'windowController',
+                description = 'windowControllerDescription',
+                default = CONTROLLER_BINDING,
                 renderer = 'inputBinding',
                 argument = { key = TRIGGER, type = 'trigger' },
             },
