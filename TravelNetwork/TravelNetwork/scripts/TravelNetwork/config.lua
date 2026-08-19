@@ -21,8 +21,9 @@ return {
     TRANSFER_PENALTY = 4000,
     MODE_CHANGE_PENALTY = 6000,
 
-    -- Booking.
-    BOOKING_RADIUS = 300,
+    -- Booking. There is no radius here: the planner opens from a conversation,
+    -- so the operator selling the journey is whoever is being talked to and
+    -- nothing has to search for one.
     FARE_PER_UNIT = 0.004,
     HOURS_PER_UNIT = 0.00012,
     MAX_ROUTE_LEGS = 8,

@@ -8,8 +8,8 @@ guild guide, and book the whole journey in one go.
 **Finish line.** Talk to a silt strider driver, shipmaster, gondolier or guild
 guide, press the planner key, and get the route from their stop to any named
 stop — legs, transfers, distance, estimated arrival time. Press book and be
-taken the whole way, with time advanced and fare deducted per leg. Nothing
-else. When that works, the mod is done.
+taken the whole way, with the fare deducted and the clock advanced by the length
+of the journey. Nothing else. When that works, the mod is done.
 
 *Revised 2026-08-19.* This began as "press a key anywhere and plan from where
 you are standing". Reading a route out of thin air in the middle of a street is
@@ -398,29 +398,55 @@ about; `graph.stopOf` replaced it with an exact answer.
 where you can get to, and the answer includes the boat you would change onto.
 Booking is still vanilla dialogue, leg by leg.
 
-**Phase 4 — booking.** In the conversation the planner was opened from, offer
-"travel the whole way": deduct the summed fare, then per leg `teleport` to the
-destination and `world.advanceTime(legHours)`. The operator is whoever is being
-talked to, so `BOOKING_RADIUS` and the `nearby.actors` search phase 3 was
-expected to need are both moot — delete the constant if nothing else claims it.
+**Phase 4 — booking. Done, 2026-08-19.** Clicking the fare under an expanded
+stop buys the journey. `book.lua` decides it and is pure; `money.lua` and two
+new calls in `adapter.lua` are the whole of what touches the engine.
+
+- **The window can only ask "take me to this stop".** Where the journey starts,
+  what it costs and where it ends are worked out again in the global script,
+  from the operator being talked to, against the live graph — the same
+  derivation `onRequestPlan` does. A fare is not a number to accept from
+  elsewhere, and the list the player clicked may have been drawn before
+  something changed.
+- **Move first, charge second.** The teleport is the only step that can fail on
+  something the script cannot see beforehand, so nobody pays for a journey that
+  did not happen. No refund path exists because none is reachable.
+- **One teleport, not one per leg**, which is where this departs from what the
+  phase was written as. Intermediate stops are narrative: teleporting through
+  them would put the player through a cell load per leg with nothing to see,
+  and would rest on same-frame repeated-teleport behaviour nothing here has
+  established. The clock still advances by the whole journey, legs and walks
+  together, so the cost of changing is paid in the only currency that shows.
+- **The conversation is ended before the request goes out.** The player is
+  about to be a province away, and a dialogue window left open on the operator
+  would follow them there. `I.UI.setMode()` with no argument drops it.
+- **The player script checks the purse before closing the conversation.** A
+  courtesy, not the decision: the global script quotes again and refuses again.
+  It exists so an unaffordable journey does not end the conversation to say no.
+- `BOOKING_RADIUS` is deleted. The operator is whoever is being talked to, so
+  nothing searches for one and the constant had no claimant.
 
 **Walk legs are teleported too** (decided 2026-08-18). The player books at
 Balmora's silt strider and arrives in Caldera; the mod walks them through the
 guild hall door rather than stopping the journey there and asking them to finish
-it on foot. Two consequences to hold to:
+it on foot. Two consequences, both held to:
 
 - **A walk leg costs time but never money.** It advances the clock by
   `HOURS_PER_UNIT` like any other leg, because the mod is moving the player and
   a free teleport across town is not what "walk" should mean. It contributes
-  nothing to the fare — nobody charges for a door.
+  nothing to the fare — nobody charges for a door, and a journey made only of
+  walk legs is offered as *no charge* rather than as 0 gold.
 - **A journey may begin with a walk.** Standing at the strider and asking for
   Caldera, the first leg is the walk to the guild hall. The operator you are
   standing next to sells the whole journey, including the legs their own
   vehicle does not cover.
 
-Note that `advanceTime` explicitly does not run regeneration, so a long journey
-will not heal the player the way sleeping does — decide deliberately whether to
-compensate, and write down which way you went.
+**Regeneration: not compensated, decided 2026-08-19.** `advanceTime` does not
+run it, so a booked journey does not heal the way sleeping does. Reproducing the
+engine's rest arithmetic from the outside would be inventing a mechanic rather
+than matching one, and the numbers behind it are GMSTs this mod has no business
+guessing at. The open question that leaves — whether vanilla travel restores
+anything, and how much — is below, and it is answerable only in game.
 
 **Phase 5 (optional) — fares that mean something.** Distance-scaled base fare,
 modified by region and by mode. Only ever applied to mod-booked journeys; single
@@ -431,9 +457,13 @@ labels mod fares as such rather than pretending to quote the engine.
 
 ## 5. Config constants
 
-`NODE_MERGE_RADIUS`, `TRANSFER_PENALTY`, `MODE_CHANGE_PENALTY`,
-`BOOKING_RADIUS`, `FARE_PER_UNIT`, `FARE_MODE_MULTIPLIER`, `HOURS_PER_UNIT`,
-`PLANNER_KEY`, `MAX_ROUTE_LEGS`.
+`NODE_MERGE_RADIUS`, `MAX_DOOR_HOPS`, `TRANSFER_PENALTY`,
+`MODE_CHANGE_PENALTY`, `FARE_PER_UNIT`, `HOURS_PER_UNIT`, `MAX_ROUTE_LEGS`.
+
+`BOOKING_RADIUS` and `PLANNER_KEY` were both planned and neither is needed: the
+key is a binding the player sets on the settings page, and the operator selling
+a journey is whoever is being talked to. `FARE_MODE_MULTIPLIER` waits for
+phase 5.
 
 `NODE_MERGE_RADIUS` is the one with a measured answer rather than a taste-based
 one: **above 396 and below 4192** (§3), so 1500 — verified to give the 31-node
@@ -496,5 +526,13 @@ without erroring.
   is missing. Vanilla needs it exactly once, for the Holamayan landing.
 - Does `teleport` into a far interior behave, given the `onGround` finding in
   BalanceOfPower's phase 4b notes? Travel destinations carry an authored
-  position, so this *should* be the safe case — but it is the same code path
-  that already surprised this repo once.
+  position, so this *should* be the safe case — the mod passes no `onGround`
+  and lets the authored position stand — but it is the same code path that
+  already surprised this repo once. **Untried in a running game**, along with
+  the rest of phase 4: `Inventory:countOf`/`findAll` on `gold_001`,
+  `GameObject:remove`, and `I.UI.setMode()` ending a conversation from a click
+  handler.
+- **Does vanilla travel restore health, magicka or fatigue?** If it does, a
+  booked journey should match it rather than keep its own rule — the mod
+  currently restores nothing (phase 4). Answerable only in game: buy a long
+  silt strider leg through vanilla dialogue with fatigue down and read the bar.

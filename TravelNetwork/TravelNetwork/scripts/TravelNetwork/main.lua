@@ -1,11 +1,15 @@
 -- TravelNetwork -- global script.
 --
--- Phase 1: build the graph and let the console look at it. No UI, no routing,
--- no gameplay yet.
+-- The graph is built here because only global scripts may walk cells, and
+-- journeys are sold here because only global scripts may move the player, take
+-- their gold or advance the clock. The window that asks for both lives in
+-- player.lua and is told nothing it could get wrong.
 
 local adapter = require('scripts.TravelNetwork.adapter')
+local book = require('scripts.TravelNetwork.book')
 local config = require('scripts.TravelNetwork.config')
 local events = require('scripts.TravelNetwork.events')
+local money = require('scripts.TravelNetwork.money')
 local plan = require('scripts.TravelNetwork.plan')
 local graph = require('scripts.TravelNetwork.graph')
 local route = require('scripts.TravelNetwork.route')
@@ -188,6 +192,53 @@ local function onRequestPlan(data)
     player:sendEvent(events.PLAN, built or {})
 end
 
+--- Sell a journey and make it.
+--
+-- The origin is derived from the operator again rather than taken from the
+-- request, exactly as the plan was: the window can only ask "take me to this
+-- stop", and where it starts, what it costs and where it ends are all decided
+-- here against the live graph.
+local function onBook(data)
+    local player = data and data.player
+    if player == nil then
+        return
+    end
+    local g = current()
+    local operator = data.actor and graph.stopOf(g, data.actor.recordId)
+    if operator == nil then
+        player:sendEvent(events.BOOKED, { ok = false, reason = 'operator' })
+        return
+    end
+
+    local quote = book.quote(g, operator.key, data.to, { gold = money.held(player) })
+    local answer = {
+        ok = quote.ok,
+        reason = quote.reason,
+        fare = quote.fare,
+        short = quote.short,
+        hours = quote.hours,
+        legs = quote.legs,
+        transfers = quote.transfers,
+        place = quote.arrival and quote.arrival.name,
+    }
+    if not quote.ok then
+        player:sendEvent(events.BOOKED, answer)
+        return
+    end
+
+    -- Move first, charge second. The teleport is the one step that can fail on
+    -- something this script cannot see beforehand, and nobody should pay for a
+    -- journey that did not happen.
+    if not adapter.arrive(player, quote.arrival) then
+        answer.ok, answer.reason = false, 'arrival'
+        player:sendEvent(events.BOOKED, answer)
+        return
+    end
+    money.take(player, quote.fare)
+    adapter.advanceTime(quote.hours)
+    player:sendEvent(events.BOOKED, answer)
+end
+
 return {
     interfaceName = 'TravelNetwork',
     interface = {
@@ -210,5 +261,6 @@ return {
     },
     eventHandlers = {
         [events.REQUEST_PLAN] = onRequestPlan,
+        [events.BOOK] = onBook,
     },
 }

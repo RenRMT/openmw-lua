@@ -1,8 +1,9 @@
 -- TravelNetwork -- player script: the keybind, the settings, the window.
 --
--- Everything here is presentation. The graph and the routing live in the
--- global script; this asks for a plan and draws it, and holds no opinion
--- about what a good route is.
+-- Everything here is presentation. The graph, the routing and the selling
+-- live in the global script; this asks for a plan, draws it, and asks for a
+-- journey when the player picks one. It holds no opinion about what a good
+-- route is and no authority over what one costs.
 --
 -- The planner belongs to a conversation. Talking to a caravaner, shipmaster,
 -- gondolier or guild guide is what makes it available -- asking the person who
@@ -25,6 +26,7 @@ local util = require('openmw.util')
 local I = require('openmw.interfaces')
 
 local events = require('scripts.TravelNetwork.events')
+local money = require('scripts.TravelNetwork.money')
 local plan = require('scripts.TravelNetwork.plan')
 
 local L10N = 'TravelNetwork'
@@ -53,6 +55,10 @@ local expanded = nil
 -- The plan for the operator currently being talked to, fetched when the
 -- conversation opens so the keypress has nothing to wait for.
 local current = nil
+-- Who is being talked to. Kept so a booking can name them: the global script
+-- resolves the origin from the operator rather than trusting the window, and
+-- this is the window's half of that.
+local interlocutor = nil
 
 --------------------------------------------------------------------------
 -- Settings
@@ -156,6 +162,33 @@ local function close()
     end
 end
 
+--- The conversation is over: the planner it offered goes with it.
+local function leaveDialogue()
+    current = nil
+    interlocutor = nil
+    close()
+end
+
+--- Buy the journey and be taken on it.
+--
+-- The conversation is ended here, before the request goes out, because the
+-- player is about to be somewhere else: a dialogue window left open on an
+-- operator now a province away would follow them across the map. The global
+-- script quotes the journey again before charging for it, so the check below
+-- is a courtesy -- it keeps an unaffordable journey from closing the
+-- conversation to say no -- and never the thing that decides.
+local function bookTo(stop)
+    local gold = money.held(self.object)
+    if stop.fare > gold then
+        ui.showMessage(l10n('cannotAfford', { fare = stop.fare, short = stop.fare - gold }))
+        return
+    end
+    local operator = interlocutor
+    leaveDialogue()
+    I.UI.setMode()
+    core.sendGlobalEvent(events.BOOK, { player = self.object, actor = operator, to = stop.key })
+end
+
 local render
 
 local function toggleExpanded(key)
@@ -190,6 +223,10 @@ local function lines()
             for _, leg in ipairs(stop.legs) do
                 content[#content + 1] = text('      ' .. plan.describeLeg(leg))
             end
+            -- A journey made entirely of walk legs has no fare, because a door
+            -- charges nobody. Saying "0 gold" would read as a bug.
+            local label = stop.fare > 0 and l10n('book', { fare = stop.fare }) or l10n('bookFree')
+            content[#content + 1] = row('      ' .. label, function() bookTo(stop) end)
         end
     end
 
@@ -249,15 +286,31 @@ end
 -- answer decides whether the key does anything for the length of this
 -- conversation.
 local function onTalk(actor)
+    interlocutor = actor
     core.sendGlobalEvent(events.REQUEST_PLAN, { player = self.object, actor = actor })
 end
 
-local function leaveDialogue()
-    current = nil
-    if window then
-        window:destroy()
-        window = nil
-        expanded = nil
+--- What became of a booking. Every outcome says something: a refusal nobody
+-- hears about is indistinguishable from a broken button.
+local function onBooked(data)
+    if data == nil then
+        return
+    end
+    if data.ok then
+        local hours = string.format('%.1f', data.hours or 0)
+        if (data.fare or 0) > 0 then
+            ui.showMessage(l10n('arrived', { place = data.place, hours = hours, fare = data.fare }))
+        else
+            ui.showMessage(l10n('arrivedFree', { place = data.place, hours = hours }))
+        end
+    elseif data.reason == 'gold' then
+        ui.showMessage(l10n('cannotAfford', { fare = data.fare, short = data.short }))
+    elseif data.reason == 'route' then
+        ui.showMessage(l10n('noRoute'))
+    else
+        -- 'arrival' or 'operator': the journey could not be made at all, and
+        -- neither has a cause the player can do anything about.
+        ui.showMessage(l10n('bookingFailed'))
     end
 end
 
@@ -294,6 +347,7 @@ end
 return {
     eventHandlers = {
         [events.PLAN] = onPlan,
+        [events.BOOKED] = onBooked,
         UiModeChanged = onUiModeChanged,
     },
 }

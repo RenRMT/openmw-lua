@@ -10,4 +10,11 @@ return {
     REQUEST_PLAN = 'TravelNetworkRequestPlan',
     -- global -> player: the answer, shaped by plan.lua
     PLAN = 'TravelNetworkPlan',
+    -- player -> global: "take me there". Names the stop and the operator, not
+    -- a price -- the global script quotes the journey again before charging
+    -- for it.
+    BOOK = 'TravelNetworkBook',
+    -- global -> player: what happened. Sent whether or not the journey was
+    -- made, because a refusal the player never hears about reads as a bug.
+    BOOKED = 'TravelNetworkBooked',
 }

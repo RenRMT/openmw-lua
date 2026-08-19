@@ -126,6 +126,14 @@ pre-binds **`I`** (`openmw.interfaces`), `world`, `types`, `util`, `core`,
 - `core.getFormId(contentFile, index)` builds a FormId string, needed for
   ESM4-style content. ESM3 (Morrowind-style) content uses plain lowercase string
   ids instead.
+- **Inventories are read through the actor, and items are objects**
+  *(docs-checked 2026-08-19)*. `types.Actor.inventory(actor)` returns an
+  `Inventory` with `countOf(recordId)`, `find(recordId)` (the first stack),
+  `findAll(recordId)`, `getAll(type)`, `isResolved()` and `resolve()`. What
+  comes back is a GameObject like any other, so a stack is reduced or removed
+  with `obj:remove(count)` -- **global scripts only**, like every other write to
+  the world. Reading an inventory is not restricted that way; a player script
+  can count its own purse. *Not yet exercised in a running game.*
 
 ---
 
@@ -374,6 +382,12 @@ a shipped settings page.)*
   apply mid-game rather than at next load.
 - **`ui.showMessage(msg, options)`** — `options.showInDialogue` only. Local
   context, so a global script cannot call it.
+- **`I.UI.setMode(mode, options)` replaces the whole mode stack, and called
+  with no argument drops every mode** *(docs-checked 2026-08-19)* — which is
+  how a script closes a conversation it is in the middle of.
+  `I.UI.removeMode(mode)` drops one without disturbing the rest, and
+  `I.UI.getMode()` returns the top of the stack, nil when no window is open.
+  `options` takes `windows` and `target`.
 - **`core.l10n('Context', 'en')`** returns a lookup function; files live at
   `l10n/<Context>/<Locale>.yaml` and messages are ICU MessageFormat.
 - **`openmw_aux.time`** — `time.second` / `minute` / `hour` / `day`,
@@ -417,6 +431,16 @@ Do not build on these without checking first.
 - **A trade/barter UI-mode-changed signal**, proposed as the workaround for the
   missing commerce event (§9), is plausible from general knowledge of a
   UI-mode-changed event but was never confirmed.
+- **Does the engine fold every gold denomination onto `gold_001`?** Assumed
+  when counting or taking a player's money through `Inventory:countOf` (§3),
+  and believed from the engine's container code rather than from anything
+  checked here. If a purse can hold `gold_005` or `gold_100` as separate
+  stacks, a count of `gold_001` under-reports it. One in-game check settles it:
+  pick up mixed coin and count.
+- **Does vanilla travel restore health, magicka or fatigue?** `advanceTime`
+  does not (§11), so anything moving the player over hours has to decide
+  whether to compensate, and the answer decides whether that is matching the
+  game or inventing a mechanic.
 
 ---
 
@@ -425,7 +449,7 @@ Do not build on these without checking first.
 - `openmw.readthedocs.io/en/latest/reference/lua-scripting/` — `overview`
   (script types, `reloadlua`), `openmw_world`, `openmw_core`, `openmw_types`,
   `events`, `aipackages` and `ai/combat`, `interface_ai`, `interface_settings`,
-  `setting_renderers`, `openmw_storage`, `openmw_ui`.
+  `setting_renderers`, `openmw_storage`, `openmw_ui`, `interface_ui`.
 - `.../reference/modding/localisation.html` — l10n layout and ICU
   MessageFormat.
 - `openmw.org/2026/openmw-0-51-0-released` and the 0.50 release notes — version

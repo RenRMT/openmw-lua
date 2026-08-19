@@ -4,10 +4,11 @@ Morrowind's silt striders, boats, gondolas and guild guides are four unrelated
 dialogue menus. They are also, in the data, one directed graph that nothing has
 ever assembled. This mod assembles it.
 
-**Phases 1–3 — the graph, routing, and a planner window.** No booking yet: the
-planner tells you the way, and you still buy each leg through the operator's own
-dialogue. See [../implementation-plan.md](../implementation-plan.md) for the
-build order and the decisions behind it.
+**Phases 1–4 — the graph, routing, a planner window, and booking.** Ask an
+operator where you can get to, pick a stop, and be taken the whole way: fare
+deducted once, clock advanced once, changes and walks included. See
+[../implementation-plan.md](../implementation-plan.md) for the build order and
+the decisions behind it.
 
 ## Using it
 
@@ -21,8 +22,15 @@ here* — or, if you have not bound one yet, says where to. Press it and the
 window lists
 every stop reachable from where they stand, cheapest first, with how many
 changes each journey takes, how long it runs and what it costs. Click a stop to
-see its legs; click again to fold it away. Closing the window leaves you in the
-conversation, and leaving the conversation closes the window.
+see its legs and the price of the whole journey; click again to fold it away.
+Closing the window leaves you in the conversation, and leaving the conversation
+closes the window.
+
+**Click the price to travel.** The fare comes out of your purse once, the
+conversation ends, and you arrive at the far stop with the clock moved on by the
+length of the journey — every leg of it, including the changes and the walk
+through a guild hall door. You buy the journey from whoever you happen to be
+talking to, even the legs their own vehicle does not cover.
 
 The key does nothing outside a travel conversation, on purpose — reading a route
 out of the air in the middle of a street is a menu, not a journey. Press it
@@ -127,14 +135,43 @@ interior coordinates are cell-local. So:
    order operators were found in. Vanilla has exactly one stop that survives
    this: the Holamayan landing, which the game never named.
 
+## Booking
+
+One purchase, one arrival. The fare is the sum of the vehicle legs; the clock
+moves by the whole journey, walks included; you are put down at the far stop's
+own arrival point — the position the content file gives the operator who serves
+it, so you land where a traveller is meant to.
+
+The window never decides any of that. It can only say "take me to this stop":
+where the journey starts, what it costs and where it ends are worked out again
+in the global script, from the operator you are talking to, against the live
+graph. A booking is quoted before it is charged, and the traveller is moved
+before the gold is taken, so a journey that cannot be made is never paid for.
+
+**A booked journey does not heal you.** `world.advanceTime` moves the clock,
+the weather and the world's AI, but it does not run regeneration the way
+sleeping does. Left uncompensated, deliberately: guessing at the engine's rest
+arithmetic would be inventing a mechanic rather than matching one. If vanilla
+travel turns out to restore anything, this should match it rather than keep its
+own rule — see the open question in the plan.
+
+**A journey with no vehicle in it is free.** Walk legs carry no fare, so the
+short hop from Balmora's street to its guild hall costs time and nothing else,
+and the window says *no charge* rather than *0 gold*.
+
 ## Files
 
 | File | What it is |
 |---|---|
 | `scripts/TravelNetwork/graph.lua` | Building, merging and querying. Pure — no `openmw.*` at all, which is what makes it testable |
 | `scripts/TravelNetwork/walk.lua` | Follows doors out of a building, so a stop indoors knows which street it belongs to. Pure as well |
-| `scripts/TravelNetwork/adapter.lua` | The engine half: walks cells, records and doors, hands the rest plain tables |
-| `scripts/TravelNetwork/main.lua` | Global script, cache, interface, dumps |
+| `scripts/TravelNetwork/route.lua` | Dijkstra over (stop, mode) pairs. Pure |
+| `scripts/TravelNetwork/plan.lua` | The plan the window draws, as data. Pure |
+| `scripts/TravelNetwork/book.lua` | What a journey costs and whether it can be bought. Pure |
+| `scripts/TravelNetwork/adapter.lua` | The engine half: walks cells, records and doors, hands the rest plain tables; moves the traveller and the clock |
+| `scripts/TravelNetwork/money.lua` | Gold. Read in both contexts, spent in the global one |
+| `scripts/TravelNetwork/main.lua` | Global script, cache, interface, dumps, and the booking counter |
+| `scripts/TravelNetwork/player.lua` | The keybind, the settings page and the window |
 | `scripts/TravelNetwork/config.lua` | Every tunable |
 | `scripts/TravelNetwork/data/modes.lua` | Which class drives what, plus the four vanilla operators whose class does not say |
 
@@ -151,10 +188,10 @@ A walk leg carries a distance and no fare — nobody charges for a door. It
 measures both halves: across the room to the door, then from the doorstep to
 the stop out on the street.
 
-It is not a stretch the player is left to cover themselves. When booking lands
-(phase 4), a booked journey teleports walk legs along with vehicle legs, so you
-press book at Balmora's silt strider and arrive in Caldera. The clock advances
-for a walk as it does for a ride; only the fare stays at zero.
+It is not a stretch the player is left to cover themselves. A booked journey
+takes walk legs along with vehicle legs, so you buy passage at Balmora's silt
+strider and arrive in Caldera. The clock advances for a walk as it does for a
+ride; only the fare stays at zero.
 
 Two consequences worth knowing:
 

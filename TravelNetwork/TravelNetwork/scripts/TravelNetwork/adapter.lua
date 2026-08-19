@@ -1,5 +1,7 @@
 -- The engine-facing half: everything that knows about cells, records and
--- GameObjects, so that graph.lua can know about none of it.
+-- GameObjects, so that graph.lua can know about none of it. Reading the world
+-- to build the graph, and the two calls that change it when a journey is
+-- bought -- moving the traveller and moving the clock.
 --
 -- Global context only. `Cell:getAll` is global-scripts-only, and it is the
 -- call the whole mod rests on: it returns objects from cells the player has
@@ -8,6 +10,7 @@
 -- main.lua builds once and caches rather than rebuilding on demand.
 
 local types = require('openmw.types')
+local util = require('openmw.util')
 local world = require('openmw.world')
 
 local M = {}
@@ -96,6 +99,47 @@ function M.doorsFor(cellId)
         end
     end
     return doors
+end
+
+--- Put a traveller down at a stop, at the end of a journey they paid for.
+--
+-- An exterior is teleported to with an empty cell name, which is the form that
+-- works: the engine derives the cell from the position, and there is no way to
+-- name an exterior cell the loaded content does not have. An interior is named
+-- by its own cell.
+--
+-- No `onGround`. The position is an authored travel destination -- the exact
+-- spot the content file says a traveller appears at -- so there is nothing for
+-- the engine to improve, and snapping would only be a guess overruling an
+-- answer already given.
+--
+-- @return false when the arrival cell cannot be resolved, so a caller can
+--   decline to charge for a journey it could not make
+function M.arrive(traveller, arrival)
+    if traveller == nil or arrival == nil or arrival.position == nil then
+        return false
+    end
+    local destination = ''
+    if not arrival.isExterior then
+        local ok, cell = pcall(world.getCellById, arrival.cellId)
+        if not ok or cell == nil then
+            return false
+        end
+        destination = cell
+    end
+    local position = util.vector3(arrival.position.x, arrival.position.y, arrival.position.z)
+    traveller:teleport(destination, position)
+    return true
+end
+
+--- Move the clock forward by the length of a journey.
+--
+-- Weather and AI move with it; regeneration does not. That is deliberate and
+-- is part of what a booked journey costs -- see phase 4 in the plan.
+function M.advanceTime(hours)
+    if hours and hours > 0 then
+        world.advanceTime(hours)
+    end
 end
 
 --- Every travel operator in the world, in the shape graph.build takes.

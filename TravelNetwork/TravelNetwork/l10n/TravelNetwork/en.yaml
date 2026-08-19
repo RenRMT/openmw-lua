@@ -25,3 +25,12 @@ controllerButton: "your controller button"
 askAnOperator: "Ask a silt strider driver, shipmaster, gondolier or guild guide about travel."
 andMore: "...and {count} more"
 close: "Close"
+
+# --- booking -------------------------------------------------------------
+book: "Travel here -- {fare} gold"
+bookFree: "Travel here -- no charge"
+cannotAfford: "That journey costs {fare} gold -- you are {short} short."
+arrived: "You arrive at {place}. {hours} hours on the road, {fare} gold."
+arrivedFree: "You arrive at {place}. {hours} hours on the road."
+noRoute: "There is no way through to that stop from here."
+bookingFailed: "That journey cannot be made."
