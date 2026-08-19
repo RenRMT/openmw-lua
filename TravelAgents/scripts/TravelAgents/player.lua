@@ -369,24 +369,24 @@ local function tabRow()
     end
     buttons[#buttons + 1] = tabButton(nil, l10n('tabAll'), #current.stops)
 
-    local rows, line = {}, {}
+    local rows, strip = {}, {}
     for _, button in ipairs(buttons) do
-        line[#line + 1] = button
-        line[#line + 1] = { template = I.MWUI.templates.interval }
-        if #line >= config.TABS_PER_ROW * 2 then
+        strip[#strip + 1] = button
+        strip[#strip + 1] = { template = I.MWUI.templates.interval }
+        if #strip >= config.TABS_PER_ROW * 2 then
             rows[#rows + 1] = {
                 type = ui.TYPE.Flex,
                 props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
-                content = ui.content(line),
+                content = ui.content(strip),
             }
-            line = {}
+            strip = {}
         end
     end
-    if #line > 0 then
+    if #strip > 0 then
         rows[#rows + 1] = {
             type = ui.TYPE.Flex,
             props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
-            content = ui.content(line),
+            content = ui.content(strip),
         }
     end
 
