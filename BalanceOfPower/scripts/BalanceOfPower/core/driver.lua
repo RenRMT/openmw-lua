@@ -11,6 +11,7 @@ local core = require('openmw.core')
 local time = require('openmw_aux.time')
 
 local config = require('scripts.BalanceOfPower.core.config')
+local drift = require('scripts.BalanceOfPower.core.drift')
 local events = require('scripts.BalanceOfPower.core.events')
 local holdings = require('scripts.BalanceOfPower.core.holdings')
 local log = require('scripts.BalanceOfPower.core.log')
@@ -42,6 +43,12 @@ function M.runDay(day)
     -- a result of it -- the same category as an award arriving from a
     -- quest, and the opposite of everything inside the batch.
     power.applyDailyGrowth()
+
+    -- Alongside growth and for the same reason: both are inputs to the
+    -- day rather than results of it, so today's rolls resolve against
+    -- today's standings. Drift reads the ownership map the previous day
+    -- left behind, which is what closes the territory-power loop.
+    drift.applyDaily(day)
 
     power.beginBatch()
 

@@ -44,10 +44,12 @@ strainDefencePenaltyDescription: |-
   more than its standing supports, as a fraction. Above 0 borders become
   self-correcting, and can oscillate. 0 is off.
 
-strainPatrolPenalty: "Overreach thins patrols"
-strainPatrolPenaltyDescription: |-
-  How much of its patrol size a faction loses when it holds more than its
-  standing supports, as a fraction. Never below one member. 0 is off.
+tributePowerPerUnit: "Value of tribute"
+tributePowerPerUnitDescription: |-
+  How much standing a faction gains from gold one of its own members
+  hands over. Returns diminish with the size of the gift, so ten times
+  the gold is nowhere near ten times the power, and your rank in the
+  faction multiplies whatever is left. 0 turns tribute off.
 
 # --- notifications group (player storage) --------------------------------
 notificationsGroup: "Notifications"
@@ -76,6 +78,34 @@ settlementsOnlyDescription: |-
   Announce only towns, cities and other named holdings. With this off,
   every frontier cell is announced too -- which is hundreds a season once
   power is drifting.
+
+# --- tribute window (player storage) --------------------------------------
+windowGroup: "Standings window"
+windowGroupDescription: |-
+  The screen that lists every faction's standing and lets you pay tribute
+  to your own.
+
+windowKey: "Open the standings"
+windowKeyDescription: |-
+  The key that opens the window. Nothing is bound until you bind one.
+
+# --- the window itself ----------------------------------------------------
+windowTitle: "Balance of Power"
+standingsHeading: "Standings"
+tributeHeading: "Tribute"
+close: "Close"
+
+noStandings: "No factions are registered. The framework needs a content pack."
+noMemberships: "You belong to no faction that the framework knows."
+andMore: "... and {count} more."
+
+goldHeld: "You are carrying {gold} gold."
+rankLine: "Rank: {rank}"
+tributeRate: "{gold} gold buys {power} power at your rank."
+
+tributePaid: "Your tribute of {gold} gold raises them by {power}."
+tributeTooPoor: "You cannot afford that."
+tributeNotAMember: "They will not take your money."
 
 # --- notices -------------------------------------------------------------
 flipTaken: "{place} is now held by {faction}."

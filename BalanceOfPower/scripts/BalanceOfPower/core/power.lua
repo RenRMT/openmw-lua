@@ -57,6 +57,7 @@ local reactions = nil
 local movesCount = nil
 local movedByCount = nil
 local reactionsGeneration = -1
+local reactionsInvaderCoupling = nil
 
 --------------------------------------------------------------------------
 -- Reactions
@@ -111,6 +112,28 @@ local function buildReactions()
         end
     end
 
+    -- An invader takes no part in the politics, so it is cut out of the
+    -- table rather than being handled at every point that reads it: the
+    -- audit, regardOf and propagation all then agree without knowing the
+    -- type exists.
+    --
+    -- The two directions are cut for different reasons and only one of
+    -- them is optional. An invader's own ROW goes unconditionally --
+    -- nothing the houses do to each other moves something that wants the
+    -- province back, and an invader with no row has no threshold to get
+    -- wrong. Its COLUMN is what INVADER_MOVES_OTHERS governs: whether a
+    -- blow struck against it heartens the factions that hate it.
+    for _, id in ipairs(ids) do
+        if registry.isInvader(id) then
+            reactions[id] = {}
+            if not config.INVADER_MOVES_OTHERS then
+                for _, otherId in ipairs(ids) do
+                    reactions[otherId][id] = nil
+                end
+            end
+        end
+    end
+
     -- A reaction of zero wires nobody to anybody, and vanilla rows carry
     -- explicit zeros -- counting entries instead would report every
     -- faction as fully wired and this diagnostic would go quiet exactly
@@ -156,10 +179,13 @@ local function buildReactions()
     end
 
     reactionsGeneration = registry.generation
+    reactionsInvaderCoupling = config.INVADER_MOVES_OTHERS
 end
 
 local function ensureReactions()
-    if reactions == nil or reactionsGeneration ~= registry.generation then
+    if reactions == nil
+        or reactionsGeneration ~= registry.generation
+        or reactionsInvaderCoupling ~= config.INVADER_MOVES_OTHERS then
         buildReactions()
     end
 end

@@ -10,3 +10,13 @@
 # world-level facts that have to keep resolving in cells the player
 # isn't standing in.
 GLOBAL: scripts/BalanceOfPower/main.lua
+
+# The notices the player reads, and the settings that govern them.
+# A player script because openmw.ui is unreachable from global context;
+# it reads the simulation and never writes to it.
+PLAYER: scripts/BalanceOfPower/player.lua
+
+# The standings and tribute window. Separate from the notices above
+# because they share nothing: one is a keybind and a screen, the other
+# fires on events and draws no widget.
+PLAYER: scripts/BalanceOfPower/window.lua

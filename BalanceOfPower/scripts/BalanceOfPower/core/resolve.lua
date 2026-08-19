@@ -341,18 +341,54 @@ local function assign(territory, factionId)
     state.setOwner(territory.id, factionId)
 end
 
+-- What to call a place in a notice the player reads.
+--
+-- A settlement's cells are registered individually, so their own display
+-- names read "Balmora #0,0" -- right for a log line about one cell, and
+-- wrong in a sentence about the town. The named place wins where there is
+-- one; a frontier cell has only itself.
+local function placeName(territory)
+    local settlement = territory.settlement and registry.settlements[territory.settlement]
+    if settlement then
+        return settlement.displayName or settlement.id
+    end
+    return territory.displayName or territory.id
+end
+
+local function factionName(factionId)
+    if factionId == nil then
+        return nil
+    end
+    local faction = registry.factions[factionId]
+    return (faction and faction.displayName) or factionId
+end
+
+-- The flip payload, in one place, because release() and capture() differ
+-- only in whether there is a `to` and must otherwise agree exactly.
+--
+-- Display names travel with the ids rather than being looked up by the
+-- listener: the player half runs in player context and cannot reach the
+-- registry to resolve either one.
+local function flipPayload(territory, from, to, day)
+    return {
+        territory = territory.id,
+        kind = territory.kind,
+        name = placeName(territory),
+        settlement = territory.settlement,
+        from = from,
+        to = to,
+        fromName = factionName(from),
+        toName = factionName(to),
+        day = day,
+    }
+end
+
 --- Take a territory during play: assignment, plus the cooldown stamp
 -- that protects the new owner, plus the event.
 local function capture(territory, from, to, day)
     assign(territory, to)
     state.get().lastFlipped[territory.id] = day
-    events.emit(events.TERRITORY_FLIPPED, {
-        territory = territory.id,
-        kind = territory.kind,
-        from = from,
-        to = to,
-        day = day,
-    })
+    events.emit(events.TERRITORY_FLIPPED, flipPayload(territory, from, to, day))
     log.debug('%s: %s -> %s', territory.id, tostring(from), to)
 end
 
@@ -411,13 +447,7 @@ end
 -- rival with no roll at all, and the front would snap instead of creep.
 local function release(territory, owner, day)
     state.setOwner(territory.id, nil)
-    events.emit(events.TERRITORY_FLIPPED, {
-        territory = territory.id,
-        kind = territory.kind,
-        from = owner,
-        to = nil,
-        day = day,
-    })
+    events.emit(events.TERRITORY_FLIPPED, flipPayload(territory, owner, nil, day))
     log.debug('%s: %s -> unclaimed', territory.id, tostring(owner))
 end
 
@@ -507,10 +537,18 @@ local function updateSurrounded(settlement, day)
 
     if now then
         data.surroundedSince[settlement.id] = day
-        events.emit(events.SETTLEMENT_SURROUNDED, { territory = settlement.id, day = day })
+        events.emit(events.SETTLEMENT_SURROUNDED, {
+            territory = settlement.id,
+            name = settlement.displayName or settlement.id,
+            day = day,
+        })
     else
         data.surroundedSince[settlement.id] = nil
-        events.emit(events.SETTLEMENT_RELIEVED, { territory = settlement.id, day = day })
+        events.emit(events.SETTLEMENT_RELIEVED, {
+            territory = settlement.id,
+            name = settlement.displayName or settlement.id,
+            day = day,
+        })
     end
 end
 
