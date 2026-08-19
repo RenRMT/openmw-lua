@@ -66,12 +66,11 @@ return {
     -- of each second spent on it: 5ms a frame is 15% and took 64s; 10ms is
     -- 30% and takes about 32.
     --
-    -- Raising it further buys less than it costs. The work itself cannot be
-    -- cut: every cell has to be asked what is standing in it, because a
-    -- travel destination lives on a record and the near end of a leg does
-    -- not, and no cheap test says which cells are worth asking -- two
-    -- vanilla operators stand in unnamed exterior cells, so even skipping
-    -- the wilderness would lose them.
+    -- This only bites when the walk actually runs. data/operators.lua says
+    -- where the operators of the common load orders stand, and the scan
+    -- opens one cell each instead -- about 130, a tenth of a second, over
+    -- before the first frame is done. The budget is for the load order that
+    -- adds a travel service nobody has tabulated.
     BUILD_SLICE_SECONDS = 0.010,
 
     -- How often the build says how far it has got, in real seconds.
