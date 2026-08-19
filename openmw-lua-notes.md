@@ -327,6 +327,14 @@ TravelNetwork's plan §2a/§2b.)*
 - **`NpcRecord.class` is the only signal of what an operator drives** — the
   records say nothing about vehicles. Vanilla's classes are `caravaner`,
   `shipmaster`, `guild guide` and `gondolier`, lowercased at runtime per §4.
+- **The travel *price* calculation is not exposed, but the scale under it is.**
+  Nothing reads or overrides what the engine charges for a leg. `core.getGMST`
+  (available in every context, *docs-checked 2026-08-19*) does read game
+  settings, and travel prices are understood to be distance over `fTravelMult`
+  — 4000 in vanilla, which puts Balmora to Ald-ruhn at 18 gold and matches what
+  the silt strider asks. *The formula itself is belief, not a checked fact*: a
+  mod pricing its own travel should read the setting and fall back to a
+  constant, so a wrong guess is a wrong scale rather than a crash.
 
 ---
 

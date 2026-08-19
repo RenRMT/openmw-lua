@@ -124,7 +124,9 @@ to be — a test fixture.
 computes travel price internally and offers nothing to read or override it. The
 mod therefore cannot quote a vanilla price honestly, which is why booking is
 implemented as a separate transaction with its own fare formula rather than as a
-tweak to the dialogue menu (§4, phase 3).
+tweak to the dialogue menu (§4, phase 3). The *scale* underneath that
+calculation is readable, though — `core.getGMST('fTravelMult')` — and phase 4c
+puts the mod on it.
 
 ---
 
@@ -493,11 +495,11 @@ Booking a whole journey at one counter is worth something, and it should cost
 something. The fare is no longer the sum of the legs:
 
 ```
-fare = base * (1 + 0.05 * (vehicleLegs - 1) + 0.10 * modeChanges)
+fare = base * (1 + 0.10 * (vehicleLegs - 1) + 0.20 * modeChanges)
 ```
 
 **Additive, not compounded** — three legs with one change of vehicle is
-5 + 5 + 10 per cent over the legs, not a product of three multipliers. Both
+10 + 10 + 20 per cent over the legs, not a product of three multipliers. Both
 rates are settings, expressed to the player as whole per cents.
 
 Four things the formula is arranged to get right:
@@ -508,23 +510,40 @@ Four things the formula is arranged to get right:
 - **Walk legs count for nothing.** They are not vehicles and nobody sells them,
   so a ride with a door at each end is one ride at one ride's price. Balmora to
   Caldera, which is walk-guide-walk, carries no surcharge at all.
-- **Legs and changes are counted separately**, so two silt strider legs cost 5
-  per cent while a strider-then-boat journey costs 15 — the leg *and* the
+- **Legs and changes are counted separately**, so two silt strider legs cost 10
+  per cent while a strider-then-boat journey costs 30 — the leg *and* the
   change, because the change is the part two operators with separate books have
   to be talked into.
-- **The window itemises it.** An expanded stop shows "602 gold in fares, plus
-  5% (30 gold) for booking it in one go" above the button. A price the player
+- **The window itemises it.** An expanded stop shows "100 gold in fares, plus
+  60% (60 gold) for booking it in one go" above the button. A price the player
   cannot account for reads as invented.
 
-Across vanilla the range is narrow: from Balmora, most destinations are direct
-and unsurcharged, the same-strider chains pay 5 per cent, and the far Telvanni
-coast — four or five legs with a change — pays 25 to 30.
+### Phase 4c — the fare is the game's own, 2026-08-19
 
-**Phase 5 (optional) — fares that mean something.** Distance-scaled base fare,
-modified by region and by mode. The surcharge for changing landed early, in
-phase 4b; what is left here is the base rate itself. `FARE_PER_UNIT = 0.004`
-prices Balmora to Seyda Neen at 214 gold where vanilla asks a few tens, so the
-whole scale wants moving before it can claim to be a fare rather than a number. Only ever applied to mod-booked journeys; single
+`FARE_PER_UNIT` began as 0.004, which priced Balmora to Seyda Neen at 214 gold
+where the silt strider asks about thirteen. The engine does not expose its fare
+*calculation* (§2) — but it does expose the number underneath it. Travel prices
+are distance over the game setting `fTravelMult`, and `core.getGMST` reads game
+settings from any context, so `adapter.travelRate()` returns `1 / fTravelMult`
+and the mod charges on whatever scale the loaded content charges on. A total
+conversion that reprices travel reprices this with it.
+
+`config.FARE_PER_UNIT` stays as the fallback, now 0.00025 — the same thing
+vanilla's 4000 works out to — for the case where the setting cannot be read.
+`route.lua` takes the rate as an option rather than reaching for the constant,
+which keeps it pure and makes the two scales testable.
+
+The surcharges were raised with the rebase: **10 per cent a leg, 20 per cent a
+change**. Against vanilla that puts a single ride at 10 to 44 gold, the
+same-strider chains at 33 to 48, and the far Telvanni coast — four or five legs
+with a change — at 117 to 176. A day's honest work for a crossing of the
+province, and the direct legs unchanged from what the operator would charge.
+
+**Phase 5 (optional) — fares that mean something.** What is left is variation
+rather than scale: a fare modified by region and by mode, now that the base is
+the game's own number. Vanilla also haggles travel prices against mercantile
+and disposition, which the mod does not — a booked fare is the price before
+anyone argues about it. Only ever applied to mod-booked journeys; single
 legs bought through vanilla dialogue keep vanilla's price, and the planner
 labels mod fares as such rather than pretending to quote the engine.
 

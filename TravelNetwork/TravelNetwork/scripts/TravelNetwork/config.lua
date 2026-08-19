@@ -24,7 +24,13 @@ return {
     -- Booking. There is no radius here: the planner opens from a conversation,
     -- so the operator selling the journey is whoever is being talked to and
     -- nothing has to search for one.
-    FARE_PER_UNIT = 0.004,
+    -- Vanilla's own scale. The engine computes travel prices as distance over
+    -- `fTravelMult`, which ships at 4000, so a game unit is worth 1/4000 of a
+    -- gold piece and Balmora to Ald-ruhn comes to 18 -- the sort of money the
+    -- silt strider actually asks for. Vanilla then haggles the number against
+    -- mercantile and disposition; this does not, so a mod fare is the price
+    -- before anyone argues about it.
+    FARE_PER_UNIT = 0.00025,
 
     -- What the convenience costs. Buying one ticket for a journey somebody
     -- else has to arrange is worth more than the legs are, so each leg past
@@ -32,9 +38,9 @@ return {
     -- transport -- which crosses two operators who have no arrangement with
     -- each other -- adds more again. Fractions of the base fare, added
     -- together rather than compounded: three legs with one change of vehicle
-    -- is 5 + 5 + 10 per cent, not a product of three multipliers.
-    FARE_LEG_SURCHARGE = 0.05,
-    FARE_MODE_CHANGE_SURCHARGE = 0.10,
+    -- is 10 + 10 + 20 per cent, not a product of three multipliers.
+    FARE_LEG_SURCHARGE = 0.10,
+    FARE_MODE_CHANGE_SURCHARGE = 0.20,
     HOURS_PER_UNIT = 0.00012,
     MAX_ROUTE_LEGS = 8,
 }

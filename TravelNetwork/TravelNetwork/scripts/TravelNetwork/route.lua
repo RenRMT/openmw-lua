@@ -41,6 +41,7 @@ local function options(opts)
         transferPenalty = opts.transferPenalty or config.TRANSFER_PENALTY,
         modeChangePenalty = opts.modeChangePenalty or config.MODE_CHANGE_PENALTY,
         maxLegs = opts.maxLegs or config.MAX_ROUTE_LEGS,
+        farePerUnit = opts.farePerUnit or config.FARE_PER_UNIT,
         legSurcharge = opts.legSurcharge or config.FARE_LEG_SURCHARGE,
         modeChangeSurcharge = opts.modeChangeSurcharge or config.FARE_MODE_CHANGE_SURCHARGE,
     }
@@ -84,7 +85,7 @@ local function summarise(legs, opts)
             summary.walked = summary.walked + leg.distance
         else
             -- Nobody charges for a door: the base fare is distance ridden.
-            summary.fare = summary.fare + leg.distance * config.FARE_PER_UNIT
+            summary.fare = summary.fare + leg.distance * opts.farePerUnit
             summary.vehicleLegs = summary.vehicleLegs + 1
             if lastVehicle ~= nil and leg.mode ~= lastVehicle then
                 summary.modeChanges = summary.modeChanges + 1

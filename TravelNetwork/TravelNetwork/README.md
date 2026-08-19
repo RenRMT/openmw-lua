@@ -205,16 +205,24 @@ Somebody has to arrange a connection two operators have no arrangement about, so
 a journey costs more than the legs it is made of:
 
 ```
-fare = legs * (1 + 5% per leg past the first + 10% per change of vehicle)
+fare = legs * (1 + 10% per leg past the first + 20% per change of vehicle)
 ```
 
-Added together, never compounded. Three legs with one change is 5 + 5 + 10 per
-cent over the fares themselves, and the expanded stop itemises it — *602 gold in
-fares, plus 5% (30 gold) for booking it in one go* — so the price is always
+Added together, never compounded. Three legs with one change is 10 + 10 + 20 per
+cent over the fares themselves, and the expanded stop itemises it — *100 gold in
+fares, plus 60% (60 gold) for booking it in one go* — so the price is always
 accountable.
 
+The legs themselves are priced at **the game's own rate**: travel prices in
+Morrowind are distance over the game setting `fTravelMult`, which the mod reads
+rather than guesses, so a single leg costs what the operator would charge for it
+and a total conversion that reprices travel reprices this too. Vanilla then
+haggles that number against mercantile and disposition; the mod does not, so a
+booked fare is the price before anyone argues about it.
+
 **A single leg is never surcharged**: bought through the planner it costs what
-it costs bought from the operator directly. **Walks count for nothing**, being
+it costs bought from the operator directly — 18 gold from Balmora to Ald-ruhn,
+44 to Sadrith Mora. **Walks count for nothing**, being
 neither a vehicle nor anybody's to sell — Balmora to Caldera is walk, guide,
 walk, and pays no extra at all. Both rates are settings, and setting them to
 zero turns the whole thing off.

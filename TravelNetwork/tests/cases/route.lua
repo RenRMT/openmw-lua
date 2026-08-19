@@ -267,6 +267,20 @@ function M.oneLegIsPricedAtWhatTheCounterWouldCharge()
     expect.equal(found.surchargePercent, 0, 'and nothing to explain')
 end
 
+function M.theRateAJourneyIsPricedAtComesFromTheCaller()
+    -- In game it comes from `fTravelMult`, so the mod charges on the scale the
+    -- loaded content charges on rather than one of its own. Nothing here can
+    -- read a GMST, which is exactly why the rate is an argument.
+    local a = exterior('A', 0, 0)
+    local b = exterior('B', 40000, 0)
+    local g = build({ operator('only', 'caravaner', a, { b }) })
+
+    expect.equal(route.find(g, 'place:a', 'place:b', { farePerUnit = 1 / 4000 }).fare, 10,
+        'vanilla rate: 40000 units over fTravelMult')
+    expect.equal(route.find(g, 'place:a', 'place:b', { farePerUnit = 1 / 1000 }).fare, 40,
+        'and four times that on a dearer scale')
+end
+
 function M.eachLegPastTheFirstAddsItsShare()
     local a = exterior('A', 0, 0)
     local b = exterior('B', 20000, 0)

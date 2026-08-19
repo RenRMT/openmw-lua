@@ -114,9 +114,19 @@ local function dumpInterchanges()
     end
 end
 
+--- Route options with the game's own travel rate filled in, so a journey
+-- quoted at the console is priced the same as one quoted in the window.
+local function priced(opts)
+    opts = opts or {}
+    if opts.farePerUnit == nil then
+        opts.farePerUnit = adapter.travelRate()
+    end
+    return opts
+end
+
 --- The cheapest journey between two stops, by key.
 local function findRoute(fromKey, toKey, opts)
-    return route.find(current(), fromKey, toKey, opts)
+    return route.find(current(), fromKey, toKey, priced(opts))
 end
 
 local function describe(g, leg)
@@ -152,15 +162,15 @@ local function dumpRoute(fromKey, toKey, opts)
     end
 end
 
---- Everywhere you can get to from a stop, cheapest first. What the phase 3
--- planner will show, in the only interface phase 2 has.
+--- Everywhere you can get to from a stop, cheapest first -- the planner's own
+-- list, in the console.
 local function dumpDestinations(fromKey)
     local g = current()
     if g.nodes[fromKey] == nil then
         out('no stop keyed %s', tostring(fromKey))
         return
     end
-    local list = route.destinations(g, fromKey)
+    local list = route.destinations(g, fromKey, priced())
     out('from %s: %d stop(s) reachable', g.nodes[fromKey].name, #list)
     for _, stop in ipairs(list) do
         out('  %-46s %d leg(s) %-24s %.1f h  %d gold', stop.name, #stop.legs,
@@ -189,6 +199,9 @@ local function preferencesFrom(data)
         modeChangePenalty = positive(sent.modeChangePenalty),
         legSurcharge = positive(sent.legSurcharge),
         modeChangeSurcharge = positive(sent.modeChangeSurcharge),
+        -- Not a setting and not the player's to send: what a mile of travel
+        -- is worth is the loaded content's answer, read from the game.
+        farePerUnit = adapter.travelRate(),
     }
 end
 
@@ -281,7 +294,9 @@ return {
         -- Queries re-exported so a caller holding a graph does not have to
         -- require an internal module to ask anything about it.
         route = findRoute,
-        destinations = function(fromKey, opts) return route.destinations(current(), fromKey, opts) end,
+        destinations = function(fromKey, opts)
+            return route.destinations(current(), fromKey, priced(opts))
+        end,
         transfersAt = function(key) return route.transfersAt(current(), key) end,
         dumpRoute = dumpRoute,
         dumpDestinations = dumpDestinations,

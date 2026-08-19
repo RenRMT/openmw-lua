@@ -9,6 +9,7 @@
 -- openmw-lua-notes.md §3). A full sweep costs around 600 ms, which is why
 -- main.lua builds once and caches rather than rebuilding on demand.
 
+local core = require('openmw.core')
 local types = require('openmw.types')
 local util = require('openmw.util')
 local world = require('openmw.world')
@@ -130,6 +131,23 @@ function M.arrive(traveller, arrival)
     local position = util.vector3(arrival.position.x, arrival.position.y, arrival.position.z)
     traveller:teleport(destination, position)
     return true
+end
+
+--- What a unit of travel is worth in gold, as the loaded content prices it.
+--
+-- The engine's own travel window charges distance over `fTravelMult`, a game
+-- setting that ships at 4000. Reading it means the mod is on whatever scale the
+-- content file sets rather than on a number somebody guessed once, and a total
+-- conversion that reprices travel reprices this with it.
+--
+-- @return gold per game unit, or nil when the setting is missing or unusable,
+--   in which case config.FARE_PER_UNIT stands
+function M.travelRate()
+    local ok, multiplier = pcall(core.getGMST, 'fTravelMult')
+    if not ok or type(multiplier) ~= 'number' or multiplier <= 0 then
+        return nil
+    end
+    return 1 / multiplier
 end
 
 --- Move the clock forward by the length of a journey.
