@@ -5,6 +5,8 @@
 -- their gold or advance the clock. The window that asks for both lives in
 -- player.lua and is told nothing it could get wrong.
 
+local core = require('openmw.core')
+
 local adapter = require('scripts.TravelAgents.adapter')
 local book = require('scripts.TravelAgents.book')
 local config = require('scripts.TravelAgents.config')
@@ -217,6 +219,33 @@ local function onRequestPlan(data)
     player:sendEvent(events.PLAN, built or {})
 end
 
+--- Build the graph before anything asks for it.
+--
+-- The build walks every cell in the load order looking for placed
+-- operators, because a travel destination lives on a record and the near
+-- end of every edge does not -- it is wherever the operator is standing.
+-- That is seconds of work on Tamriel Rebuilt.
+--
+-- Doing it lazily meant paying for it on the first conversation with a
+-- travel NPC, which is the worst possible moment: the game appears to
+-- hang, mid-greeting, on the one interaction the mod exists to improve.
+-- Here it lands on the first frame after load instead, where a moment of
+-- work is indistinguishable from the loading that just finished.
+--
+-- Still lazy underneath, so nothing breaks if a conversation somehow
+-- comes first; this only decides *when* the one build happens.
+local warmedUp = false
+local function warmUp()
+    if warmedUp then
+        return
+    end
+    warmedUp = true
+    local started = core.getRealTime()
+    local g = current()
+    out('graph ready: %d stops, %d legs, built in %.2fs',
+        g.stats.nodes, g.stats.edges, core.getRealTime() - started)
+end
+
 --- Sell a journey and make it.
 local function onBook(data)
     local player = data and data.player
@@ -258,7 +287,9 @@ local function onBook(data)
     end
     money.take(player, quote.fare)
     adapter.advanceTime(quote.hours)
-    adapter.restoreFatigue(player)
+    -- Asked for rather than done here: the player's own script is the only
+    -- context allowed to write their dynamic stats.
+    player:sendEvent(events.RESTORE, { rests = quote.rests })
     player:sendEvent(events.BOOKED, answer)
 end
 
@@ -283,6 +314,9 @@ return {
         modesWithinWalk = graph.modesWithinWalk,
         edgesFrom = graph.edgesFrom,
         isTransfer = graph.isTransfer,
+    },
+    engineHandlers = {
+        onUpdate = warmUp,
     },
     eventHandlers = {
         [events.REQUEST_PLAN] = onRequestPlan,

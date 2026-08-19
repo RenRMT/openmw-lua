@@ -34,6 +34,27 @@ data="<path to>/openmw-lua/TravelAgents"
 content=TravelAgents.omwscripts
 ```
 
+## What a journey does to you
+
+The mod follows vanilla rather than inventing its own rules:
+
+- **A guild guide teleports.** No time passes, whatever the distance — you
+  still pay the fare, but the clock does not move.
+- **Riding is a rest.** Step off a silt strider, boat or gondola and health,
+  magicka and fatigue have all come back.
+- **A teleport is a wait.** Step out of a guild hall and only fatigue has.
+
+A journey that rides anything at all counts as a rest, even if a guild guide
+carries the last leg.
+
 ## Compatibility
 
 Should work out of the box with mods that add travel providers.
+
+The travel graph is built once, on the first frame after a save loads, because
+finding operators means walking every cell in the load order — a travel
+destination lives on a record, but the near end of every route is wherever the
+operator happens to be standing. On a large load order such as Tamriel Rebuilt
+that is a few seconds of work; doing it here keeps it out of your first
+conversation with a travel NPC. The log line `graph ready: N stops, M legs,
+built in T` says how long it took.

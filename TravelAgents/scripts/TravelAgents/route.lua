@@ -2,6 +2,7 @@
 -- Dijkstra, but over (stop, mode) pairs rather than stops alone.
 -- Cost is in game units
 local config = require('scripts.TravelAgents.config')
+local modesData = require('scripts.TravelAgents.data.modes')
 local graph = require('scripts.TravelAgents.graph')
 
 local M = {}
@@ -59,11 +60,27 @@ local function summarise(legs, opts)
         -- Two legs are not the same as two vehicles.
         vehicleLegs = 0,
         modeChanges = 0,
+        -- Whether the traveller spent the journey aboard something that
+        -- took time. Vanilla treats such a trip as a rest -- health,
+        -- magicka and fatigue all come back -- while a guild guide is a
+        -- wait and returns fatigue alone.
+        rests = false,
     }
     local lastVehicle = nil
     for index, leg in ipairs(legs) do
         summary.distance = summary.distance + leg.distance
-        summary.hours = summary.hours + leg.distance * config.HOURS_PER_UNIT
+        -- A teleport covers its distance in no time at all, so its length
+        -- prices the ticket and not the clock. Charging hours for a guild
+        -- guide would make the mod strictly worse than the service it
+        -- replaces: vanilla puts you in Balmora at the hour you left.
+        if not modesData.instant[leg.mode] then
+            summary.hours = summary.hours + leg.distance * config.HOURS_PER_UNIT
+            if leg.mode ~= 'walk' then
+                -- Time spent aboard something. This is what makes the
+                -- journey a rest rather than a wait.
+                summary.rests = true
+            end
+        end
         if leg.mode == 'walk' then
             summary.walked = summary.walked + leg.distance
         else

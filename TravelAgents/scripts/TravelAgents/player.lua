@@ -15,6 +15,7 @@ local config = require('scripts.TravelAgents.config')
 local events = require('scripts.TravelAgents.events')
 local money = require('scripts.TravelAgents.money')
 local plan = require('scripts.TravelAgents.plan')
+local restore = require('scripts.TravelAgents.restore')
 
 local L10N = 'TravelAgents'
 local PAGE = 'TravelAgents'
@@ -494,7 +495,13 @@ local function onBooked(data)
     end
     if data.ok then
         local hours = string.format('%.1f', data.hours or 0)
-        if (data.fare or 0) > 0 then
+        local paid = (data.fare or 0) > 0
+        if (data.hours or 0) <= 0 then
+            -- A guild guide puts you down at the hour you left. "0.0 hours
+            -- on the road" is technically true and reads as a bug.
+            ui.showMessage(l10n(paid and 'arrivedInstantly' or 'arrivedInstantlyFree',
+                { place = data.place, fare = data.fare }))
+        elseif paid then
             ui.showMessage(l10n('arrived', { place = data.place, hours = hours, fare = data.fare }))
         else
             ui.showMessage(l10n('arrivedFree', { place = data.place, hours = hours }))
@@ -506,6 +513,11 @@ local function onBooked(data)
     else
         ui.showMessage(l10n('bookingFailed'))
     end
+end
+
+--- Put the traveller back together, in the one context allowed to.
+local function onRestore(data)
+    restore.afterJourney(self.object, data and data.rests)
 end
 
 local function toggle()
@@ -552,6 +564,7 @@ return {
     eventHandlers = {
         [events.PLAN] = onPlan,
         [events.BOOKED] = onBooked,
+        [events.RESTORE] = onRestore,
         UiModeChanged = onUiModeChanged,
     },
 }

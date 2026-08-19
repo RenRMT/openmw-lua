@@ -64,5 +64,10 @@ bookFree: "Travel here -- no charge"
 cannotAfford: "That journey costs {fare} gold -- you are {short} short."
 arrived: "You arrive at {place}. {hours} hours on the road, {fare} gold."
 arrivedFree: "You arrive at {place}. {hours} hours on the road."
+
+# A guild guide teleports, so no time passes at all. Saying "0.0 hours on
+# the road" is true and reads as a bug.
+arrivedInstantly: "You step out at {place}, no time at all having passed. {fare} gold."
+arrivedInstantlyFree: "You step out at {place}, no time at all having passed."
 noRoute: "There is no way through to that stop from here."
 bookingFailed: "That journey cannot be made."

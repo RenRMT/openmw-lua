@@ -18,6 +18,18 @@ return {
         ['rindral dralor'] = 'boat',
     },
 
+    -- Transport that arrives the moment it leaves.
+    --
+    -- A guild guide teleports: vanilla advances no clock for it, and the
+    -- traveller steps out of the other hall at the hour they stepped into
+    -- this one. Every other mode is a vehicle that has to cover ground.
+    --
+    -- This is why the mod cannot price time as distance alone, and why a
+    -- guide journey rests nobody -- see route.lua on `rests`.
+    instant = {
+        ['guide'] = true,
+    },
+
     -- Bethesda's test NPC, who travels from a debug cell to the same debug
     -- cell. Reachable from nowhere, and noise in a planner.
     exclude = {

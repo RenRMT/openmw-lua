@@ -45,6 +45,10 @@ function M.quote(graph, fromKey, toKey, opts)
         surcharge = journey.surcharge,
         surchargePercent = journey.surchargePercent,
         hours = journey.hours,
+        -- Whether arriving counts as a rest. Carried on the quote rather
+        -- than worked out again at the far end, because the far end is a
+        -- player script and cannot see the legs.
+        rests = journey.rests,
         distance = journey.distance,
         walked = journey.walked,
         legs = #journey.legs,
