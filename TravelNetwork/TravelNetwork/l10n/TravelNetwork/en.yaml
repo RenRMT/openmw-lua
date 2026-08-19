@@ -14,6 +14,15 @@ plannerGroupDescription: "The key that opens the journey planner."
 plannerKey: "Open the planner"
 plannerKeyDescription: "Shows every stop you can reach from where you are standing."
 
+routingGroup: "Routing"
+routingGroupDescription: "What the planner will go out of its way to avoid. Both are distances in game units -- a detour worth taking to save the change. They decide which route is offered, not what a leg costs."
+
+transferPenalty: "Cost of changing"
+transferPenaltyDescription: "How much of a detour is worth avoiding one extra leg, even on the same kind of vehicle. Higher means fewer, longer legs."
+
+modeChangePenalty: "Cost of changing vehicle"
+modeChangePenaltyDescription: "Added on top when the change is from one kind of vehicle to another -- strider to boat, boat to guild guide. Higher means the planner keeps you on one network."
+
 # --- the window ----------------------------------------------------------
 windowTitle: "Travel Network"
 from: "From {place}"
@@ -22,9 +31,18 @@ nowhereToGo: "No stop can be reached from here."
 plannerHint: "Press {key} to plan a journey from here."
 plannerUnbound: "Bind a key under Options, Scripts, Travel Network to plan a journey."
 controllerButton: "your controller button"
-askAnOperator: "Ask a silt strider driver, shipmaster, gondolier or guild guide about travel."
-andMore: "...and {count} more"
+andMore: "...and {count} more -- show them"
+showFewer: "Show fewer"
 close: "Close"
+
+# --- how a journey reads --------------------------------------------------
+# One vehicle from end to end is "direct" however many doors it passes
+# through; what a player wants to spot in a list is the journey that makes
+# them change.
+journeyDirect: "direct -- {hours} h, {fare} gold"
+journeyOnFoot: "on foot -- {hours} h"
+journeySameVehicle: "{legs} legs, all by {mode} -- {hours} h, {fare} gold"
+journeyChanging: "{changes, plural, one {1 change of vehicle} other {# changes of vehicle}} -- {hours} h, {fare} gold"
 
 # --- booking -------------------------------------------------------------
 book: "Travel here -- {fare} gold"

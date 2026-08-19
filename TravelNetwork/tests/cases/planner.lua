@@ -95,11 +95,38 @@ function M.everyLegCarriesWhatAPlayerNeedsToRead()
     expect.truthy(caldera.legs[2].operator, 'and who runs them')
 end
 
-function M.aJourneySummaryReadsAsAPlayerWouldSayIt()
-    expect.equal(plan.summarise({ transfers = 0, hours = 2.0, fare = 40 }), 'direct, 2.0 h, 40 gold')
-    expect.equal(plan.summarise({ transfers = 1, hours = 3.5, fare = 90 }), '1 change, 3.5 h, 90 gold')
-    expect.equal(plan.summarise({ transfers = 3, hours = 9.25, fare = 250 }),
-        '3 changes, 9.2 h, 250 gold')
+function M.aJourneyIsDescribedByWhatItAsksOfTheTraveller()
+    -- The distinction the window exists to draw: two legs on one silt strider
+    -- is not the same journey as one leg then a boat, and calling both
+    -- "2 changes" said nothing.
+    local key, args = plan.summarise({ vehicleLegs = 1, modeChanges = 0, hours = 2.0, fare = 40 })
+    expect.equal(key, 'journeyDirect', 'one vehicle, however many doors')
+    expect.equal(args.hours, '2.0', 'hours are formatted for reading')
+    expect.equal(args.fare, 40, 'the fare')
+
+    expect.equal(plan.summarise({ vehicleLegs = 2, modeChanges = 0, hours = 4, fare = 80 }),
+        'journeySameVehicle', 'two legs, one kind of vehicle')
+    expect.equal(plan.summarise({ vehicleLegs = 2, modeChanges = 1, hours = 4, fare = 80 }),
+        'journeyChanging', 'two legs, and a change between them')
+    expect.equal(plan.summarise({ vehicleLegs = 0, modeChanges = 0, hours = 0.5, fare = 0 }),
+        'journeyOnFoot', 'no vehicle at all')
+end
+
+function M.aJourneyOnOneVehicleNamesIt()
+    local g = linked()
+    local built = plan.build(g, 'place:balmora')
+    local caldera = nil
+    for _, stop in ipairs(built.stops) do
+        if stop.name == 'Caldera' then
+            caldera = stop
+        end
+    end
+
+    -- Balmora to Caldera is walk, guide, walk: three legs, one vehicle, and
+    -- the player is asked to change nothing.
+    expect.equal(plan.summarise(caldera), 'journeyDirect', 'a guide journey through two doors')
+    expect.equal(caldera.vehicleLegs, 1, 'vehicle legs')
+    expect.equal(caldera.firstModeLabel, 'Guild guide', 'named by what carries you')
 end
 
 function M.aWalkLegSaysWalkRatherThanNamingAnOperator()

@@ -50,8 +50,12 @@ function M.build(graph, originKey, opts)
 
     for _, stop in ipairs(route.destinations(graph, originKey, opts)) do
         local legs = {}
+        local firstModeLabel = nil
         for _, leg in ipairs(stop.legs) do
             legs[#legs + 1] = legOf(graph, leg, modes)
+            if firstModeLabel == nil and leg.mode ~= 'walk' then
+                firstModeLabel = legs[#legs].modeLabel
+            end
         end
         plan.stops[#plan.stops + 1] = {
             key = stop.key,
@@ -62,6 +66,9 @@ function M.build(graph, originKey, opts)
             hours = stop.hours,
             fare = stop.fare,
             transfers = stop.transfers,
+            vehicleLegs = stop.vehicleLegs,
+            modeChanges = stop.modeChanges,
+            firstModeLabel = firstModeLabel,
             modes = stop.modes,
             legs = legs,
         }
@@ -73,18 +80,34 @@ function M.build(graph, originKey, opts)
     return plan
 end
 
---- A one-line summary of a journey, in the order a player reads it: how many
--- changes, how long, what it costs.
+--- How to say what a journey asks of the player, as a message key and the
+-- values that fill it in. The window renders it; nothing here writes English.
+--
+-- The distinction the key carries is between legs and vehicles. Staying on one
+-- silt strider through a stop it calls at costs the player nothing, while
+-- changing to a boat costs them a wait and a walk to the dock, and a summary
+-- reading "2 changes" for both told them the same thing about two different
+-- journeys. Walk legs are not counted at all: a door is not a change.
+--
+-- @return the l10n key, and a table of arguments for it
 function M.summarise(stop)
-    local changes
-    if stop.transfers == 0 then
-        changes = 'direct'
-    elseif stop.transfers == 1 then
-        changes = '1 change'
-    else
-        changes = string.format('%d changes', stop.transfers)
+    local args = {
+        hours = string.format('%.1f', stop.hours or 0),
+        fare = stop.fare or 0,
+        legs = stop.vehicleLegs or 0,
+        changes = stop.modeChanges or 0,
+        mode = stop.firstModeLabel,
+    }
+    if args.legs == 0 then
+        return 'journeyOnFoot', args
     end
-    return string.format('%s, %.1f h, %d gold', changes, stop.hours, stop.fare)
+    if args.legs == 1 then
+        return 'journeyDirect', args
+    end
+    if args.changes == 0 then
+        return 'journeySameVehicle', args
+    end
+    return 'journeyChanging', args
 end
 
 --- One leg, as a line: what carries you, and where it leaves you.

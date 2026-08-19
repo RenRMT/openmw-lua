@@ -187,6 +187,46 @@ function M.theSummaryDescribesTheWholeJourney()
     expect.equal(table.concat(found.modes, '+'), 'strider+boat', 'modes in order of travel')
     expect.greater(found.hours, 0, 'hours')
     expect.greater(found.fare, 0, 'fare')
+    expect.equal(found.vehicleLegs, 2, 'vehicle legs')
+    expect.equal(found.modeChanges, 1, 'and one of them is a change of vehicle')
+end
+
+function M.stayingOnOneKindOfVehicleIsNotCountedAsChangingIt()
+    -- Two silt strider legs in a row: a transfer, but nothing the traveller
+    -- has to think about. The planner draws that distinction and the count is
+    -- where it comes from.
+    local a = exterior('A', 0, 0)
+    local b = exterior('B', 10000, 0)
+    local c = exterior('C', 30000, 0)
+    local g = build({
+        operator('first', 'caravaner', a, { b }),
+        operator('second', 'caravaner', b, { c }),
+    })
+    local found = route.find(g, 'place:a', 'place:c', FREE)
+
+    expect.equal(found.transfers, 1, 'one transfer')
+    expect.equal(found.vehicleLegs, 2, 'two vehicle legs')
+    expect.equal(found.modeChanges, 0, 'and no change of vehicle')
+end
+
+function M.aDoorBetweenTwoRidesIsNotAChangeOfVehicle()
+    -- Walk legs are not vehicles and must not be counted as one: a guide leg
+    -- with a door at each end is one ride, not three.
+    local hall = {
+        cellId = 'town, guild', cellName = 'Town, Guild', isInterior = true,
+        position = { x = 0, y = 0, z = 0 },
+    }
+    local street = exterior('Town', 30000, 0)
+    local far = exterior('Far', 90000, 0)
+    local g = build({
+        operator('driver', 'caravaner', street, { far }),
+        operator('guide', 'caravaner', hall, { street }),
+    })
+    graph.link(g, { { cellId = 'town, guild', point = street, walked = 100 } })
+
+    local found = route.find(g, 'cell:town, guild', 'place:far', FREE)
+    expect.greater(#found.legs, 1, 'more than one leg')
+    expect.equal(found.modeChanges, 0, 'and none of them a change of vehicle')
 end
 
 function M.walkingIsFreeOfChargeButNotOfTime()

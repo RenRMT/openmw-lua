@@ -134,12 +134,38 @@ end
 
 --- Move the clock forward by the length of a journey.
 --
--- Weather and AI move with it; regeneration does not. That is deliberate and
--- is part of what a booked journey costs -- see phase 4 in the plan.
+-- Weather and AI move with it; regeneration does not, which is why arriving
+-- restores fatigue separately.
 function M.advanceTime(hours)
     if hours and hours > 0 then
         world.advanceTime(hours)
     end
+end
+
+--- Arrive rested, the way vanilla travel leaves you.
+--
+-- Confirmed in game on 2026-08-19: buying a leg through vanilla dialogue comes
+-- out with fatigue full. `advanceTime` restores nothing on its own, so without
+-- this a journey booked through the mod would be strictly worse than the same
+-- journey bought leg by leg from the same people.
+--
+-- Fatigue only. Health and magicka are not touched, because nothing has been
+-- observed restoring them and inventing that would be adding a mechanic rather
+-- than matching one.
+function M.restoreFatigue(traveller)
+    if traveller == nil then
+        return false
+    end
+    local ok, stat = pcall(function()
+        return types.Actor.stats.dynamic.fatigue(traveller)
+    end)
+    if not ok or stat == nil then
+        return false
+    end
+    -- A dynamic stat's ceiling is its base plus whatever is fortifying or
+    -- draining it, so this is "full" whatever else is acting on the traveller.
+    stat.current = stat.base + (stat.modifier or 0)
+    return true
 end
 
 --- Every travel operator in the world, in the shape graph.build takes.

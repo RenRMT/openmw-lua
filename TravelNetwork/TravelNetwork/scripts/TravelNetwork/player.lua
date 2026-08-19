@@ -25,6 +25,7 @@ local util = require('openmw.util')
 
 local I = require('openmw.interfaces')
 
+local config = require('scripts.TravelNetwork.config')
 local events = require('scripts.TravelNetwork.events')
 local money = require('scripts.TravelNetwork.money')
 local plan = require('scripts.TravelNetwork.plan')
@@ -32,6 +33,7 @@ local plan = require('scripts.TravelNetwork.plan')
 local L10N = 'TravelNetwork'
 local PAGE = 'TravelNetwork'
 local GROUP = 'SettingsPlayerTravelNetwork'
+local ROUTING = 'SettingsPlayerTravelNetworkRouting'
 local TRIGGER = 'TravelNetworkPlanner'
 
 -- The id the binding is filed under. The settings entry stores this string,
@@ -52,6 +54,8 @@ local SHOWN = 14
 
 local window = nil
 local expanded = nil
+-- Whether the list is showing everything or only the first SHOWN of it.
+local showAll = false
 -- The plan for the operator currently being talked to, fetched when the
 -- conversation opens so the keypress has nothing to wait for.
 local current = nil
@@ -99,6 +103,47 @@ I.Settings.registerGroup {
         },
     },
 }
+
+-- What a change is worth avoiding, in game units of detour -- the planner's
+-- taste, which is why it is the player's to set. These do not change what a
+-- leg costs in gold; they change which route the planner picks, and the fare
+-- follows from that. Read when a conversation opens, so a change takes effect
+-- at the next operator you talk to.
+I.Settings.registerGroup {
+    key = ROUTING,
+    page = PAGE,
+    l10n = L10N,
+    name = 'routingGroup',
+    description = 'routingGroupDescription',
+    permanentStorage = true,
+    settings = {
+        {
+            key = 'transferPenalty',
+            name = 'transferPenalty',
+            description = 'transferPenaltyDescription',
+            renderer = 'number',
+            default = config.TRANSFER_PENALTY,
+            argument = { integer = true, min = 0, max = 100000 },
+        },
+        {
+            key = 'modeChangePenalty',
+            name = 'modeChangePenalty',
+            description = 'modeChangePenaltyDescription',
+            renderer = 'number',
+            default = config.MODE_CHANGE_PENALTY,
+            argument = { integer = true, min = 0, max = 100000 },
+        },
+    },
+}
+
+--- The routing preferences, as the global script's route options.
+local function routing()
+    local section = storage.playerSection(ROUTING)
+    return {
+        transferPenalty = section:get('transferPenalty'),
+        modeChangePenalty = section:get('modeChangePenalty'),
+    }
+end
 
 --------------------------------------------------------------------------
 -- The keybind, as the player sees it
@@ -159,6 +204,7 @@ local function close()
         window:destroy()
         window = nil
         expanded = nil
+        showAll = false
     end
 end
 
@@ -186,7 +232,9 @@ local function bookTo(stop)
     local operator = interlocutor
     leaveDialogue()
     I.UI.setMode()
-    core.sendGlobalEvent(events.BOOK, { player = self.object, actor = operator, to = stop.key })
+    core.sendGlobalEvent(events.BOOK, {
+        player = self.object, actor = operator, to = stop.key, routing = routing(),
+    })
 end
 
 local render
@@ -212,12 +260,16 @@ local function lines()
     end
 
     for index, stop in ipairs(current.stops) do
-        if index > SHOWN then
-            content[#content + 1] = text(l10n('andMore', { count = #current.stops - SHOWN }))
+        if index > SHOWN and not showAll then
+            -- A line that only announced how much it was hiding, and did
+            -- nothing about it, was the least useful thing in the window.
+            content[#content + 1] = row(l10n('andMore', { count = #current.stops - SHOWN }),
+                function() showAll = true render() end)
             break
         end
+        local summaryKey, summaryArgs = plan.summarise(stop)
         content[#content + 1] = row(
-            string.format('%s  --  %s', stop.name, plan.summarise(stop)),
+            string.format('%s  --  %s', stop.name, l10n(summaryKey, summaryArgs)),
             function() toggleExpanded(stop.key) end)
         if expanded == stop.key then
             for _, leg in ipairs(stop.legs) do
@@ -231,6 +283,9 @@ local function lines()
     end
 
     content[#content + 1] = { template = I.MWUI.templates.horizontalLine }
+    if showAll and #current.stops > SHOWN then
+        content[#content + 1] = row(l10n('showFewer'), function() showAll = false render() end)
+    end
     content[#content + 1] = row(l10n('close'), close)
     return content
 end
@@ -272,6 +327,7 @@ local function onPlan(data)
     end
     current = data
     expanded = nil
+    showAll = false
     local key = boundKey()
     if key then
         ui.showMessage(l10n('plannerHint', { key = key }))
@@ -287,7 +343,9 @@ end
 -- conversation.
 local function onTalk(actor)
     interlocutor = actor
-    core.sendGlobalEvent(events.REQUEST_PLAN, { player = self.object, actor = actor })
+    core.sendGlobalEvent(events.REQUEST_PLAN, {
+        player = self.object, actor = actor, routing = routing(),
+    })
 end
 
 --- What became of a booking. Every outcome says something: a refusal nobody
@@ -320,9 +378,9 @@ local function toggle()
         return
     end
     if current == nil then
-        -- Pressed somewhere the planner has nothing to say. Silence would
-        -- look like a broken keybind.
-        ui.showMessage(l10n('askAnOperator'))
+        -- Pressed somewhere the planner has nothing to say. It says nothing:
+        -- a key that answers back every time it is brushed in combat is worse
+        -- than one that looks inert outside the conversation it belongs to.
         return
     end
     render()

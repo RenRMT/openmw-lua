@@ -64,7 +64,15 @@ local function summarise(legs)
         hours = 0,
         fare = 0,
         modes = {},
+        -- Two legs are not the same as two vehicles. Riding one silt strider
+        -- through a stop it happens to call at asks nothing of the player;
+        -- changing to a boat does. `vehicleLegs` and `modeChanges` are what
+        -- lets the planner say which of the two a journey is, and they count
+        -- vehicles only -- a walk between them is a door, not a change.
+        vehicleLegs = 0,
+        modeChanges = 0,
     }
+    local lastVehicle = nil
     for index, leg in ipairs(legs) do
         summary.distance = summary.distance + leg.distance
         summary.hours = summary.hours + leg.distance * config.HOURS_PER_UNIT
@@ -74,6 +82,11 @@ local function summarise(legs)
             -- Nobody charges for a door. Fares are provisional until phase 5
             -- gives them a formula worth quoting.
             summary.fare = summary.fare + leg.distance * config.FARE_PER_UNIT
+            summary.vehicleLegs = summary.vehicleLegs + 1
+            if lastVehicle ~= nil and leg.mode ~= lastVehicle then
+                summary.modeChanges = summary.modeChanges + 1
+            end
+            lastVehicle = leg.mode
         end
         if index == 1 or leg.mode ~= legs[index - 1].mode then
             summary.modes[#summary.modes + 1] = leg.mode

@@ -19,12 +19,22 @@ other mod had already taken.
 Then **talk to a silt strider driver, shipmaster, gondolier or guild guide**.
 The conversation prompts you by name of key — *Press T to plan a journey from
 here* — or, if you have not bound one yet, says where to. Press it and the
-window lists
-every stop reachable from where they stand, cheapest first, with how many
-changes each journey takes, how long it runs and what it costs. Click a stop to
-see its legs and the price of the whole journey; click again to fold it away.
+window lists every stop reachable from where they stand, cheapest first, with
+what each journey asks of you, how long it runs and what it costs. Click a stop
+to see its legs and the price of the whole journey; click again to fold it away.
+The list shows the fourteen cheapest; the line at the bottom opens the rest.
 Closing the window leaves you in the conversation, and leaving the conversation
 closes the window.
+
+A journey reads as one of four things, and the distinction is between legs and
+vehicles rather than between stops:
+
+| It says | It means |
+|---|---|
+| *direct* | One vehicle the whole way, however many doors it passes through |
+| *on foot* | No vehicle at all — a walk through a door, free |
+| *3 legs, all by Silt strider* | Several legs, nothing to change onto |
+| *1 change of vehicle* | You leave one kind of transport for another |
 
 **Click the price to travel.** The fare comes out of your purse once, the
 conversation ends, and you arrive at the far stop with the clock moved on by the
@@ -34,7 +44,25 @@ talking to, even the legs their own vehicle does not cover.
 
 The key does nothing outside a travel conversation, on purpose — reading a route
 out of the air in the middle of a street is a menu, not a journey. Press it
-anyway and it will say so rather than sit there looking broken.
+anywhere else and it is silent: it once explained itself, which turned out to
+mean a message every time the key was brushed in a fight.
+
+## Settings
+
+Options → Scripts → Travel Network.
+
+| Setting | What it does |
+|---|---|
+| *Open the planner* | The key. Nothing is bound until you bind one |
+| *Cost of changing* | How much of a detour is worth avoiding one extra leg, even on the same kind of vehicle |
+| *Cost of changing vehicle* | Added on top when the change is between kinds — strider to boat, boat to guild guide |
+
+Both costs are **distances in game units**, not gold: they decide which route
+the planner offers you, and the fare follows from the route it picked. Raise
+them and the planner keeps you on one vehicle at the price of going the long way
+round; drop them to zero and it will send you through every interchange that
+saves a few paces. They are read when a conversation opens, so a change applies
+at the next operator you talk to.
 
 ## Setup
 
@@ -104,7 +132,8 @@ The graph:
 Node  = { key, name, cellId, isExterior, position, anchor, modes = { [mode] = true } }
 Edge  = { from, to, mode, operator, operatorName, distance }
 Graph = { nodes = { [key] = Node }, order = { key, ... }, edges = { [from] = { Edge, ... } }, stats }
-Route = { legs = { Edge, ... }, transfers, distance, walked, hours, fare, modes, cost }
+Route = { legs = { Edge, ... }, transfers, vehicleLegs, modeChanges, distance, walked,
+          hours, fare, modes, cost }
 ```
 
 `anchor` is where a stop stands in the world when its own coordinates cannot say
@@ -114,8 +143,13 @@ guide leg from reading as the few paces between two halls in their own cells.
 
 Routing cost is distance plus `TRANSFER_PENALTY` per change and
 `MODE_CHANGE_PENALTY` when the kind of vehicle changes — all in game units, so a
-penalty reads as "worth this much of a detour". `fare` counts vehicle legs only
-and is provisional until fares get a formula worth quoting.
+penalty reads as "worth this much of a detour". Both are settings; the values in
+`config.lua` are only the defaults. `fare` counts vehicle legs only and is
+provisional until fares get a formula worth quoting.
+
+`transfers` counts legs; `vehicleLegs` and `modeChanges` count vehicles, walk
+legs excluded. Two silt strider legs in a row are one transfer and no mode
+change, which is the difference the planner puts in front of the player.
 
 `order` is sorted by name, so a dump reads alphabetically. `stats` carries
 `operators`, `nodes`, `edges`, `unplaced`, `excluded` and `selfEdges`.
@@ -148,12 +182,12 @@ in the global script, from the operator you are talking to, against the live
 graph. A booking is quoted before it is charged, and the traveller is moved
 before the gold is taken, so a journey that cannot be made is never paid for.
 
-**A booked journey does not heal you.** `world.advanceTime` moves the clock,
-the weather and the world's AI, but it does not run regeneration the way
-sleeping does. Left uncompensated, deliberately: guessing at the engine's rest
-arithmetic would be inventing a mechanic rather than matching one. If vanilla
-travel turns out to restore anything, this should match it rather than keep its
-own rule — see the open question in the plan.
+**You arrive rested**, because vanilla travel leaves you rested and a booked
+journey should not be worse than the same legs bought one at a time.
+`world.advanceTime` moves the clock, the weather and the world's AI but runs no
+regeneration, so fatigue is refilled on arrival. Health and magicka are not
+touched — nothing in vanilla was seen restoring them, and adding that would be
+inventing a mechanic rather than matching one.
 
 **A journey with no vehicle in it is free.** Walk legs carry no fare, so the
 short hop from Balmora's street to its guild hall costs time and nothing else,
@@ -172,7 +206,7 @@ and the window says *no charge* rather than *0 gold*.
 | `scripts/TravelNetwork/money.lua` | Gold. Read in both contexts, spent in the global one |
 | `scripts/TravelNetwork/main.lua` | Global script, cache, interface, dumps, and the booking counter |
 | `scripts/TravelNetwork/player.lua` | The keybind, the settings page and the window |
-| `scripts/TravelNetwork/config.lua` | Every tunable |
+| `scripts/TravelNetwork/config.lua` | Every tunable; the two routing penalties are defaults the settings page overrides |
 | `scripts/TravelNetwork/data/modes.lua` | Which class drives what, plus the four vanilla operators whose class does not say |
 
 ## Walking between stops

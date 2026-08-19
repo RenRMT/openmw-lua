@@ -126,6 +126,14 @@ pre-binds **`I`** (`openmw.interfaces`), `world`, `types`, `util`, `core`,
 - `core.getFormId(contentFile, index)` builds a FormId string, needed for
   ESM4-style content. ESM3 (Morrowind-style) content uses plain lowercase string
   ids instead.
+- **Teleporting the player to an authored position can leave a short drop**
+  *(observed in game 2026-08-19)*. Sent to a vanilla travel destination with no
+  `onGround`, the player sometimes arrives slightly above the ground and falls
+  the rest of the way — never far enough to take damage. The cell is active by
+  the time it happens, so `onGround = true` is available here in a way it is
+  not for inactive cells (above); whether it is worth using is a judgement
+  about interiors, where the ground under an authored point is not always the
+  surface meant.
 - **Inventories are read through the actor, and items are objects**
   *(docs-checked 2026-08-19)*. `types.Actor.inventory(actor)` returns an
   `Inventory` with `countOf(recordId)`, `find(recordId)` (the first stack),
@@ -398,6 +406,15 @@ a shipped settings page.)*
   index is `math.floor(core.getGameTime() / time.day)`.
 - **`world.advanceTime(hours)`** advances time, weather and AI, but **not**
   regeneration — a long journey will not heal the way sleeping does.
+  **Vanilla travel does restore fatigue** *(observed in game 2026-08-19)*:
+  buying a leg through the vanilla dialogue leaves the player rested. So a mod
+  moving the player over hours has to restore it itself or be strictly worse
+  than the service it replaces. Health and magicka were not observed changing.
+- **Dynamic stats are readable and writable** *(docs-checked 2026-08-19)*.
+  `types.Actor.stats.dynamic.health(actor)` / `.magicka(actor)` /
+  `.fatigue(actor)` each return a stat with `base`, `current` and `modifier`,
+  all three writable **from a global script or the actor's own script**. The
+  ceiling is `base + modifier`, so "restore to full" is a write of that sum.
 - **`world.players`** — an ObjectList, currently always one element.
 - **`onKeyPress` / `KeyboardEvent`** — `code`, `symbol`, `withCtrl`, `withAlt`,
   `withShift`, `withSuper`; `input.KEY` includes `F1`–`F12`, `A`–`Z`, `_0`–`_9`,
@@ -431,16 +448,18 @@ Do not build on these without checking first.
 - **A trade/barter UI-mode-changed signal**, proposed as the workaround for the
   missing commerce event (§9), is plausible from general knowledge of a
   UI-mode-changed event but was never confirmed.
+- **Can a global script register a settings group on a page a player script
+  registered?** The docs give the `SettingsGlobal*` / `SettingsPlayer*` prefix
+  rule (§11) but say nothing about whether a page and its groups must be
+  registered from the same context. Until it is checked, a setting that global
+  code needs is easiest kept player-side and passed over the event that asks
+  for the work.
 - **Does the engine fold every gold denomination onto `gold_001`?** Assumed
   when counting or taking a player's money through `Inventory:countOf` (§3),
   and believed from the engine's container code rather than from anything
   checked here. If a purse can hold `gold_005` or `gold_100` as separate
   stacks, a count of `gold_001` under-reports it. One in-game check settles it:
   pick up mixed coin and count.
-- **Does vanilla travel restore health, magicka or fatigue?** `advanceTime`
-  does not (§11), so anything moving the player over hours has to decide
-  whether to compensate, and the answer decides whether that is matching the
-  game or inventing a mechanic.
 
 ---
 

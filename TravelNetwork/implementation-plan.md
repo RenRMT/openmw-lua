@@ -441,15 +441,56 @@ it on foot. Two consequences, both held to:
   standing next to sells the whole journey, including the legs their own
   vehicle does not cover.
 
-**Regeneration: not compensated, decided 2026-08-19.** `advanceTime` does not
-run it, so a booked journey does not heal the way sleeping does. Reproducing the
-engine's rest arithmetic from the outside would be inventing a mechanic rather
-than matching one, and the numbers behind it are GMSTs this mod has no business
-guessing at. The open question that leaves — whether vanilla travel restores
-anything, and how much — is below, and it is answerable only in game.
+**Regeneration: fatigue is restored, settled in game 2026-08-19.** The first
+pass compensated for nothing, on the grounds that reproducing the engine's rest
+arithmetic would be inventing a mechanic. Playing it answered the question the
+other way: **vanilla travel leaves the player rested**, so restoring nothing
+made a mod-booked journey strictly worse than the same legs bought one at a
+time from the same people. Arrival now fills fatigue to `base + modifier`.
+Health and magicka are left alone — nothing was observed restoring them, and
+that side of the original reasoning still holds.
+
+### Phase 4a — what playing it changed, 2026-08-19
+
+The first in-game session of a complete mod, and every change came from using
+it rather than from reading it.
+
+- **The key says nothing outside a travel conversation.** It used to explain
+  itself, on the reasoning that a silent keybind reads as a broken one. In play
+  that reasoning is wrong: the key is bound to something a player also presses
+  by accident, and a message every time it is brushed is worse than a key that
+  is simply inert where it does not belong.
+- **"…and 18 more" is now the control it looked like.** It said what it was
+  hiding and did nothing about it. Clicking it shows the rest; a *Show fewer*
+  row folds the list back.
+- **Legs and vehicles are counted separately.** The summary called a two-leg
+  silt strider journey "1 change" and a strider-then-boat journey "1 change",
+  which are not the same thing to travel. `route.summarise` now counts
+  `vehicleLegs` and `modeChanges` over vehicle legs only — a door between two
+  rides is not a change — and the four readings a journey can have (*direct*,
+  *on foot*, *all by one vehicle*, *changing vehicle*) are l10n keys chosen in
+  `plan.summarise`. That moved the last English strings out of the pure modules
+  and into the locale file, which they should have been in already.
+- **Both penalties are settings now**, under Options → Scripts → Travel
+  Network → Routing. They are the routing costs, not a surcharge on the fare:
+  they decide which route the planner offers, and the fare follows from the
+  route. **They live player-side** and travel to the global script on the event
+  that asks for a plan or a journey, because whether a page registered by a
+  player script can host a group registered by a global one is not established
+  (repo notes §12). Read when a conversation opens, so a change applies at the
+  next operator talked to.
+- **Arriving a short drop above the ground** is left alone. It happens at some
+  vanilla destinations and never far enough to hurt. `onGround = true` is
+  available here — the cell is active by then, unlike the inactive-cell case in
+  BalanceOfPower's notes — but it would let the engine second-guess an authored
+  arrival point, including in interiors where the ground beneath one is not
+  always the floor meant. Not worth the trade for a fall nobody takes damage
+  from.
 
 **Phase 5 (optional) — fares that mean something.** Distance-scaled base fare,
-modified by region and by mode. Only ever applied to mod-booked journeys; single
+modified by region and by mode. If a *surcharge* for changing is wanted — a
+price penalty for a multi-leg or multi-mode journey, as against the routing
+penalties phase 4a exposed — it belongs here, where the fare formula lives. Only ever applied to mod-booked journeys; single
 legs bought through vanilla dialogue keep vanilla's price, and the planner
 labels mod fares as such rather than pretending to quote the engine.
 
@@ -524,15 +565,18 @@ without erroring.
 - ~~How should a stop the game never named be labelled?~~ Region plus grid
   reference — "Azura's Coast (19, -5)" — with "Wilderness" when even the region
   is missing. Vanilla needs it exactly once, for the Holamayan landing.
-- Does `teleport` into a far interior behave, given the `onGround` finding in
-  BalanceOfPower's phase 4b notes? Travel destinations carry an authored
-  position, so this *should* be the safe case — the mod passes no `onGround`
-  and lets the authored position stand — but it is the same code path that
-  already surprised this repo once. **Untried in a running game**, along with
-  the rest of phase 4: `Inventory:countOf`/`findAll` on `gold_001`,
+- ~~Does `teleport` into a far interior behave, given the `onGround` finding in
+  BalanceOfPower's phase 4b notes?~~ **Yes** *(played 2026-08-19)*. Authored
+  travel positions land where they should; the only blemish is arriving a short
+  drop above the ground at some of them, never far enough to take damage, and
+  phase 4a says why that is left alone. Booking's other unverified calls came
+  through the same session: `Inventory:countOf`/`findAll` on `gold_001`,
   `GameObject:remove`, and `I.UI.setMode()` ending a conversation from a click
-  handler.
-- **Does vanilla travel restore health, magicka or fatigue?** If it does, a
-  booked journey should match it rather than keep its own rule — the mod
-  currently restores nothing (phase 4). Answerable only in game: buy a long
-  silt strider leg through vanilla dialogue with fatigue down and read the bar.
+  handler all behaved.
+- ~~Does vanilla travel restore health, magicka or fatigue?~~ **Fatigue, yes**
+  *(played 2026-08-19)*. Arrival restores it; health and magicka are left alone
+  (phase 4a).
+- **Do the routing penalties want different defaults now they are settings?**
+  4000 and 6000 were guesses made before anyone had travelled on them. The
+  settings page makes them answerable by playing rather than by editing a file,
+  which is the whole reason they are there.
