@@ -53,6 +53,9 @@ local scanStarted = nil
 local slices = 0
 local longestSlice = 0
 local lastReport = 0
+-- How far the walk had got at the last yield, so the guard can say what it
+-- is about to do rather than only that it is doing something.
+local lastDone, lastTotal = 0, nil
 
 --- Everything after the cell walk: cheap, and not worth slicing.
 --
@@ -106,6 +109,10 @@ local function advance(budget)
     -- Say how it is going, occasionally. Without this the only way to know
     -- whether the budget is being spent is to wait and see whether the graph
     -- ever turns up, which is what happened.
+    if result == 'cells' then
+        lastDone, lastTotal = done, total
+    end
+
     local now = core.getRealTime()
     if now - lastReport >= config.BUILD_REPORT_SECONDS then
         lastReport = now
@@ -129,8 +136,12 @@ local function current()
     if cached then
         return cached
     end
-    local left = scan and 'partly built' or 'not started'
-    out('a travel service was reached before the graph was ready (%s); finishing now', left)
+    if scan and lastTotal then
+        out('a travel service was reached with %d of %d cells walked; '
+            .. 'finishing the last %d now', lastDone, lastTotal, lastTotal - lastDone)
+    else
+        out('a travel service was reached before the graph was started; building it now')
+    end
     return advance(nil)
 end
 
