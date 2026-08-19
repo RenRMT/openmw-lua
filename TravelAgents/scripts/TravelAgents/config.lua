@@ -24,11 +24,25 @@ return {
     -- The planner window, in pixels.
     WINDOW_WIDTH = 640,
     WINDOW_HEIGHT = 560,
-    MASTER_WIDTH = 260,
     NAME_COLUMN = 24,
 
-    -- How many places the list shows before offering the rest.
-    SHOWN_STOPS = 16,
+    -- Both halves of the window are the destination list, so a column is
+    -- half of it less the gap between them.
+    COLUMN_WIDTH = 290,
+    -- What is left once the title, the tabs, the footer and the close row
+    -- have taken theirs.
+    LIST_HEIGHT = 360,
+    FOOTER_HEIGHT = 90,
+
+    -- Rows in one column. Two columns to a page, so a page holds twice
+    -- this; anything past it pages rather than overflowing the window,
+    -- because MWUI has no scrollbar and a clipped row is unreachable
+    -- rather than merely unseen.
+    ROWS_PER_COLUMN = 18,
+
+    -- Tabs across the window before the row wraps. Flex does not wrap on
+    -- its own, and a heavy load order fields more vehicles than fit.
+    TABS_PER_ROW = 5,
     HOURS_PER_UNIT = 0.00012,
     MAX_ROUTE_LEGS = 8,
 }

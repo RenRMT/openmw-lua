@@ -219,6 +219,47 @@ local function onRequestPlan(data)
     player:sendEvent(events.PLAN, built or {})
 end
 
+--- Every operator class in the load order, and whether the mod knows it.
+--
+-- The mode a vehicle is filed under comes from its operator's class, which
+-- is a string a content pack's author typed. Vanilla's four are known; a
+-- landmass mod inventing a guar caravan is not, and the tab it gets is
+-- named after the raw class until data/modes.lua claims it.
+--
+-- Diagnostic, and the way to find out what a real load order actually
+-- contains rather than guessing at it.
+local function dumpClasses()
+    local modes = require('scripts.TravelAgents.data.modes')
+    local seen = {}
+    for _, operator in ipairs(adapter.operators()) do
+        local class = (operator.class or ''):lower()
+        seen[class] = seen[class] or { count = 0, example = operator.name }
+        seen[class].count = seen[class].count + 1
+    end
+
+    local names = {}
+    for class in pairs(seen) do
+        names[#names + 1] = class
+    end
+    table.sort(names)
+
+    out('--- operator classes -----------------------------------')
+    local unclaimed = 0
+    for _, class in ipairs(names) do
+        local entry = seen[class]
+        local known = modes.classes[class]
+        if not known then
+            unclaimed = unclaimed + 1
+        end
+        out('  %-24s %3d operator(s)  %s%s',
+            class == '' and '(no class)' or class, entry.count,
+            known and ('-> ' .. known.label) or '-> own tab, named after the class',
+            known and '' or string.format('   e.g. %s', tostring(entry.example)))
+    end
+    out('%d class(es), %d not claimed by data/modes.lua', #names, unclaimed)
+    out('--------------------------------------------------------')
+end
+
 --- Build the graph before anything asks for it.
 --
 -- The build walks every cell in the load order looking for placed
@@ -310,6 +351,7 @@ return {
         transfersAt = function(key) return route.transfersAt(current(), key) end,
         dumpRoute = dumpRoute,
         dumpDestinations = dumpDestinations,
+        dumpClasses = dumpClasses,
         modesAt = graph.modesAt,
         modesWithinWalk = graph.modesWithinWalk,
         edgesFrom = graph.edgesFrom,

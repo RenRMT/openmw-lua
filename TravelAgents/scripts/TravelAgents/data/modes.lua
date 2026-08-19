@@ -3,10 +3,20 @@
 
 return {
     classes = {
+        -- Vanilla. These four are confirmed against the shipped content.
         ['caravaner']   = { id = 'strider', label = 'Silt strider' },
         ['shipmaster']  = { id = 'boat',    label = 'Boat' },
         ['guild guide'] = { id = 'guide',   label = 'Guild guide' },
         ['gondolier']   = { id = 'gondola', label = 'Gondola' },
+
+        -- The large landmass mods. Checked against a real load order rather
+        -- than guessed at: of everything they add, only the river striders
+        -- carry a class of their own. Guar caravans and carriages are
+        -- authored as ordinary `caravaner`s, so the game's data gives the
+        -- mod no way to tell them from a silt strider -- they share the
+        -- overland tab, which is the right grouping even if the label is
+        -- vanilla's word for it.
+        ['therionaut'] = { id = 'riverstrider', label = 'River strider' },
     },
 
     -- Four vanilla operators have a class that says nothing about what they

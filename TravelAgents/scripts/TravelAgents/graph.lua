@@ -100,16 +100,35 @@ end
 --- The mode an operator's legs are labelled with.
 -- An id override beats the class, because four vanilla operators are authored
 -- with a class that describes the person rather than the vehicle.
+--
+-- A class nobody has declared becomes a mode of its own rather than joining
+-- a shared "unknown" bucket. Otherwise every modded vehicle in a load order
+-- collapses into one heap: a guar caravan, a river strider and a carriage
+-- would be indistinguishable, and the planner would offer a single tab
+-- holding all three. Deriving the mode from the class means a landmass mod
+-- that invents a vehicle gets its own tab without anyone authoring an entry
+-- for it. `unknown` is left for an operator with no class at all.
 local function modeFor(operator, modes)
     local override = modes.overrides[lower(operator.id) or '']
     if override then
         return override
     end
-    local byClass = modes.classes[lower(operator.class) or '']
+    local class = lower(operator.class)
+    local byClass = modes.classes[class or '']
     if byClass then
         return byClass.id
     end
+    if class and class ~= '' then
+        return class
+    end
     return modes.unknown.id
+end
+
+-- "guar caravaner" -> "Guar caravaner". The label of a mode nobody declared
+-- is the class the game gave it, which reads as a label once it is not all
+-- lowercase -- and reads better than "Unknown".
+local function titleCase(text)
+    return (text:gsub('^%l', string.upper))
 end
 
 function M.modeLabel(modeId, modes)
@@ -122,9 +141,9 @@ function M.modeLabel(modeId, modes)
     if modeId == modes.unknown.id then
         return modes.unknown.label
     end
-    -- An override names a mode the class table also defines, so falling
-    -- through here means a mode id nothing declares.
-    return modeId
+    -- A mode id nothing declares: either an override naming one the class
+    -- table also defines, or a class derived by modeFor above.
+    return titleCase(modeId)
 end
 
 --- Build the graph.

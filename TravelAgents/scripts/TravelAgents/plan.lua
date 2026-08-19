@@ -67,6 +67,12 @@ function M.build(graph, originKey, opts)
                 -- The place is what the list calls it; the stop is where the
                 -- journey actually ends.
                 name = place.name,
+                -- Which networks this place is on -- what the window's tabs
+                -- filter by. Reachable on foot rather than met exactly here,
+                -- so a stop the vehicles do not touch but a short walk does
+                -- (Caldera, Wolverine Hall) still lands under a tab instead
+                -- of falling out of the window entirely.
+                servedBy = graphlib.modesWithinWalk(graph, stop.key),
                 arrival = stop.name,
                 cost = stop.cost,
                 distance = stop.distance,

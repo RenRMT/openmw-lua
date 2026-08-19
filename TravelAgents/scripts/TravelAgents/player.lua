@@ -13,6 +13,7 @@ local I = require('openmw.interfaces')
 
 local config = require('scripts.TravelAgents.config')
 local events = require('scripts.TravelAgents.events')
+local graphlib = require('scripts.TravelAgents.graph')
 local money = require('scripts.TravelAgents.money')
 local plan = require('scripts.TravelAgents.plan')
 local restore = require('scripts.TravelAgents.restore')
@@ -40,8 +41,14 @@ local selected = nil
 -- Set when the key was pressed before a plan had arrived: open the window as
 -- soon as one does, rather than making the player press again.
 local openWhenReady = false
--- Whether the list is showing everything or only the first SHOWN_STOPS of it.
-local showAll = false
+-- Which page of the destination list is showing. There is no scrollbar in
+-- MWUI, so a list longer than the window is paged rather than clipped --
+-- otherwise the tail is unreachable rather than merely out of sight.
+local page = 1
+-- Which network's tab is open, as a mode id -- nil means every stop. Set
+-- from the operator being talked to when a plan arrives, so the window
+-- opens on the network the player is standing in front of.
+local tab = nil
 -- The plan for the operator currently being talked to, fetched when the
 -- conversation opens so the keypress has nothing to wait for.
 local current = nil
@@ -209,6 +216,15 @@ local function line()
     return { template = I.MWUI.templates.horizontalLine }
 end
 
+--- What to call a network on its tab.
+--
+-- Asked of the graph's own labeller rather than kept here, so a mode this
+-- window has never heard of still gets the name the rest of the mod uses
+-- for it.
+local function modeLabelOf(mode)
+    return graphlib.modeLabel(mode)
+end
+
 --- Names are as long as the game made them; the column is not.
 local function fit(name, width)
     if #name <= width then
@@ -223,8 +239,61 @@ local function close()
         window:destroy()
         window = nil
         selected = nil
-        showAll = false
+        page = 1
     end
+end
+
+--------------------------------------------------------------------------
+-- Tabs, one per network
+--------------------------------------------------------------------------
+
+--- Every mode any reachable stop sits on, in a stable order.
+--
+-- Built from the plan rather than from a list of the modes this mod knows
+-- about, so a landmass mod that invents a vehicle gets a tab without the
+-- window being told it exists.
+local function tabsInPlan()
+    local counts, order = {}, {}
+    for _, stop in ipairs(current.stops) do
+        for _, mode in ipairs(stop.servedBy or {}) do
+            if counts[mode] == nil then
+                counts[mode] = 0
+                order[#order + 1] = mode
+            end
+            counts[mode] = counts[mode] + 1
+        end
+    end
+    -- Biggest network first, ties broken on the label, so the row does not
+    -- reshuffle between two stops in the same town.
+    table.sort(order, function(a, b)
+        if counts[a] ~= counts[b] then
+            return counts[a] > counts[b]
+        end
+        return a < b
+    end)
+    return order, counts
+end
+
+local function servesTab(stop, mode)
+    if mode == nil then
+        return true
+    end
+    for _, served in ipairs(stop.servedBy or {}) do
+        if served == mode then
+            return true
+        end
+    end
+    return false
+end
+
+local function stopsInTab()
+    local out = {}
+    for _, stop in ipairs(current.stops) do
+        if servesTab(stop, tab) then
+            out[#out + 1] = stop
+        end
+    end
+    return out
 end
 
 --- The conversation is over: the planner it offered goes with it.
@@ -262,55 +331,182 @@ end
 local function stopRow(stop)
     local marker = (selected == stop.key) and '> ' or '  '
     local price = stop.fare > 0 and tostring(stop.fare) or '-'
-    local label = string.format('%s%-' .. config.NAME_COLUMN .. 's %5s',
-        marker, fit(stop.name, config.NAME_COLUMN), price)
+    -- The direct/changing split used to be two headed sections. Inside a
+    -- network tab everything is direct -- staying on one kind of vehicle is
+    -- what a tab means -- so the split only ever said anything on `All`,
+    -- and it says it more cheaply as a mark on the row.
+    local change = ((stop.modeChanges or 0) > 0) and '+' or ' '
+    local label = string.format('%s%-' .. config.NAME_COLUMN .. 's %5s %s',
+        marker, fit(stop.name, config.NAME_COLUMN), price, change)
     return row(label, function() pick(stop.key) end)
 end
 
---- The places, split by what the journey asks of the traveller.
-local function master()
-    local shown = showAll and #current.stops or math.min(#current.stops, config.SHOWN_STOPS)
-    local direct, changing = {}, {}
-    for index = 1, shown do
-        local stop = current.stops[index]
-        local into = ((stop.modeChanges or 0) > 0) and changing or direct
-        into[#into + 1] = stopRow(stop)
+--- One tab per network, in rows that wrap.
+--
+-- Flex does not wrap, and a heavy load order can field seven or eight
+-- vehicles, so the row is chunked by hand rather than trusting them all to
+-- fit across the window.
+local function tabRow()
+    local order, counts = tabsInPlan()
+    if #order < 2 then
+        -- One network, or none: a row of one tab is furniture.
+        return nil
     end
 
-    local content = {}
-    local function section(title, rows)
-        if #rows == 0 then
-            return
+    local buttons = {}
+    local function tabButton(mode, label, count)
+        local caption = string.format(' %s %d ', label, count)
+        if mode == tab then
+            return {
+                template = I.MWUI.templates.box,
+                content = ui.content { text(caption, I.MWUI.templates.textHeader) },
+            }
         end
-        content[#content + 1] = text(title, I.MWUI.templates.textHeader)
-        for _, entry in ipairs(rows) do
-            content[#content + 1] = entry
+        return {
+            template = I.MWUI.templates.box,
+            content = ui.content { row(caption, function()
+                tab = mode
+                selected = nil
+                page = 1
+                render()
+            end) },
+        }
+    end
+
+    buttons[#buttons + 1] = tabButton(nil, l10n('tabAll'), #current.stops)
+    for _, mode in ipairs(order) do
+        buttons[#buttons + 1] = tabButton(mode, modeLabelOf(mode), counts[mode])
+    end
+
+    local rows, line = {}, {}
+    for _, button in ipairs(buttons) do
+        line[#line + 1] = button
+        line[#line + 1] = { template = I.MWUI.templates.interval }
+        if #line >= config.TABS_PER_ROW * 2 then
+            rows[#rows + 1] = {
+                type = ui.TYPE.Flex,
+                props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
+                content = ui.content(line),
+            }
+            line = {}
         end
-        content[#content + 1] = { template = I.MWUI.templates.interval }
     end
-
-    if #current.stops == 0 then
-        content[#content + 1] = text(l10n('nowhereToGo'))
-    end
-    section(l10n('sectionDirect'), direct)
-    section(l10n('sectionChanging'), changing)
-
-    if shown < #current.stops then
-        content[#content + 1] = row(l10n('andMore', { count = #current.stops - shown }),
-            function() showAll = true render() end)
-    elseif showAll and #current.stops > config.SHOWN_STOPS then
-        content[#content + 1] = row(l10n('showFewer'), function() showAll = false render() end)
+    if #line > 0 then
+        rows[#rows + 1] = {
+            type = ui.TYPE.Flex,
+            props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
+            content = ui.content(line),
+        }
     end
 
     return {
         type = ui.TYPE.Flex,
-        props = {
-            horizontal = false,
-            arrange = ui.ALIGNMENT.Start,
-            autoSize = false,
-            size = util.vector2(config.MASTER_WIDTH, config.WINDOW_HEIGHT - 90),
+        props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
+        content = ui.content(rows),
+    }
+end
+
+--- The destination list, filling one column and then the next.
+--
+-- Both halves of the window are the list now. What used to sit on the right
+-- -- the legs of the chosen journey, one per line -- is a strip along the
+-- bottom instead, because a load order with a mainland in it has far more
+-- destinations than a single column can hold and the leg list was the only
+-- thing in the window that could afford to shrink.
+--
+-- Flowed down the left column and then down the right, so the list still
+-- reads cheapest-first in the order the router returned.
+local function destinations()
+    local stops = stopsInTab()
+    local capacity = config.ROWS_PER_COLUMN * 2
+    local pages = math.max(1, math.ceil(#stops / capacity))
+    if page > pages then
+        page = pages
+    end
+
+    local first = (page - 1) * capacity + 1
+    local last = math.min(first + capacity - 1, #stops)
+
+    local columns = { {}, {} }
+    for index = first, last do
+        local which = ((index - first) < config.ROWS_PER_COLUMN) and 1 or 2
+        local into = columns[which]
+        into[#into + 1] = stopRow(stops[index])
+    end
+
+    if #stops == 0 then
+        columns[1][1] = text(l10n(tab and 'nowhereOnThisNetwork' or 'nowhereToGo'))
+    end
+
+    local function pane(rows)
+        return {
+            type = ui.TYPE.Flex,
+            props = {
+                horizontal = false,
+                arrange = ui.ALIGNMENT.Start,
+                autoSize = false,
+                size = util.vector2(config.COLUMN_WIDTH, config.LIST_HEIGHT),
+            },
+            content = ui.content(rows),
+        }
+    end
+
+    local grid = {
+        type = ui.TYPE.Flex,
+        props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
+        content = ui.content {
+            pane(columns[1]),
+            { template = I.MWUI.templates.interval },
+            pane(columns[2]),
         },
-        content = ui.content(content),
+    }
+
+    -- The legend earns its row only when something on this page carries the
+    -- mark, which on a network tab is never.
+    local marked = false
+    for index = first, last do
+        if (stops[index].modeChanges or 0) > 0 then
+            marked = true
+            break
+        end
+    end
+
+    local body = grid
+    if marked then
+        body = {
+            type = ui.TYPE.Flex,
+            props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
+            content = ui.content { text(l10n('changeMarker')), grid },
+        }
+    end
+
+    if pages < 2 then
+        return body
+    end
+
+    -- Paging only appears when it is needed, so vanilla never sees it.
+    local controls = {}
+    if page > 1 then
+        controls[#controls + 1] = row(l10n('pagePrev'), function() page = page - 1 render() end)
+        controls[#controls + 1] = { template = I.MWUI.templates.interval }
+    end
+    controls[#controls + 1] = text(l10n('pageOf', { page = page, pages = pages }))
+    if page < pages then
+        controls[#controls + 1] = { template = I.MWUI.templates.interval }
+        controls[#controls + 1] = row(l10n('pageNext'), function() page = page + 1 render() end)
+    end
+
+    return {
+        type = ui.TYPE.Flex,
+        props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
+        content = ui.content {
+            body,
+            {
+                type = ui.TYPE.Flex,
+                props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
+                content = ui.content(controls),
+            },
+        },
     }
 end
 
@@ -352,34 +548,62 @@ local function bookButton(stop)
     }
 end
 
-local function detail()
+--- Everything about the chosen journey, in a strip a few lines deep.
+--
+-- The condensed form of what used to be the right-hand pane: where you are
+-- going, what it asks of you, what it costs and the button. The per-leg
+-- breakdown collapses to one "via" line -- the intermediate stops are the
+-- part of it a traveller actually reads.
+local function footer()
     local stop = chosen()
-    local content = {}
     if stop == nil then
-        content[#content + 1] = text(l10n('pickAStop'))
-    else
-        content[#content + 1] = text(stop.name, I.MWUI.templates.textHeader)
-        content[#content + 1] = text(l10n(plan.summarise(stop)))
-        -- The row is named after the town
-        if stop.arrival and stop.arrival ~= stop.name then
-            content[#content + 1] = text(l10n('arrivingAt', { place = stop.arrival }))
-        end
-        content[#content + 1] = line()
-        for _, leg in ipairs(stop.legs) do
-            content[#content + 1] = text('  ' .. plan.describeLeg(leg))
-        end
-        content[#content + 1] = line()
-        content[#content + 1] = text(l10n('fareLine', { base = stop.baseFare }))
-        if (stop.surcharge or 0) > 0 then
-            content[#content + 1] = text(l10n('surchargeLine', {
-                percent = stop.surchargePercent, extra = stop.surcharge,
-            }))
-        end
-        content[#content + 1] = { template = I.MWUI.templates.interval }
-        for _, entry in ipairs(bookButton(stop)) do
-            content[#content + 1] = entry
-        end
+        return text(l10n('pickAStop'))
     end
+
+    local rows = {}
+
+    -- Where, and what it asks of you, on one line.
+    local heading = stop.name
+    if stop.arrival and stop.arrival ~= stop.name then
+        heading = l10n('arrivingAt', { place = stop.arrival })
+    end
+    rows[#rows + 1] = {
+        type = ui.TYPE.Flex,
+        props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
+        content = ui.content {
+            text(heading, I.MWUI.templates.textHeader),
+            { template = I.MWUI.templates.interval },
+            text(l10n(plan.summarise(stop))),
+        },
+    }
+
+    -- The legs, as the places they pass through rather than a line each.
+    if #stop.legs > 1 then
+        local via = {}
+        for index = 1, #stop.legs - 1 do
+            via[#via + 1] = stop.legs[index].to
+        end
+        rows[#rows + 1] = text(l10n('via', { places = table.concat(via, ', ') }))
+    end
+
+    -- What it costs, broken into the parts the player is being charged.
+    local fare = l10n('fareLine', { base = stop.baseFare })
+    if (stop.surcharge or 0) > 0 then
+        fare = fare .. '  ' .. l10n('surchargeLine', {
+            percent = stop.surchargePercent, extra = stop.surcharge,
+        })
+    end
+
+    local buttons = { text(fare), { template = I.MWUI.templates.interval } }
+    for _, entry in ipairs(bookButton(stop)) do
+        buttons[#buttons + 1] = entry
+        buttons[#buttons + 1] = { template = I.MWUI.templates.interval }
+    end
+    rows[#rows + 1] = {
+        type = ui.TYPE.Flex,
+        props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
+        content = ui.content(buttons),
+    }
 
     return {
         type = ui.TYPE.Flex,
@@ -387,10 +611,9 @@ local function detail()
             horizontal = false,
             arrange = ui.ALIGNMENT.Start,
             autoSize = false,
-            size = util.vector2(config.WINDOW_WIDTH - config.MASTER_WIDTH - 40,
-                config.WINDOW_HEIGHT - 90),
+            size = util.vector2(config.WINDOW_WIDTH - 40, config.FOOTER_HEIGHT),
         },
-        content = ui.content(content),
+        content = ui.content(rows),
     }
 end
 
@@ -410,16 +633,13 @@ local function body()
                 content = ui.content {
                     text(l10n('from', { place = heading }), I.MWUI.templates.textHeader),
                     line(),
-                    {
-                        type = ui.TYPE.Flex,
-                        props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
-                        content = ui.content {
-                            master(),
-                            { template = I.MWUI.templates.verticalLine },
-                            { template = I.MWUI.templates.interval },
-                            detail(),
-                        },
-                    },
+                    -- Full width, above both panes: the tabs choose what the
+                    -- left one lists, and there is no room for six of them
+                    -- inside its column.
+                    tabRow() or { template = I.MWUI.templates.interval },
+                    destinations(),
+                    line(),
+                    footer(),
                     line(),
                     row(l10n('close'), close),
                 },
@@ -462,7 +682,23 @@ local function onPlan(data)
     local resumed = current ~= nil
     current = data
     selected = nil
-    showAll = false
+    page = 1
+
+    -- Open on the network of whoever is being talked to. Standing in front
+    -- of a silt strider driver, the first question is where their striders
+    -- go -- not where every vehicle on the continent goes. Falls back to
+    -- everything for an operator whose mode nothing serves, which is what a
+    -- one-vehicle stop with no tab row looks like.
+    if not resumed then
+        local mode = data.operator and data.operator.mode
+        tab = nil
+        for _, stop in ipairs(current.stops or {}) do
+            if servesTab(stop, mode) then
+                tab = mode
+                break
+            end
+        end
+    end
 
     if openWhenReady then
         openWhenReady = false
