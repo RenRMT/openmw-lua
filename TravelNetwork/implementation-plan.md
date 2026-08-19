@@ -471,14 +471,14 @@ it rather than from reading it.
   *on foot*, *all by one vehicle*, *changing vehicle*) are l10n keys chosen in
   `plan.summarise`. That moved the last English strings out of the pure modules
   and into the locale file, which they should have been in already.
-- **Both penalties are settings now**, under Options → Scripts → Travel
-  Network → Routing. They are the routing costs, not a surcharge on the fare:
-  they decide which route the planner offers, and the fare follows from the
-  route. **They live player-side** and travel to the global script on the event
-  that asks for a plan or a journey, because whether a page registered by a
-  player script can host a group registered by a global one is not established
-  (repo notes §12). Read when a conversation opens, so a change applies at the
-  next operator talked to.
+- **Both routing penalties are settings now**, under Options → Scripts →
+  Travel Network → Routing. They are what the planner will go out of its way to
+  avoid, in units of detour — not a charge. (The surcharge that *is* a charge
+  came next; see phase 4b.) **All settings live player-side** and travel to the
+  global script on the event that asks for a plan or a journey, because whether
+  a page registered by a player script can host a group registered by a global
+  one is not established (repo notes §12). Read when a conversation opens, so a
+  change applies at the next operator talked to.
 - **Arriving a short drop above the ground** is left alone. It happens at some
   vanilla destinations and never far enough to hurt. `onGround = true` is
   available here — the cell is active by then, unlike the inactive-cell case in
@@ -487,10 +487,44 @@ it rather than from reading it.
   always the floor meant. Not worth the trade for a fall nobody takes damage
   from.
 
+### Phase 4b — the price of convenience, 2026-08-19
+
+Booking a whole journey at one counter is worth something, and it should cost
+something. The fare is no longer the sum of the legs:
+
+```
+fare = base * (1 + 0.05 * (vehicleLegs - 1) + 0.10 * modeChanges)
+```
+
+**Additive, not compounded** — three legs with one change of vehicle is
+5 + 5 + 10 per cent over the legs, not a product of three multipliers. Both
+rates are settings, expressed to the player as whole per cents.
+
+Four things the formula is arranged to get right:
+
+- **A single leg is never surcharged.** Buying one ride through the planner
+  costs exactly what buying it from the same operator costs, which keeps the
+  mod from being a tax on using it.
+- **Walk legs count for nothing.** They are not vehicles and nobody sells them,
+  so a ride with a door at each end is one ride at one ride's price. Balmora to
+  Caldera, which is walk-guide-walk, carries no surcharge at all.
+- **Legs and changes are counted separately**, so two silt strider legs cost 5
+  per cent while a strider-then-boat journey costs 15 — the leg *and* the
+  change, because the change is the part two operators with separate books have
+  to be talked into.
+- **The window itemises it.** An expanded stop shows "602 gold in fares, plus
+  5% (30 gold) for booking it in one go" above the button. A price the player
+  cannot account for reads as invented.
+
+Across vanilla the range is narrow: from Balmora, most destinations are direct
+and unsurcharged, the same-strider chains pay 5 per cent, and the far Telvanni
+coast — four or five legs with a change — pays 25 to 30.
+
 **Phase 5 (optional) — fares that mean something.** Distance-scaled base fare,
-modified by region and by mode. If a *surcharge* for changing is wanted — a
-price penalty for a multi-leg or multi-mode journey, as against the routing
-penalties phase 4a exposed — it belongs here, where the fare formula lives. Only ever applied to mod-booked journeys; single
+modified by region and by mode. The surcharge for changing landed early, in
+phase 4b; what is left here is the base rate itself. `FARE_PER_UNIT = 0.004`
+prices Balmora to Seyda Neen at 214 gold where vanilla asks a few tens, so the
+whole scale wants moving before it can claim to be a fare rather than a number. Only ever applied to mod-booked journeys; single
 legs bought through vanilla dialogue keep vanilla's price, and the planner
 labels mod fares as such rather than pretending to quote the engine.
 

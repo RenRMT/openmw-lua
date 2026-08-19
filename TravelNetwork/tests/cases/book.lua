@@ -76,6 +76,38 @@ function M.aJourneyThroughADoorCostsTimeButNoMoney()
     expect.greater(quote.walked, 0, 'and it is walked, not ridden')
 end
 
+function M.aTicketCostsMoreThanTheLegsItIsMadeOf()
+    -- Balmora to Caldera is a guide leg with a door at each end -- one ride,
+    -- so no surcharge -- while Balmora to Vos changes vehicle on the way and
+    -- is charged for the convenience of being sold in one piece.
+    local g = linked()
+    local direct = book.quote(g, 'place:balmora', 'cell:caldera, guild of mages')
+    expect.equal(direct.surcharge, 0, 'one ride, whatever it walks through')
+
+    local changing = nil
+    for _, key in ipairs(g.order) do
+        local quote = book.quote(g, 'place:balmora', key)
+        if quote.ok and (quote.surchargePercent or 0) > 0 then
+            changing = changing or quote
+        end
+    end
+
+    expect.truthy(changing, 'somewhere from Balmora asks for a change of vehicle')
+    expect.greater(changing.fare, changing.baseFare, 'the ticket costs more than the legs')
+    expect.equal(changing.surcharge, changing.fare - changing.baseFare, 'and says by how much')
+end
+
+function M.theSurchargeIsSetByTheCallerNotBakedIn()
+    local g = linked()
+    local plain = book.quote(g, 'place:balmora', 'place:vivec, foreign quarter',
+        { legSurcharge = 0, modeChangeSurcharge = 0 })
+    local steep = book.quote(g, 'place:balmora', 'place:vivec, foreign quarter',
+        { legSurcharge = 0.5, modeChangeSurcharge = 0.5 })
+
+    expect.equal(plain.surcharge, 0, 'nothing added when nothing is asked for')
+    expect.truthy(steep.fare >= plain.fare, 'and more when more is')
+end
+
 function M.aStopThatCannotBeReachedIsNotSold()
     local refused = book.quote(linked(), 'place:balmora', 'place:nowhere')
     expect.falsy(refused.ok, 'refused')

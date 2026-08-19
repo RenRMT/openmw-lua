@@ -8,7 +8,7 @@
 -- The planner belongs to a conversation. Talking to a caravaner, shipmaster,
 -- gondolier or guild guide is what makes it available -- asking the person who
 -- drives the thing, rather than consulting a map in the middle of the street.
--- Outside such a conversation the key does nothing but explain itself.
+-- Outside such a conversation the key is inert and says nothing.
 --
 -- Lua cannot add a dialogue topic; topics are DIAL records and live in content
 -- files. What it can do is notice the conversation, which is what this does.
@@ -34,6 +34,7 @@ local L10N = 'TravelNetwork'
 local PAGE = 'TravelNetwork'
 local GROUP = 'SettingsPlayerTravelNetwork'
 local ROUTING = 'SettingsPlayerTravelNetworkRouting'
+local FARES = 'SettingsPlayerTravelNetworkFares'
 local TRIGGER = 'TravelNetworkPlanner'
 
 -- The id the binding is filed under. The settings entry stores this string,
@@ -136,12 +137,56 @@ I.Settings.registerGroup {
     },
 }
 
---- The routing preferences, as the global script's route options.
-local function routing()
-    local section = storage.playerSection(ROUTING)
+-- What the convenience is worth in gold, as against what a change is worth
+-- avoiding. Percentages of the fare, added together: a journey of three legs
+-- with one change of vehicle is charged 5 + 5 + 10 per cent over the sum of
+-- its legs. A single leg is never surcharged, so buying it here costs what
+-- buying it at the counter costs.
+I.Settings.registerGroup {
+    key = FARES,
+    page = PAGE,
+    l10n = L10N,
+    name = 'faresGroup',
+    description = 'faresGroupDescription',
+    permanentStorage = true,
+    settings = {
+        {
+            key = 'legSurcharge',
+            name = 'legSurcharge',
+            description = 'legSurchargeDescription',
+            renderer = 'number',
+            default = config.FARE_LEG_SURCHARGE * 100,
+            argument = { integer = true, min = 0, max = 200 },
+        },
+        {
+            key = 'modeChangeSurcharge',
+            name = 'modeChangeSurcharge',
+            description = 'modeChangeSurchargeDescription',
+            renderer = 'number',
+            default = config.FARE_MODE_CHANGE_SURCHARGE * 100,
+            argument = { integer = true, min = 0, max = 200 },
+        },
+    },
+}
+
+--- A percentage as the fraction the fare arithmetic works in.
+local function fraction(percent)
+    if type(percent) ~= 'number' then
+        return nil
+    end
+    return percent / 100
+end
+
+--- Everything the player has set that the global script needs in order to
+-- answer: what the planner should avoid, and what the counter should charge.
+local function preferences()
+    local routing = storage.playerSection(ROUTING)
+    local fares = storage.playerSection(FARES)
     return {
-        transferPenalty = section:get('transferPenalty'),
-        modeChangePenalty = section:get('modeChangePenalty'),
+        transferPenalty = routing:get('transferPenalty'),
+        modeChangePenalty = routing:get('modeChangePenalty'),
+        legSurcharge = fraction(fares:get('legSurcharge')),
+        modeChangeSurcharge = fraction(fares:get('modeChangeSurcharge')),
     }
 end
 
@@ -233,7 +278,7 @@ local function bookTo(stop)
     leaveDialogue()
     I.UI.setMode()
     core.sendGlobalEvent(events.BOOK, {
-        player = self.object, actor = operator, to = stop.key, routing = routing(),
+        player = self.object, actor = operator, to = stop.key, preferences = preferences(),
     })
 end
 
@@ -274,6 +319,14 @@ local function lines()
         if expanded == stop.key then
             for _, leg in ipairs(stop.legs) do
                 content[#content + 1] = text('      ' .. plan.describeLeg(leg))
+            end
+            -- What the legs come to and what the ticket adds, itemised. A
+            -- price the player cannot account for reads as the mod inventing
+            -- numbers.
+            if (stop.surcharge or 0) > 0 then
+                content[#content + 1] = text(string.format('      %s', l10n('surchargeNote', {
+                    base = stop.baseFare, percent = stop.surchargePercent, extra = stop.surcharge,
+                })))
             end
             -- A journey made entirely of walk legs has no fare, because a door
             -- charges nobody. Saying "0 gold" would read as a bug.
@@ -344,7 +397,7 @@ end
 local function onTalk(actor)
     interlocutor = actor
     core.sendGlobalEvent(events.REQUEST_PLAN, {
-        player = self.object, actor = actor, routing = routing(),
+        player = self.object, actor = actor, preferences = preferences(),
     })
 end
 

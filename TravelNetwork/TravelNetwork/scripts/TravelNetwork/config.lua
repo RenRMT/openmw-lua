@@ -25,6 +25,16 @@ return {
     -- so the operator selling the journey is whoever is being talked to and
     -- nothing has to search for one.
     FARE_PER_UNIT = 0.004,
+
+    -- What the convenience costs. Buying one ticket for a journey somebody
+    -- else has to arrange is worth more than the legs are, so each leg past
+    -- the first adds a share of the fare, and a change between two kinds of
+    -- transport -- which crosses two operators who have no arrangement with
+    -- each other -- adds more again. Fractions of the base fare, added
+    -- together rather than compounded: three legs with one change of vehicle
+    -- is 5 + 5 + 10 per cent, not a product of three multipliers.
+    FARE_LEG_SURCHARGE = 0.05,
+    FARE_MODE_CHANGE_SURCHARGE = 0.10,
     HOURS_PER_UNIT = 0.00012,
     MAX_ROUTE_LEGS = 8,
 }

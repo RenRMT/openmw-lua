@@ -15,13 +15,22 @@ plannerKey: "Open the planner"
 plannerKeyDescription: "Shows every stop you can reach from where you are standing."
 
 routingGroup: "Routing"
-routingGroupDescription: "What the planner will go out of its way to avoid. Both are distances in game units -- a detour worth taking to save the change. They decide which route is offered, not what a leg costs."
+routingGroupDescription: "What the planner will go out of its way to avoid. Both are distances in game units -- how far a detour is worth taking to save the change. They decide which route you are offered, not what it costs."
 
-transferPenalty: "Cost of changing"
+transferPenalty: "Detour worth avoiding a stop"
 transferPenaltyDescription: "How much of a detour is worth avoiding one extra leg, even on the same kind of vehicle. Higher means fewer, longer legs."
 
-modeChangePenalty: "Cost of changing vehicle"
+modeChangePenalty: "Detour worth avoiding a change of vehicle"
 modeChangePenaltyDescription: "Added on top when the change is from one kind of vehicle to another -- strider to boat, boat to guild guide. Higher means the planner keeps you on one network."
+
+faresGroup: "Fares"
+faresGroupDescription: "What booking a whole journey at one counter costs on top of the legs themselves. Percentages of the fare, added together rather than compounded. A single leg is never surcharged."
+
+legSurcharge: "Extra per additional leg (%)"
+legSurchargeDescription: "Added to the fare for every leg past the first, even on the same kind of vehicle. Somebody has to arrange the connection."
+
+modeChangeSurcharge: "Extra per change of vehicle (%)"
+modeChangeSurchargeDescription: "Added on top again whenever the journey changes from one kind of transport to another, since the two operators keep separate books."
 
 # --- the window ----------------------------------------------------------
 windowTitle: "Travel Network"
@@ -46,6 +55,7 @@ journeyChanging: "{changes, plural, one {1 change of vehicle} other {# changes o
 
 # --- booking -------------------------------------------------------------
 book: "Travel here -- {fare} gold"
+surchargeNote: "{base} gold in fares, plus {percent}% ({extra} gold) for booking it in one go"
 bookFree: "Travel here -- no charge"
 cannotAfford: "That journey costs {fare} gold -- you are {short} short."
 arrived: "You arrive at {place}. {hours} hours on the road, {fare} gold."

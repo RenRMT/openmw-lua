@@ -250,6 +250,108 @@ function M.walkingIsFreeOfChargeButNotOfTime()
     expect.greater(found.hours, 0, 'but it takes time')
 end
 
+--- Surcharges off, for cases about distance rather than about the tariff.
+local FLAT = { transferPenalty = 0, modeChangePenalty = 0,
+    legSurcharge = 0, modeChangeSurcharge = 0 }
+
+function M.oneLegIsPricedAtWhatTheCounterWouldCharge()
+    -- The floor the whole surcharge scheme rests on: booking a single leg here
+    -- must cost what buying that leg from the same operator costs.
+    local a = exterior('A', 0, 0)
+    local b = exterior('B', 40000, 0)
+    local g = build({ operator('only', 'caravaner', a, { b }) })
+    local found = route.find(g, 'place:a', 'place:b')
+
+    expect.equal(found.fare, found.baseFare, 'no surcharge on a single leg')
+    expect.equal(found.surcharge, 0, 'nothing added')
+    expect.equal(found.surchargePercent, 0, 'and nothing to explain')
+end
+
+function M.eachLegPastTheFirstAddsItsShare()
+    local a = exterior('A', 0, 0)
+    local b = exterior('B', 20000, 0)
+    local c = exterior('C', 40000, 0)
+    local g = build({
+        operator('first', 'caravaner', a, { b }),
+        operator('second', 'caravaner', b, { c }),
+    })
+    local found = route.find(g, 'place:a', 'place:c',
+        { transferPenalty = 0, modeChangePenalty = 0, legSurcharge = 0.05, modeChangeSurcharge = 0.10 })
+
+    expect.equal(found.vehicleLegs, 2, 'two legs on one kind of vehicle')
+    expect.equal(found.surchargePercent, 5, 'five per cent for the second leg')
+    expect.equal(found.fare, math.floor(found.baseFare * 1.05 + 0.5), 'the fare charged')
+end
+
+function M.changingVehicleCostsTheLegAndTheChangeTogether()
+    -- Additive, not compounded: two legs is 5, and the change between them is
+    -- 10 more, so the ticket is 15 per cent over the legs.
+    local a = exterior('A', 0, 0)
+    local b = exterior('B', 20000, 0)
+    local c = exterior('C', 40000, 0)
+    local g = build({
+        operator('rider', 'caravaner', a, { b }),
+        operator('sailor', 'shipmaster', b, { c }),
+    })
+    local found = route.find(g, 'place:a', 'place:c',
+        { transferPenalty = 0, modeChangePenalty = 0, legSurcharge = 0.05, modeChangeSurcharge = 0.10 })
+
+    expect.equal(found.modeChanges, 1, 'one change of vehicle')
+    expect.equal(found.surchargePercent, 15, 'five for the leg and ten for the change')
+end
+
+function M.threeLegsWithOneChangeIsFivePlusFivePlusTen()
+    local a = exterior('A', 0, 0)
+    local b = exterior('B', 20000, 0)
+    local c = exterior('C', 40000, 0)
+    local d = exterior('D', 60000, 0)
+    local g = build({
+        operator('first', 'caravaner', a, { b }),
+        operator('second', 'caravaner', b, { c }),
+        operator('sailor', 'shipmaster', c, { d }),
+    })
+    local found = route.find(g, 'place:a', 'place:d',
+        { transferPenalty = 0, modeChangePenalty = 0, legSurcharge = 0.05, modeChangeSurcharge = 0.10 })
+
+    expect.equal(found.vehicleLegs, 3, 'three legs')
+    expect.equal(found.modeChanges, 1, 'one of them a change of vehicle')
+    expect.equal(found.surchargePercent, 20, 'two extra legs and one change')
+end
+
+function M.aWalkAddsNothingToTheTicket()
+    -- A door is not a leg anyone sells, so it must not drag a surcharge in
+    -- with it: a single ride with a walk at the end is still a single ride.
+    local hall = {
+        cellId = 'town, guild', cellName = 'Town, Guild', isInterior = true,
+        position = { x = 0, y = 0, z = 0 },
+    }
+    local street = exterior('Town', 30000, 0)
+    local far = exterior('Far', 90000, 0)
+    local g = build({
+        operator('driver', 'caravaner', street, { far }),
+        operator('guide', 'caravaner', hall, { street }),
+    })
+    graph.link(g, { { cellId = 'town, guild', point = street, walked = 100 } })
+
+    local found = route.find(g, 'cell:town, guild', 'place:town', FLAT)
+    expect.equal(found.fare, 0, 'a walk is free')
+    expect.equal(found.surcharge, 0, 'and carries no ticket charge')
+end
+
+function M.theSurchargeCanBeTurnedOff()
+    local a = exterior('A', 0, 0)
+    local b = exterior('B', 20000, 0)
+    local c = exterior('C', 40000, 0)
+    local g = build({
+        operator('rider', 'caravaner', a, { b }),
+        operator('sailor', 'shipmaster', b, { c }),
+    })
+    local found = route.find(g, 'place:a', 'place:c', FLAT)
+
+    expect.equal(found.surchargePercent, 0, 'zero per cent is honoured, not read as unset')
+    expect.equal(found.fare, found.baseFare, 'so the ticket is the sum of its legs')
+end
+
 function M.destinationsComeBackCheapestFirst()
     local a = exterior('A', 0, 0)
     local near = exterior('Near', 10000, 0)

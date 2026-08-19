@@ -54,15 +54,19 @@ Options → Scripts → Travel Network.
 | Setting | What it does |
 |---|---|
 | *Open the planner* | The key. Nothing is bound until you bind one |
-| *Cost of changing* | How much of a detour is worth avoiding one extra leg, even on the same kind of vehicle |
-| *Cost of changing vehicle* | Added on top when the change is between kinds — strider to boat, boat to guild guide |
+| *Detour worth avoiding a stop* | How far out of your way is worth going to save one extra leg |
+| *Detour worth avoiding a change of vehicle* | The same, for changing between kinds of transport |
+| *Extra per additional leg (%)* | What the ticket adds for every leg past the first |
+| *Extra per change of vehicle (%)* | What it adds again when the journey changes transport |
 
-Both costs are **distances in game units**, not gold: they decide which route
-the planner offers you, and the fare follows from the route it picked. Raise
-them and the planner keeps you on one vehicle at the price of going the long way
-round; drop them to zero and it will send you through every interchange that
-saves a few paces. They are read when a conversation opens, so a change applies
-at the next operator you talk to.
+The two **detours** are distances in game units, not gold. They decide which
+route you are offered: raise them and the planner keeps you on one vehicle at
+the price of going the long way round, drop them to zero and it will send you
+through every interchange that saves a few paces.
+
+The two **extras** are what the convenience costs, as percentages of the fare —
+see *Booking* below. All four are read when a conversation opens, so a change
+applies at the next operator you talk to.
 
 ## Setup
 
@@ -133,7 +137,7 @@ Node  = { key, name, cellId, isExterior, position, anchor, modes = { [mode] = tr
 Edge  = { from, to, mode, operator, operatorName, distance }
 Graph = { nodes = { [key] = Node }, order = { key, ... }, edges = { [from] = { Edge, ... } }, stats }
 Route = { legs = { Edge, ... }, transfers, vehicleLegs, modeChanges, distance, walked,
-          hours, fare, modes, cost }
+          hours, baseFare, fare, surcharge, surchargePercent, modes, cost }
 ```
 
 `anchor` is where a stop stands in the world when its own coordinates cannot say
@@ -149,7 +153,9 @@ provisional until fares get a formula worth quoting.
 
 `transfers` counts legs; `vehicleLegs` and `modeChanges` count vehicles, walk
 legs excluded. Two silt strider legs in a row are one transfer and no mode
-change, which is the difference the planner puts in front of the player.
+change, which is the difference the planner puts in front of the player — and
+what the surcharge is calculated from. `baseFare` is the legs, `fare` is what
+the ticket costs, and `surcharge` / `surchargePercent` are the difference.
 
 `order` is sorted by name, so a dump reads alphabetically. `stats` carries
 `operators`, `nodes`, `edges`, `unplaced`, `excluded` and `selfEdges`.
@@ -192,6 +198,26 @@ inventing a mechanic rather than matching one.
 **A journey with no vehicle in it is free.** Walk legs carry no fare, so the
 short hop from Balmora's street to its guild hall costs time and nothing else,
 and the window says *no charge* rather than *0 gold*.
+
+### What the ticket adds
+
+Somebody has to arrange a connection two operators have no arrangement about, so
+a journey costs more than the legs it is made of:
+
+```
+fare = legs * (1 + 5% per leg past the first + 10% per change of vehicle)
+```
+
+Added together, never compounded. Three legs with one change is 5 + 5 + 10 per
+cent over the fares themselves, and the expanded stop itemises it — *602 gold in
+fares, plus 5% (30 gold) for booking it in one go* — so the price is always
+accountable.
+
+**A single leg is never surcharged**: bought through the planner it costs what
+it costs bought from the operator directly. **Walks count for nothing**, being
+neither a vehicle nor anybody's to sell — Balmora to Caldera is walk, guide,
+walk, and pays no extra at all. Both rates are settings, and setting them to
+zero turns the whole thing off.
 
 ## Files
 

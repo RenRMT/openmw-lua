@@ -52,6 +52,9 @@ function M.quote(graph, fromKey, toKey, opts)
     local quote = {
         ok = true,
         fare = journey.fare,
+        baseFare = journey.baseFare,
+        surcharge = journey.surcharge,
+        surchargePercent = journey.surchargePercent,
         hours = journey.hours,
         distance = journey.distance,
         walked = journey.walked,

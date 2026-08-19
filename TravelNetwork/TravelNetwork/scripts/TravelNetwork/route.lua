@@ -41,6 +41,8 @@ local function options(opts)
         transferPenalty = opts.transferPenalty or config.TRANSFER_PENALTY,
         modeChangePenalty = opts.modeChangePenalty or config.MODE_CHANGE_PENALTY,
         maxLegs = opts.maxLegs or config.MAX_ROUTE_LEGS,
+        legSurcharge = opts.legSurcharge or config.FARE_LEG_SURCHARGE,
+        modeChangeSurcharge = opts.modeChangeSurcharge or config.FARE_MODE_CHANGE_SURCHARGE,
     }
 end
 
@@ -55,7 +57,9 @@ local function rebuild(states, finalKey)
     return legs
 end
 
-local function summarise(legs)
+--- Add up a journey: how far, how long, what it asks of the traveller, and
+-- what it costs once the convenience of buying it in one go is priced in.
+local function summarise(legs, opts)
     local summary = {
         legs = legs,
         transfers = math.max(#legs - 1, 0),
@@ -79,8 +83,7 @@ local function summarise(legs)
         if leg.mode == 'walk' then
             summary.walked = summary.walked + leg.distance
         else
-            -- Nobody charges for a door. Fares are provisional until phase 5
-            -- gives them a formula worth quoting.
+            -- Nobody charges for a door: the base fare is distance ridden.
             summary.fare = summary.fare + leg.distance * config.FARE_PER_UNIT
             summary.vehicleLegs = summary.vehicleLegs + 1
             if lastVehicle ~= nil and leg.mode ~= lastVehicle then
@@ -92,7 +95,16 @@ local function summarise(legs)
             summary.modes[#summary.modes + 1] = leg.mode
         end
     end
-    summary.fare = math.floor(summary.fare + 0.5)
+
+    -- The legs are what they are; the ticket costs more than their sum. A
+    -- single leg is priced exactly as it was, which keeps a journey bought
+    -- here the same price as the same journey bought at the counter.
+    local extraLegs = math.max(summary.vehicleLegs - 1, 0)
+    local extra = extraLegs * opts.legSurcharge + summary.modeChanges * opts.modeChangeSurcharge
+    summary.baseFare = math.floor(summary.fare + 0.5)
+    summary.fare = math.floor(summary.fare * (1 + extra) + 0.5)
+    summary.surcharge = summary.fare - summary.baseFare
+    summary.surchargePercent = math.floor(extra * 100 + 0.5)
     return summary
 end
 
@@ -163,7 +175,7 @@ function M.reachable(graph_, fromKey, opts)
         local current = best[state.node]
         if current == nil or state.cost < current.cost then
             local legs = rebuild(states, key)
-            local summary = summarise(legs)
+            local summary = summarise(legs, opts)
             summary.cost = state.cost
             best[state.node] = summary
         end
@@ -178,7 +190,7 @@ function M.find(graph_, fromKey, toKey, opts)
         return nil
     end
     if fromKey == toKey then
-        local summary = summarise({})
+        local summary = summarise({}, options(opts))
         summary.cost = 0
         return summary
     end

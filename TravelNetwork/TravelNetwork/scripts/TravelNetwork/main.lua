@@ -168,20 +168,15 @@ local function dumpDestinations(fromKey)
     end
 end
 
---- Answer a player script asking where a conversation could take them.
---
--- The planner opens from the operator you are talking to, so the origin is
--- their stop -- exact, rather than the nearest thing to where the player
--- happens to be standing. An actor who runs no vehicle gets an empty answer,
--- which the player script turns into a line of text rather than a window.
---- Routing preferences as the player set them, in the shape route.lua takes.
+--- The player's settings, in the shape route.lua takes: what the planner
+-- should go out of its way to avoid, and what the counter charges for the
+-- convenience of selling a journey in one piece.
 --
 -- They arrive over an event, so they are whatever the other side sent: a value
 -- that is not a number, or is negative, is dropped and the config default
--- stands. The settings live player-side because they are a taste rather than a
--- rule -- how much of a detour a change of vehicle is worth avoiding.
-local function routingFrom(data)
-    local sent = data and data.routing or {}
+-- stands.
+local function preferencesFrom(data)
+    local sent = data and data.preferences or {}
     local function positive(value)
         local number = tonumber(value)
         if number and number >= 0 then
@@ -192,9 +187,17 @@ local function routingFrom(data)
     return {
         transferPenalty = positive(sent.transferPenalty),
         modeChangePenalty = positive(sent.modeChangePenalty),
+        legSurcharge = positive(sent.legSurcharge),
+        modeChangeSurcharge = positive(sent.modeChangeSurcharge),
     }
 end
 
+--- Answer a player script asking where a conversation could take them.
+--
+-- The planner opens from the operator you are talking to, so the origin is
+-- their stop -- exact, rather than the nearest thing to where the player
+-- happens to be standing. An actor who runs no vehicle gets an empty answer,
+-- which the player script turns into a line of text rather than a window.
 local function onRequestPlan(data)
     local player = data and data.player
     if player == nil then
@@ -206,7 +209,7 @@ local function onRequestPlan(data)
         player:sendEvent(events.PLAN, {})
         return
     end
-    local options = routingFrom(data)
+    local options = preferencesFrom(data)
     options.limit = data.limit
     local built = plan.build(g, operator.key, options)
     if built then
@@ -235,7 +238,7 @@ local function onBook(data)
 
     -- The same preferences the plan was drawn with, so the fare charged is the
     -- fare the window showed.
-    local options = routingFrom(data)
+    local options = preferencesFrom(data)
     options.gold = money.held(player)
     local quote = book.quote(g, operator.key, data.to, options)
     local answer = {
