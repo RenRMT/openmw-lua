@@ -9,6 +9,14 @@ point `data=` at in `openmw.cfg`) or a project containing several.
   foreign-invasion subsystem. In development; see
   [BalanceOfPower/next-steps.md](BalanceOfPower/next-steps.md) for the current
   state and what comes next.
+- **TravelNetwork** — Morrowind's transport as one routable graph. Planned; see
+  [TravelNetwork/implementation-plan.md](TravelNetwork/implementation-plan.md).
+- **LockMemory** — buildings that react to being robbed. Planned; see
+  [LockMemory/implementation-plan.md](LockMemory/implementation-plan.md).
+
+Engine facts that hold for every mod live in
+[openmw-lua-notes.md](openmw-lua-notes.md) at the root. **Findings specific to
+one mod belong in that mod's own directory**, never in the repo-level file.
 
 ## Where the truth lives
 
@@ -20,7 +28,7 @@ For BalanceOfPower specifically, five documents, in the order to read them:
 | [next-steps.md](BalanceOfPower/next-steps.md) | Current state, what to do next, open questions |
 | [implementation-plan.md](BalanceOfPower/implementation-plan.md) | Phase-by-phase build order, with decisions recorded per phase |
 | [balance-of-power-design-doc.md](BalanceOfPower/balance-of-power-design-doc.md) | Original intent. **Historical** — parts have been superseded; it says so at the top |
-| [openmw-lua-api-notes.md](BalanceOfPower/openmw-lua-api-notes.md) | Engine API facts, split into verified and unverified |
+| [engine-notes.md](BalanceOfPower/engine-notes.md) | What the engine's behaviour costs *this* project. Engine facts themselves live in the repo-level [openmw-lua-notes.md](openmw-lua-notes.md) |
 
 Each mod also has its own README covering its API and data formats.
 
@@ -110,9 +118,10 @@ characters, no unused locals, no trailing whitespace.
 and the flags must be recognised.
 
 **Verify engine APIs before depending on them.** The API surface moves between
-releases. `openmw-lua-api-notes.md` separates what has been checked against the
-docs from what has only been assumed; add to it rather than trusting memory.
-When a fact is confirmed, move it into the verified section and note the date.
+releases. `openmw-lua-notes.md` says how each fact was established — docs, ESM
+dump or in-game probe — and dates it; anything unestablished sits in its "Not
+established" section until it is. Add to it rather than trusting memory, and
+when a fact is confirmed, move it out of that section with the date.
 
 **Comments explain why, not what** — and sparingly. A line or two where a
 decision looks arbitrary until you know the reason (why projection uses max and

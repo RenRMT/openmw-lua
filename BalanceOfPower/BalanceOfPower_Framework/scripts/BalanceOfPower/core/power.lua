@@ -49,7 +49,7 @@ local pending = nil
 --     every other faction's row, indexed by B. See M.apply.
 --
 -- The engine's documentation calls the map inbound and is wrong for ESM3;
--- openmw-lua-api-notes.md carries the evidence.
+-- the repo's openmw-lua-notes.md carries the evidence.
 --
 -- Built once per registry generation; the data is static for a session.
 local reactions = nil

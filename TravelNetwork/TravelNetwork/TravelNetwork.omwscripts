@@ -1,0 +1,9 @@
+# TravelNetwork -- Morrowind's transport as one routable graph.
+#
+# Global context, because the graph is built by walking every cell for travel
+# operators and Cell:getAll is global-scripts-only.
+GLOBAL: scripts/TravelNetwork/main.lua
+
+# The planner window and its keybind. Player context, because only local
+# scripts may draw and only the player has a keyboard.
+PLAYER: scripts/TravelNetwork/player.lua

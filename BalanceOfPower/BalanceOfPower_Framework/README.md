@@ -461,7 +461,7 @@ Two statements that sound contradictory and are both true:
 > `FactionRecord.reactions` as "reactions of other factions to this faction" —
 > and is wrong for ESM3. This framework believed it for three phases and
 > propagated every asymmetric vanilla pair backwards. See
-> `openmw-lua-api-notes.md` for the evidence.
+> the repo's [engine notes](../../openmw-lua-notes.md) §7 for the evidence.
 
 Asymmetry is the whole point of the table and the reason a wrong reading is so
 hard to spot: most pairs are near-symmetric, so getting the direction backwards
