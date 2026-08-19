@@ -35,7 +35,14 @@ modeChangeSurchargeDescription: "Added on top again whenever the journey changes
 # --- the window ----------------------------------------------------------
 from: "From {place}"
 nowhereToGo: "No stop can be reached from here."
-nowhereOnThisNetwork: "Nothing on this network from here."
+nowhereWithThisManyChanges: "Nothing that far from here."
+
+# One tab per number of changes of vehicle a journey needs, fewest first.
+# The last one collects everything at or beyond it, so a route needing five
+# changes is filed under "3+" rather than earning a tab of its own.
+tabDirect: "Direct"
+tabChanges: "{changes, plural, one {1 change} other {# changes}}"
+tabChangesPlus: "{changes}+ changes"
 
 # The tab that drops the filter and lists every reachable place.
 tabAll: "All"
@@ -48,8 +55,9 @@ pageNext: "more >"
 
 # The chosen journey, condensed into the strip under the list.
 via: "via {places}"
-# The mark on a row whose journey changes vehicle. Shown only when the open
-# tab holds any, since staying on one network never changes vehicle.
+# The mark on a row whose journey changes to a different kind of vehicle,
+# as opposed to another of the same kind. Shown only when the open tab holds
+# any, which the direct tab never does.
 changeMarker: "+ marks a change of vehicle"
 pickAStop: "Pick a place to see the journey."
 arrivingAt: "Arriving at {place}"

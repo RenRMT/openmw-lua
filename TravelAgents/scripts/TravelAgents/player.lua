@@ -13,7 +13,6 @@ local I = require('openmw.interfaces')
 
 local config = require('scripts.TravelAgents.config')
 local events = require('scripts.TravelAgents.events')
-local graphlib = require('scripts.TravelAgents.graph')
 local money = require('scripts.TravelAgents.money')
 local plan = require('scripts.TravelAgents.plan')
 local restore = require('scripts.TravelAgents.restore')
@@ -45,9 +44,9 @@ local openWhenReady = false
 -- MWUI, so a list longer than the window is paged rather than clipped --
 -- otherwise the tail is unreachable rather than merely out of sight.
 local page = 1
--- Which network's tab is open, as a mode id -- nil means every stop. Set
--- from the operator being talked to when a plan arrives, so the window
--- opens on the network the player is standing in front of.
+-- Which tab is open, as a number of changes of vehicle -- nil means every
+-- stop. Opens on 0: the places reachable without changing are the ones
+-- somebody standing at a travel service is usually asking about.
 local tab = nil
 -- The plan for the operator currently being talked to, fetched when the
 -- conversation opens so the keypress has nothing to wait for.
@@ -216,15 +215,6 @@ local function line()
     return { template = I.MWUI.templates.horizontalLine }
 end
 
---- What to call a network on its tab.
---
--- Asked of the graph's own labeller rather than kept here, so a mode this
--- window has never heard of still gets the name the rest of the mod uses
--- for it.
-local function modeLabelOf(mode)
-    return graphlib.modeLabel(mode)
-end
-
 --- Names are as long as the game made them; the column is not.
 local function fit(name, width)
     if #name <= width then
@@ -244,46 +234,37 @@ local function close()
 end
 
 --------------------------------------------------------------------------
--- Tabs, one per network
+-- Tabs, one per number of changes
 --------------------------------------------------------------------------
 
---- Every mode any reachable stop sits on, in a stable order.
+--- Which tab a journey belongs under. The counting is the plan's, not the
+-- window's, so anything else asking the same question gets the same answer.
+local function bucketOf(stop)
+    return plan.changeBucket(stop, config.MAX_CHANGE_TAB)
+end
+
+--- The buckets this plan actually fills, ascending, with their sizes.
 --
--- Built from the plan rather than from a list of the modes this mod knows
--- about, so a landmass mod that invents a vehicle gets a tab without the
--- window being told it exists.
+-- Only occupied buckets get a tab: from a stop with nothing beyond one
+-- change, a `3+` tab reading zero is furniture.
 local function tabsInPlan()
     local counts, order = {}, {}
     for _, stop in ipairs(current.stops) do
-        for _, mode in ipairs(stop.servedBy or {}) do
-            if counts[mode] == nil then
-                counts[mode] = 0
-                order[#order + 1] = mode
-            end
-            counts[mode] = counts[mode] + 1
+        local bucket = bucketOf(stop)
+        if counts[bucket] == nil then
+            counts[bucket] = 0
+            order[#order + 1] = bucket
         end
+        counts[bucket] = counts[bucket] + 1
     end
-    -- Biggest network first, ties broken on the label, so the row does not
-    -- reshuffle between two stops in the same town.
-    table.sort(order, function(a, b)
-        if counts[a] ~= counts[b] then
-            return counts[a] > counts[b]
-        end
-        return a < b
-    end)
+    -- Fewest changes first. Unlike the networks this replaced there is a
+    -- natural order here, and it is also the order of preference.
+    table.sort(order)
     return order, counts
 end
 
-local function servesTab(stop, mode)
-    if mode == nil then
-        return true
-    end
-    for _, served in ipairs(stop.servedBy or {}) do
-        if served == mode then
-            return true
-        end
-    end
-    return false
+local function servesTab(stop, bucket)
+    return bucket == nil or bucketOf(stop) == bucket
 end
 
 local function stopsInTab()
@@ -331,32 +312,42 @@ end
 local function stopRow(stop)
     local marker = (selected == stop.key) and '> ' or '  '
     local price = stop.fare > 0 and tostring(stop.fare) or '-'
-    -- The direct/changing split used to be two headed sections. Inside a
-    -- network tab everything is direct -- staying on one kind of vehicle is
-    -- what a tab means -- so the split only ever said anything on `All`,
-    -- and it says it more cheaply as a mark on the row.
+    -- The tab already says how many times the traveller changes; the mark
+    -- says whether any of those changes is onto a different kind of vehicle.
+    -- Boarding a second silt strider and boarding a boat both count as one
+    -- change, and only one of them means finding a different dock.
     local change = ((stop.modeChanges or 0) > 0) and '+' or ' '
     local label = string.format('%s%-' .. config.NAME_COLUMN .. 's %5s %s',
         marker, fit(stop.name, config.NAME_COLUMN), price, change)
     return row(label, function() pick(stop.key) end)
 end
 
---- One tab per network, in rows that wrap.
+--- What to call a bucket on its tab.
+local function bucketLabel(bucket)
+    if bucket == 0 then
+        return l10n('tabDirect')
+    end
+    if bucket >= config.MAX_CHANGE_TAB then
+        return l10n('tabChangesPlus', { changes = bucket })
+    end
+    return l10n('tabChanges', { changes = bucket })
+end
+
+--- One tab per number of changes, in rows that wrap.
 --
--- Flex does not wrap, and a heavy load order can field seven or eight
--- vehicles, so the row is chunked by hand rather than trusting them all to
--- fit across the window.
+-- Flex does not wrap, so the row is chunked by hand rather than trusting the
+-- buttons to fit across the window.
 local function tabRow()
     local order, counts = tabsInPlan()
     if #order < 2 then
-        -- One network, or none: a row of one tab is furniture.
+        -- Everything reachable the same way: a row of one tab is furniture.
         return nil
     end
 
     local buttons = {}
-    local function tabButton(mode, label, count)
+    local function tabButton(bucket, label, count)
         local caption = string.format(' %s %d ', label, count)
-        if mode == tab then
+        if bucket == tab then
             return {
                 template = I.MWUI.templates.box,
                 content = ui.content { text(caption, I.MWUI.templates.textHeader) },
@@ -365,7 +356,7 @@ local function tabRow()
         return {
             template = I.MWUI.templates.box,
             content = ui.content { row(caption, function()
-                tab = mode
+                tab = bucket
                 selected = nil
                 page = 1
                 render()
@@ -373,10 +364,10 @@ local function tabRow()
         }
     end
 
-    buttons[#buttons + 1] = tabButton(nil, l10n('tabAll'), #current.stops)
-    for _, mode in ipairs(order) do
-        buttons[#buttons + 1] = tabButton(mode, modeLabelOf(mode), counts[mode])
+    for _, bucket in ipairs(order) do
+        buttons[#buttons + 1] = tabButton(bucket, bucketLabel(bucket), counts[bucket])
     end
+    buttons[#buttons + 1] = tabButton(nil, l10n('tabAll'), #current.stops)
 
     local rows, line = {}, {}
     for _, button in ipairs(buttons) do
@@ -435,7 +426,7 @@ local function destinations()
     end
 
     if #stops == 0 then
-        columns[1][1] = text(l10n(tab and 'nowhereOnThisNetwork' or 'nowhereToGo'))
+        columns[1][1] = text(l10n(tab and 'nowhereWithThisManyChanges' or 'nowhereToGo'))
     end
 
     local function pane(rows)
@@ -462,7 +453,7 @@ local function destinations()
     }
 
     -- The legend earns its row only when something on this page carries the
-    -- mark, which on a network tab is never.
+    -- mark, which on the direct tab is never.
     local marked = false
     for index = first, last do
         if (stops[index].modeChanges or 0) > 0 then
@@ -684,20 +675,15 @@ local function onPlan(data)
     selected = nil
     page = 1
 
-    -- Open on the network of whoever is being talked to. Standing in front
-    -- of a silt strider driver, the first question is where their striders
-    -- go -- not where every vehicle on the continent goes. Falls back to
-    -- everything for an operator whose mode nothing serves, which is what a
-    -- one-vehicle stop with no tab row looks like.
+    -- Open on the places reachable without changing vehicle: standing in
+    -- front of a driver, that is the question being asked. Falls back to the
+    -- fewest changes anywhere goes, so a stop whose every destination needs
+    -- a transfer opens on a tab with something in it rather than an empty
+    -- one.
     if not resumed then
-        local mode = data.operator and data.operator.mode
-        tab = nil
-        for _, stop in ipairs(current.stops or {}) do
-            if servesTab(stop, mode) then
-                tab = mode
-                break
-            end
-        end
+        current.stops = current.stops or {}
+        local order = tabsInPlan()
+        tab = order[1]
     end
 
     if openWhenReady then

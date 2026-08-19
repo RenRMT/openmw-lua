@@ -41,8 +41,13 @@ return {
     ROWS_PER_COLUMN = 18,
 
     -- Tabs across the window before the row wraps. Flex does not wrap on
-    -- its own, and a heavy load order fields more vehicles than fit.
+    -- its own.
     TABS_PER_ROW = 5,
+
+    -- The last tab in the row, which collects every journey needing this
+    -- many changes of vehicle or more. Past it the count stops telling the
+    -- player anything they would choose differently on.
+    MAX_CHANGE_TAB = 3,
     HOURS_PER_UNIT = 0.00012,
     MAX_ROUTE_LEGS = 8,
 }
