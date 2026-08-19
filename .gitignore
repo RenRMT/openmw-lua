@@ -1,2 +1,13 @@
 __pycache__/
 *.pyc
+
+# local dev files
+CLAUDE.md
+openmw-lua-notes/
+tests/
+.vscode/
+.editorconfig
+
+# incomplete projects
+BalanceOfPower_Morrowind/
+BalanceOfPower_Debug/

@@ -1,0 +1,4 @@
+# Travel Agents - Expanded travel & journey planning
+#
+GLOBAL: scripts/TravelAgents/main.lua
+PLAYER: scripts/TravelAgents/player.lua

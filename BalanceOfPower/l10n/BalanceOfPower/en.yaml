@@ -1,0 +1,84 @@
+# Balance of Power -- English strings.
+#
+# Two audiences in one file: the settings page, and the handful of
+# notices the player sees when the map moves. Everything else the
+# framework prints is diagnostic and goes to openmw.log unlocalised.
+#
+# Keys match the `name` and `description` fields in core/settings.lua and
+# scripts/BalanceOfPower/player.lua. A setting named `foo` takes its
+# description from `fooDescription`, so the two always travel together.
+
+# --- the page ------------------------------------------------------------
+settingsPage: "Balance of Power"
+settingsPageDescription: "Faction power and territory control."
+
+# --- simulation group (global storage) -----------------------------------
+simulationGroup: "Simulation"
+simulationGroupDescription: |-
+  How faction power moves on its own. These change the behaviour of the
+  simulation, never the shape of the map, and all of them take effect on
+  the next resolved day.
+
+driftEnabled: "Power drifts over time"
+driftEnabledDescription: |-
+  Faction power rises and falls on its own: toward what a faction's
+  territory can support, displaced by its fortunes. Turn this off and
+  power only moves when something awards it.
+
+powerReversionRate: "Reversion rate"
+powerReversionRateDescription: |-
+  How fast a faction's power moves toward what its holdings support, per
+  day. 0.02 is roughly a five-week half-life. Higher reacts faster to
+  territory changing hands; 0 stops drift entirely.
+
+fortuneSwing: "Fortune swing"
+fortuneSwingDescription: |-
+  How far a faction's luck carries its standing above or below what its
+  ground supports, as a fraction of an average faction's power. Fortunes
+  turn over across months rather than days. 0 leaves territory as the
+  only thing that moves power.
+
+strainDefencePenalty: "Overreach weakens defence"
+strainDefencePenaltyDescription: |-
+  How much of its strength a faction loses defending ground when it holds
+  more than its standing supports, as a fraction. Above 0 borders become
+  self-correcting, and can oscillate. 0 is off.
+
+strainPatrolPenalty: "Overreach thins patrols"
+strainPatrolPenaltyDescription: |-
+  How much of its patrol size a faction loses when it holds more than its
+  standing supports, as a fraction. Never below one member. 0 is off.
+
+# --- notifications group (player storage) --------------------------------
+notificationsGroup: "Notifications"
+notificationsGroupDescription: |-
+  What you are told when the map moves. These affect nothing in the
+  simulation.
+
+notifications: "Announce territory changes"
+notificationsDescription: |-
+  Where notices go. The log is openmw.log, which keeps a full record
+  without interrupting play; on-screen messages are the same notices in a
+  message box.
+
+# Display values for the three choices above, resolved through this same
+# context because the select renderer is given it as its l10n argument.
+#
+# The keys are the stored setting values too. They are not spelled `off`,
+# `log`, `screen` because YAML reads `off` as a boolean -- the key would
+# stop being a string and the label would never resolve.
+notifySilent: "Not at all"
+notifyLog: "In the log"
+notifyScreen: "On screen"
+
+settlementsOnly: "Named places only"
+settlementsOnlyDescription: |-
+  Announce only towns, cities and other named holdings. With this off,
+  every frontier cell is announced too -- which is hundreds a season once
+  power is drifting.
+
+# --- notices -------------------------------------------------------------
+flipTaken: "{place} is now held by {faction}."
+flipReleased: "{place} is no longer held by anyone."
+surrounded: "{place} is surrounded."
+relieved: "{place} is no longer surrounded."

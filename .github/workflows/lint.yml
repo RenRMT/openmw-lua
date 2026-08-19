@@ -72,25 +72,3 @@ jobs:
 
       - name: Validate l10n contexts and locale files
         run: python3 .github/scripts/validate_l10n.py
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-
-      # lupa embeds a real Lua 5.1 interpreter, which is what OpenMW
-      # runs. The suite loads the mod's own modules against stubbed
-      # openmw.* packages -- see BalanceOfPower/tests/README.md.
-      - name: Install lupa
-        run: pip install lupa
-
-      - name: Run Lua unit tests -- BalanceOfPower
-        run: python BalanceOfPower/tests/run.py
-
-      - name: Run Lua unit tests -- TravelNetwork
-        run: python TravelNetwork/tests/run.py

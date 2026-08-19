@@ -1,0 +1,68 @@
+# TravelAgents -- English strings.
+#
+# Keys match the settings entries in scripts/TravelAgents/player.lua and the
+# planner window it draws. A setting named `foo` takes its description from
+# `fooDescription`, so the two always travel together.
+
+# --- settings ------------------------------------------------------------
+settingsPage: "Travel Agents"
+settingsPageDescription: "Plan journeys across travel modes."
+
+plannerGroup: "Planner"
+plannerGroupDescription: "The key that opens the journey planner."
+
+plannerKey: "Open planner"
+plannerKeyDescription: "Plan your travels."
+
+routingGroup: "Routing"
+routingGroupDescription: "What the planner will go out of its way to avoid. Distances in game units."
+
+transferPenalty: "Detour worth avoiding stop"
+transferPenaltyDescription: "How much of a detour is worth avoiding one extra leg."
+
+modeChangePenalty: "Detour worth avoiding change."
+modeChangePenaltyDescription: "Added on top when the change is from one kind of vehicle to another."
+
+faresGroup: "Fares"
+faresGroupDescription: "What booking a whole journey at one counter costs you extra."
+
+legSurcharge: "Extra per leg (%)"
+legSurchargeDescription: "Added to the fare for every leg past the first."
+
+modeChangeSurcharge: "Extra per change (%)"
+modeChangeSurchargeDescription: "Added on top again whenever the journey changes mode of transport."
+
+# --- the window ----------------------------------------------------------
+from: "From {place}"
+nowhereToGo: "No stop can be reached from here."
+sectionDirect: "No change of vehicle"
+sectionChanging: "Changing vehicle"
+pickAStop: "Pick a place to see the journey."
+arrivingAt: "Arriving at {place}"
+plannerHint: "Press {key} to plan a journey from here."
+plannerUnbound: "Bind a key under Options, Scripts, Travel Agents to plan a journey."
+controllerButton: "your controller button"
+andMore: "...and {count} more -- show them"
+showFewer: "Show fewer"
+close: "Close"
+
+# --- how a journey reads --------------------------------------------------
+# One vehicle from end to end is "direct" however many doors it passes
+# through; what a player wants to spot in a list is the journey that makes
+# them change.
+journeyDirect: "direct -- {hours} h, {fare} gold"
+journeyOnFoot: "on foot -- {hours} h"
+journeySameVehicle: "{legs} legs, all by {mode} -- {hours} h, {fare} gold"
+journeyChanging: "{changes, plural, one {1 change of vehicle} other {# changes of vehicle}} -- {hours} h, {fare} gold"
+
+# --- booking -------------------------------------------------------------
+book: "Travel here -- {fare} gold"
+fareLine: "{base} gold in fares"
+surchargeLine: "plus {percent}% for booking it in one go -- {extra} gold"
+youHave: "You have {gold} gold"
+bookFree: "Travel here -- no charge"
+cannotAfford: "That journey costs {fare} gold -- you are {short} short."
+arrived: "You arrive at {place}. {hours} hours on the road, {fare} gold."
+arrivedFree: "You arrive at {place}. {hours} hours on the road."
+noRoute: "There is no way through to that stop from here."
+bookingFailed: "That journey cannot be made."
