@@ -9,7 +9,7 @@ settingsPage: "Travel Agents"
 settingsPageDescription: "Plan journeys across travel modes."
 
 plannerGroup: "Planner"
-plannerGroupDescription: "What opens the journey planner. Either row will do it, so a controller can have its own button without giving up the key."
+plannerGroupDescription: "What opens the journey planner. Either key or controller input"
 
 plannerKey: "Open planner"
 plannerKeyDescription: "Plan your travels."
@@ -18,7 +18,7 @@ plannerKeyDescription: "Plan your travels."
 # whatever is pressed, so this one will take a key as readily as a button --
 # it is where a controller player puts theirs, not a row that refuses a key.
 plannerController: "Open planner (controller)"
-plannerControllerDescription: "A second button for the planner, for playing on a controller."
+plannerControllerDescription: "Plan your travels."
 
 routingGroup: "Routing"
 routingGroupDescription: "What the planner will go out of its way to avoid. Distances in game units."
@@ -36,7 +36,7 @@ legSurcharge: "Extra per leg (%)"
 legSurchargeDescription: "Added to the fare for every leg past the first."
 
 modeChangeSurcharge: "Extra per change (%)"
-modeChangeSurchargeDescription: "Added on top again whenever the journey changes mode of transport."
+modeChangeSurchargeDescription: "Added  to the fare for every additional mode of transport"
 
 # --- the window ----------------------------------------------------------
 from: "From {place}"
@@ -76,24 +76,24 @@ close: "Close"
 # One vehicle from end to end is "direct" however many doors it passes
 # through; what a player wants to spot in a list is the journey that makes
 # them change.
-journeyDirect: "direct -- {hours} h, {fare} gold"
-journeyOnFoot: "on foot -- {hours} h"
-journeySameVehicle: "{legs} legs, all by {mode} -- {hours} h, {fare} gold"
-journeyChanging: "{changes, plural, one {1 change of vehicle} other {# changes of vehicle}} -- {hours} h, {fare} gold"
+journeyDirect: "direct: {hours} h, {fare} gold"
+journeyOnFoot: "on foot: {hours} h"
+journeySameVehicle: "{legs} legs, all by {mode}: {hours} h, {fare} gold"
+journeyChanging: "{changes, plural, one {1 change of vehicle} other {# changes of vehicle}}: {hours} h, {fare} gold"
 
 # --- booking -------------------------------------------------------------
-book: "Travel here -- {fare} gold"
+book: "Travel here"
 fareLine: "{base} gold in fares"
-surchargeLine: "plus {percent}% for booking it in one go -- {extra} gold"
+surchargeLine: "plus {extra} gold booking fees"
 youHave: "You have {gold} gold"
-bookFree: "Travel here -- no charge"
-cannotAfford: "That journey costs {fare} gold -- you are {short} short."
+bookFree: "Travel here"
+cannotAfford: "That journey costs {fare} gold; you are {short} short."
 arrived: "You arrive at {place}. {hours} hours on the road, {fare} gold."
 arrivedFree: "You arrive at {place}. {hours} hours on the road."
 
 # A guild guide teleports, so no time passes at all. Saying "0.0 hours on
 # the road" is true and reads as a bug.
-arrivedInstantly: "You step out at {place}, no time at all having passed. {fare} gold."
-arrivedInstantlyFree: "You step out at {place}, no time at all having passed."
+arrivedInstantly: "You arrive at {place} instantaneously. {fare} gold."
+arrivedInstantlyFree: "You arrive at {place} instantaneously."
 noRoute: "There is no way through to that stop from here."
 bookingFailed: "That journey cannot be made."
