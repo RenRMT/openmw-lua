@@ -16,8 +16,11 @@
 --   Morrowind.esm
 --   Tribunal.esm
 --   Bloodmoon.esm
+--   Tamriel_Data.esm
 --   TR_Mainland.esm
--- 132 record(s) that offer travel, 128 placement(s) between them.
+--   Sky_Main.esm
+--   Cyr_Main.esm
+-- 159 record(s) that offer travel, 155 placement(s) between them.
 -- An empty list is a record that offers travel and stands nowhere:
 -- looked for, not found, and not worth looking for again.
 
@@ -46,12 +49,39 @@ return {
     ['navam veran'] = { { x = -3, y = 6 } },
     ['nevosi hlan'] = { { x = 2, y = -13 } },
     ['nireli farys'] = { { x = 14, y = -13 } },
+    ['pc_m0_tituscorilex'] = { { x = 2, y = -13 } },
+    ['pc_m1_aisaulo'] = { { x = -115, y = -47 } },
+    ['pc_m1_annineshotn'] = { { x = -121, y = -56 } },
+    ['pc_m1_durokhgrobakush'] = { { x = -112, y = -58 } },
+    ['pc_m1_kahali'] = { { name = 'Charach, Guild of Mages' } },
+    ['pc_m1_kaltandoralis'] = { { x = -121, y = -56 } },
+    ['pc_m1_kaltandoralistr'] = { { x = -121, y = -56 } },
+    ['pc_m1_manni'] = { { x = -124, y = -49 } },
+    ['pc_m1_miris'] = { { x = -116, y = -55 } },
+    ['pc_m1_rexusserperian'] = { { x = -120, y = -55 } },
+    ['pc_m1_rinni'] = { { name = 'Brina Cross, Guild of Mages' } },
+    ['pc_m1_sabine'] = { { x = -121, y = -56 } },
+    ['pc_m1_saquerilla'] = { { x = -120, y = -55 } },
+    ['pc_m1_sinedusnotius'] = { { x = -136, y = -52 } },
+    ['pc_m1_stariusrax'] = { { x = -120, y = -55 } },
+    ['pc_m1_tacciatenipter'] = { { x = -120, y = -56 } },
+    ['pc_m1_trowarth'] = { { x = -122, y = -55 } },
+    ['pc_m1_yinassi'] = { { name = 'Anvil, Guild of Mages: Top Floor' } },
     ['punibi yahaz'] = { { x = -11, y = 10 } },
     ['rindral dralor'] = { { x = 13, y = -8 } },
     ['s\'virr'] = { { x = -9, y = 17 } },
     ['sedyni veran'] = { { x = 12, y = 13 } },
     ['seldus nerendus'] = { { x = -9, y = 16 } },
     ['selvil sareloth'] = { { x = -3, y = -3 } },
+    ['sky_qre_kwfg1_haldine'] = { { x = -106, y = 8 } },
+    ['sky_qre_kwmg5_irgas_02'] = { { name = 'Karthwasten, Guild of Mages' } },
+    ['sky_qre_kwmg5_marcur_02'] = { { name = 'Dragonstar West, Guild of Mages' } },
+    ['sky_xre_dse_arvund'] = { { x = -113, y = 13 } },
+    ['sky_xre_kw_aurius'] = { { x = -105, y = 6 } },
+    ['sky_xre_kw_bronding'] = { { x = -106, y = 8 } },
+    ['sky_xre_kw_cascus'] = { { x = -106, y = 7 } },
+    ['sky_xre_vf_jovodii'] = { { x = -103, y = 10 } },
+    ['sky_xvv_df_jurid'] = { { x = 7, y = 22 } },
     ['talmeni drethan'] = { { x = -9, y = 17 } },
     ['talsi uvayn'] = { { x = 3, y = -13 } },
     ['todd'] = { { name = 'ToddTest' } },
