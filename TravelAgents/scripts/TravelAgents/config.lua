@@ -57,4 +57,10 @@ return {
     -- mainland in it, so this trades a second or two of background work for
     -- never stalling.
     BUILD_SLICE_SECONDS = 0.002,
+
+    -- Records to read before looking at the clock, while working out which
+    -- ones offer travel at all. There are more records than cells and each
+    -- is far cheaper, so checking after every one would spend more time
+    -- asking the time than reading records.
+    SCAN_RECORDS_PER_CHECK = 256,
 }

@@ -7,6 +7,8 @@ local types = require('openmw.types')
 local util = require('openmw.util')
 local world = require('openmw.world')
 
+local config = require('scripts.TravelAgents.config')
+
 local M = {}
 
 -- Creature records carry travelDestinations too. No vanilla creature uses it,
@@ -141,32 +143,40 @@ function M.advanceTime(hours)
     end
 end
 
---- Every travel operator in the world, in the shape graph.build takes.
---
--- Discovery is by a non-empty `travelDestinations`.
 --- Every record id in the load order that offers travel at all.
 --
--- Asked of the record lists once, before any cell is touched. The scan below
--- then tests each placed object against a plain Lua table instead of indexing
--- the record list and reading a field off the result, which is the difference
--- between a hash lookup and a trip into the engine -- and it is run against
--- every NPC and creature standing anywhere in the world.
+-- Asked of the record lists once, before any cell is touched. The cell walk
+-- below then tests each placed object against a plain Lua table rather than
+-- indexing the record list and reading a field off the result -- a hash
+-- lookup instead of a trip into the engine, run against every NPC and
+-- creature standing anywhere in the world.
 --
 -- Roughly one record in a hundred offers travel, so the set stays small
 -- however large the load order gets.
+--
 -- Keyed on the lowercased id, and looked up the same way. The record store
 -- is a C++ map that resolves an id however it is capitalised; a plain Lua
 -- table is not, and the ESM capitalises inconsistently -- 'Nevosi Hlan' sits
 -- next to 'navam veran' in the same file. Matching exactly would have found
 -- some operators and silently lost others.
-local function offersTravel()
+--
+-- @param checkpoint called every so often, to give the frame back
+local function offersTravel(checkpoint)
     local wanted = {}
+    local since = 0
     for _, kind in ipairs(RECORD_KINDS) do
         for index = 1, #kind.records do
             local record = kind.records[index]
             local destinations = record and record.travelDestinations
             if destinations and #destinations > 0 and type(record.id) == 'string' then
                 wanted[string.lower(record.id)] = record
+            end
+            -- Not every record: reading the clock is itself a call, and
+            -- there are more records here than cells to walk afterwards.
+            since = since + 1
+            if since >= config.SCAN_RECORDS_PER_CHECK then
+                since = 0
+                checkpoint()
             end
         end
     end
@@ -190,7 +200,16 @@ end
 function M.operatorScan()
     return coroutine.create(function(deadline)
         local operators = {}
-        local wanted = offersTravel()
+
+        -- Both phases give the frame back through this. A nil deadline is
+        -- how a caller says "run it out", and then nothing ever yields.
+        local function checkpoint()
+            if deadline and core.getRealTime() >= deadline then
+                deadline = coroutine.yield()
+            end
+        end
+
+        local wanted = offersTravel(checkpoint)
         for _, cell in ipairs(world.cells) do
             for _, kind in ipairs(RECORD_KINDS) do
                 local ok, objects = pcall(cell.getAll, cell, kind.objectType)
@@ -209,9 +228,7 @@ function M.operatorScan()
             end
             -- Between cells, never inside one: a half-scanned cell would have
             -- to be resumed mid-list, and the list is the engine's.
-            if deadline and core.getRealTime() >= deadline then
-                deadline = coroutine.yield()
-            end
+            checkpoint()
         end
         return operators
     end)

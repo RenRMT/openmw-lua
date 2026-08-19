@@ -47,14 +47,24 @@ end
 local scan = nil
 local scanStarted = nil
 
+-- Kept only to be logged. The whole point of slicing is that no single
+-- slice is long enough to see, and the only way to know whether that held
+-- on someone else's load order is to say so when the graph is ready.
+local slices = 0
+local longestSlice = 0
+
 --- Everything after the cell walk: cheap, and not worth slicing.
 --
 -- Vehicles first, then the doors joining the stops inside buildings to the
 -- streets outside them. Order matters: a walk link needs the stop it starts
 -- from to exist.
+local assembleSeconds = 0
+
 local function assemble(operators)
+    local started = core.getRealTime()
     local built = graph.build(operators)
     graph.link(built, walk.links(interiorStops(built), adapter.doorsFor))
+    assembleSeconds = core.getRealTime() - started
     scan = nil
     cached = built
     return built
@@ -74,7 +84,13 @@ local function advance(budget)
         scan = adapter.operatorScan()
         scanStarted = core.getRealTime()
     end
-    local ok, result = coroutine.resume(scan, budget and (core.getRealTime() + budget) or nil)
+    local sliceStarted = core.getRealTime()
+    local ok, result = coroutine.resume(scan, budget and (sliceStarted + budget) or nil)
+    local slice = core.getRealTime() - sliceStarted
+    if slice > longestSlice then
+        longestSlice = slice
+    end
+    slices = slices + 1
     if not ok then
         -- A graph that cannot be built must not be retried every frame for
         -- the rest of the session. An empty one is wrong but quiet, and the
@@ -336,8 +352,10 @@ local function warmUp()
     end
     local g = advance(config.BUILD_SLICE_SECONDS)
     if g then
-        out('graph ready: %d stops, %d legs, built in %.2fs of play',
-            g.stats.nodes, g.stats.edges, core.getRealTime() - (scanStarted or 0))
+        out('graph ready: %d stops, %d legs', g.stats.nodes, g.stats.edges)
+        out('  %.2fs of play, %d slice(s), longest %.0fms, assembling %.0fms',
+            core.getRealTime() - (scanStarted or 0), slices,
+            longestSlice * 1000, assembleSeconds * 1000)
     end
 end
 
