@@ -133,32 +133,12 @@ end
 --- Move the clock forward by the length of a journey.
 --
 -- Weather and AI move with it; regeneration does not, which is why arriving
--- restores fatigue separately.
+-- restores stats separately -- and why that happens in the player script
+-- rather than here. See restore.lua.
 function M.advanceTime(hours)
     if hours and hours > 0 then
         world.advanceTime(hours)
     end
-end
-
---- Arrive rested, the way vanilla travel leaves you.
--- TODO: restore Health & Magicka too. Ideally should
--- be restored at natural restoration rate for the
--- amount of hours spent travelling.
-
-function M.restoreFatigue(traveller)
-    if traveller == nil then
-        return false
-    end
-    local ok, stat = pcall(function()
-        return types.Actor.stats.dynamic.fatigue(traveller)
-    end)
-    if not ok or stat == nil then
-        return false
-    end
-    -- A dynamic stat's ceiling is its base plus whatever is fortifying or
-    -- draining it, so this is "full" whatever else is acting on the traveller.
-    stat.current = stat.base + (stat.modifier or 0)
-    return true
 end
 
 --- Every travel operator in the world, in the shape graph.build takes.

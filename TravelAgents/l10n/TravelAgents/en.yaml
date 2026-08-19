@@ -35,15 +35,35 @@ modeChangeSurchargeDescription: "Added on top again whenever the journey changes
 # --- the window ----------------------------------------------------------
 from: "From {place}"
 nowhereToGo: "No stop can be reached from here."
-sectionDirect: "No change of vehicle"
-sectionChanging: "Changing vehicle"
+nowhereWithThisManyChanges: "Nothing that far from here."
+
+# One tab per number of changes of vehicle a journey needs, fewest first.
+# The last one collects everything at or beyond it, so a route needing five
+# changes is filed under "3+" rather than earning a tab of its own.
+tabDirect: "Direct"
+tabChanges: "{changes, plural, one {1 change} other {# changes}}"
+tabChangesPlus: "{changes}+ changes"
+
+# The tab that drops the filter and lists every reachable place.
+tabAll: "All"
+
+# The destination list is paged: MWUI has no scrollbar, so a list longer
+# than the window would otherwise put its tail out of reach.
+pageOf: "page {page} of {pages}"
+pagePrev: "< back"
+pageNext: "more >"
+
+# The chosen journey, condensed into the strip under the list.
+via: "via {places}"
+# The mark on a row whose journey changes to a different kind of vehicle,
+# as opposed to another of the same kind. Shown only when the open tab holds
+# any, which the direct tab never does.
+changeMarker: "+ marks a change of vehicle"
 pickAStop: "Pick a place to see the journey."
 arrivingAt: "Arriving at {place}"
 plannerHint: "Press {key} to plan a journey from here."
 plannerUnbound: "Bind a key under Options, Scripts, Travel Agents to plan a journey."
 controllerButton: "your controller button"
-andMore: "...and {count} more -- show them"
-showFewer: "Show fewer"
 close: "Close"
 
 # --- how a journey reads --------------------------------------------------
@@ -64,5 +84,10 @@ bookFree: "Travel here -- no charge"
 cannotAfford: "That journey costs {fare} gold -- you are {short} short."
 arrived: "You arrive at {place}. {hours} hours on the road, {fare} gold."
 arrivedFree: "You arrive at {place}. {hours} hours on the road."
+
+# A guild guide teleports, so no time passes at all. Saying "0.0 hours on
+# the road" is true and reads as a bug.
+arrivedInstantly: "You step out at {place}, no time at all having passed. {fare} gold."
+arrivedInstantlyFree: "You step out at {place}, no time at all having passed."
 noRoute: "There is no way through to that stop from here."
 bookingFailed: "That journey cannot be made."

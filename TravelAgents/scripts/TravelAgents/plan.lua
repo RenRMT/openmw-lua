@@ -67,6 +67,11 @@ function M.build(graph, originKey, opts)
                 -- The place is what the list calls it; the stop is where the
                 -- journey actually ends.
                 name = place.name,
+                -- Which networks this place is on. Reachable on foot rather
+                -- than met exactly here, so a stop the vehicles do not touch
+                -- but a short walk does (Caldera, Wolverine Hall) counts as
+                -- being on the network that gets you there.
+                servedBy = graphlib.modesWithinWalk(graph, stop.key),
                 arrival = stop.name,
                 cost = stop.cost,
                 distance = stop.distance,
@@ -90,6 +95,28 @@ function M.build(graph, originKey, opts)
     end
 
     return plan
+end
+
+--- How many times a journey puts the traveller off one vehicle and onto
+-- another.
+--
+-- Counted in vehicles boarded, not legs travelled: `stop.transfers` counts
+-- every leg including the walk to the dock, and walking to the dock is not a
+-- change of vehicle. A journey made entirely on foot boards nothing and so
+-- changes nothing.
+function M.changes(stop)
+    return math.max((stop.vehicleLegs or 0) - 1, 0)
+end
+
+--- The same, but with everything at or past `most` sharing its answer.
+-- Long journeys are rare and differ from each other in ways the count stops
+-- describing, so a window grouping by it has somewhere to put them.
+function M.changeBucket(stop, most)
+    local changes = M.changes(stop)
+    if most and changes > most then
+        return most
+    end
+    return changes
 end
 
 --- How to say what a journey asks of the player, as a message key and the

@@ -5,6 +5,8 @@
 -- their gold or advance the clock. The window that asks for both lives in
 -- player.lua and is told nothing it could get wrong.
 
+local core = require('openmw.core')
+
 local adapter = require('scripts.TravelAgents.adapter')
 local book = require('scripts.TravelAgents.book')
 local config = require('scripts.TravelAgents.config')
@@ -217,6 +219,74 @@ local function onRequestPlan(data)
     player:sendEvent(events.PLAN, built or {})
 end
 
+--- Every operator class in the load order, and whether the mod knows it.
+--
+-- The mode a vehicle is filed under comes from its operator's class, which
+-- is a string a content pack's author typed. Vanilla's four are known; a
+-- landmass mod inventing a guar caravan is not, and the tab it gets is
+-- named after the raw class until data/modes.lua claims it.
+--
+-- Diagnostic, and the way to find out what a real load order actually
+-- contains rather than guessing at it.
+local function dumpClasses()
+    local modes = require('scripts.TravelAgents.data.modes')
+    local seen = {}
+    for _, operator in ipairs(adapter.operators()) do
+        local class = (operator.class or ''):lower()
+        seen[class] = seen[class] or { count = 0, example = operator.name }
+        seen[class].count = seen[class].count + 1
+    end
+
+    local names = {}
+    for class in pairs(seen) do
+        names[#names + 1] = class
+    end
+    table.sort(names)
+
+    out('--- operator classes -----------------------------------')
+    local unclaimed = 0
+    for _, class in ipairs(names) do
+        local entry = seen[class]
+        local known = modes.classes[class]
+        if not known then
+            unclaimed = unclaimed + 1
+        end
+        out('  %-24s %3d operator(s)  %s%s',
+            class == '' and '(no class)' or class, entry.count,
+            known and ('-> ' .. known.label) or '-> own tab, named after the class',
+            known and '' or string.format('   e.g. %s', tostring(entry.example)))
+    end
+    out('%d class(es), %d not claimed by data/modes.lua', #names, unclaimed)
+    out('--------------------------------------------------------')
+end
+
+--- Build the graph before anything asks for it.
+--
+-- The build walks every cell in the load order looking for placed
+-- operators, because a travel destination lives on a record and the near
+-- end of every edge does not -- it is wherever the operator is standing.
+-- That is seconds of work on Tamriel Rebuilt.
+--
+-- Doing it lazily meant paying for it on the first conversation with a
+-- travel NPC, which is the worst possible moment: the game appears to
+-- hang, mid-greeting, on the one interaction the mod exists to improve.
+-- Here it lands on the first frame after load instead, where a moment of
+-- work is indistinguishable from the loading that just finished.
+--
+-- Still lazy underneath, so nothing breaks if a conversation somehow
+-- comes first; this only decides *when* the one build happens.
+local warmedUp = false
+local function warmUp()
+    if warmedUp then
+        return
+    end
+    warmedUp = true
+    local started = core.getRealTime()
+    local g = current()
+    out('graph ready: %d stops, %d legs, built in %.2fs',
+        g.stats.nodes, g.stats.edges, core.getRealTime() - started)
+end
+
 --- Sell a journey and make it.
 local function onBook(data)
     local player = data and data.player
@@ -258,7 +328,9 @@ local function onBook(data)
     end
     money.take(player, quote.fare)
     adapter.advanceTime(quote.hours)
-    adapter.restoreFatigue(player)
+    -- Asked for rather than done here: the player's own script is the only
+    -- context allowed to write their dynamic stats.
+    player:sendEvent(events.RESTORE, { rests = quote.rests })
     player:sendEvent(events.BOOKED, answer)
 end
 
@@ -279,10 +351,14 @@ return {
         transfersAt = function(key) return route.transfersAt(current(), key) end,
         dumpRoute = dumpRoute,
         dumpDestinations = dumpDestinations,
+        dumpClasses = dumpClasses,
         modesAt = graph.modesAt,
         modesWithinWalk = graph.modesWithinWalk,
         edgesFrom = graph.edgesFrom,
         isTransfer = graph.isTransfer,
+    },
+    engineHandlers = {
+        onUpdate = warmUp,
     },
     eventHandlers = {
         [events.REQUEST_PLAN] = onRequestPlan,
