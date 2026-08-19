@@ -5,7 +5,11 @@
 -- their gold or advance the clock. The window that asks for both lives in
 -- player.lua and is told nothing it could get wrong.
 
+local async = require('openmw.async')
 local core = require('openmw.core')
+local storage = require('openmw.storage')
+
+local I = require('openmw.interfaces')
 
 local adapter = require('scripts.TravelAgents.adapter')
 local book = require('scripts.TravelAgents.book')
@@ -40,6 +44,53 @@ local function interiorStops(g)
         end
     end
     return stops
+end
+
+--------------------------------------------------------------------------
+-- The escape hatch
+--------------------------------------------------------------------------
+--
+-- data/operators.lua says where the known travel services stand, and the
+-- scan opens one cell each rather than all ten thousand. Anything the table
+-- does not account for already sends it round every cell -- but that rests
+-- on the mod having spotted the operator in the first place, and this is
+-- for when it has not.
+--
+-- Turning it on searches every cell regardless of what the table says. It
+-- costs half a minute of background work per load and is the behaviour the
+-- mod had before the table existed, so it can only find more, never less.
+--
+-- A global group rather than a player one: the graph is global, and a
+-- global script may register a group. It may not register a *page* -- that
+-- is a screen and needs a context that can draw one -- so the page comes
+-- from player.lua and this only attaches to it.
+local SETTINGS = 'SettingsGlobalTravelAgents'
+
+if I.Settings and I.Settings.registerGroup then
+    I.Settings.registerGroup {
+        key = SETTINGS,
+        page = 'TravelAgents',
+        l10n = 'TravelAgents',
+        name = 'searchGroup',
+        description = 'searchGroupDescription',
+        permanentStorage = true,
+        settings = {
+            {
+                key = 'fullSearch',
+                name = 'fullSearch',
+                description = 'fullSearchDescription',
+                renderer = 'checkbox',
+                default = false,
+            },
+        },
+    }
+end
+
+local function searchEverything()
+    local ok, value = pcall(function()
+        return storage.globalSection(SETTINGS):get('fullSearch')
+    end)
+    return ok and value == true
 end
 
 -- The cell walk, part-done. nil either before it starts or once it has
@@ -85,7 +136,7 @@ local function advance(budget)
         return cached
     end
     if scan == nil then
-        scan = adapter.operatorScan()
+        scan = adapter.operatorScan({ ignoreHints = searchEverything() })
         scanStarted = core.getRealTime()
     end
     local sliceStarted = core.getRealTime()
@@ -150,7 +201,38 @@ end
 local function rebuild()
     cached = nil
     scan = nil
+    slices, longestSlice, lastReport = 0, 0, 0
+    lastDone, lastTotal = 0, nil
     return advance(nil)
+end
+
+--- Throw the graph away and let it be built again in the background.
+--
+-- What ticking the full-search setting does. Rebuilding on the spot would
+-- freeze the game for as long as the search takes, which is the thing this
+-- whole area of the mod exists to avoid.
+local function rebuildInBackground()
+    cached = nil
+    scan = nil
+    slices, longestSlice, lastReport = 0, 0, 0
+    lastDone, lastTotal = 0, nil
+    out('the travel network will be rebuilt%s',
+        searchEverything() and ', searching every cell' or '')
+end
+
+-- Ticking the setting rebuilds, so it reads as an action rather than a
+-- preference that waits for a restart.
+if I.Settings and I.Settings.registerGroup then
+    local ok = pcall(function()
+        storage.globalSection(SETTINGS):subscribe(async:callback(function(_, key)
+            if key == nil or key == 'fullSearch' then
+                rebuildInBackground()
+            end
+        end))
+    end)
+    if not ok then
+        out('could not watch the full-search setting; it will apply on the next load')
+    end
 end
 
 --- Every stop, what meets there, and how many legs leave it.

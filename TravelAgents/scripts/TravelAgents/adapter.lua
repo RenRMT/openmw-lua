@@ -287,7 +287,10 @@ local function collectHinted(wanted, into)
     return unaccounted, opened
 end
 
-function M.operatorScan()
+-- @param opts optional { ignoreHints = true } to search every cell even for
+--   operators data/operators.lua accounts for
+function M.operatorScan(opts)
+    local ignoreHints = opts and opts.ignoreHints
     return coroutine.create(function(deadline)
         local operators = {}
 
@@ -308,7 +311,10 @@ function M.operatorScan()
         -- The shipped table first: one cell per operator rather than all of
         -- them. On a load order it covers this is the whole scan, and the
         -- walk below never runs.
-        local missing, opened = collectHinted(wanted, operators)
+        local missing, opened = wanted, 0
+        if not ignoreHints then
+            missing, opened = collectHinted(wanted, operators)
+        end
         checkpoint('hinted', opened)
 
         -- Anything the table did not account for has to be looked for the
@@ -351,8 +357,8 @@ end
 
 --- The same scan, run to completion here and now.
 -- Kept for anything that has to have an answer before it can return one.
-function M.operators()
-    local scan = M.operatorScan()
+function M.operators(opts)
+    local scan = M.operatorScan(opts)
     while true do
         local ok, result = coroutine.resume(scan)
         if not ok then
