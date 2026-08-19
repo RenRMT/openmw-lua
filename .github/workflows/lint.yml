@@ -1,9 +1,18 @@
 name: Lint
 
+# Manual only. `sudo luarocks install luacheck` builds luacheck from source
+# on the runner and repeatedly hangs there -- ten minutes and more, against a
+# job whose other four steps are seconds of grep and bash. It is not worth
+# paying that on every push and pull request.
+#
+# Run it from the Actions tab ("Run workflow") when it is wanted. To bring it
+# back automatically, uncomment the three lines below; to make it fast first,
+# see the note on the install step.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
+  # push:
+  #   branches: [main]
+  # pull_request:
 
 jobs:
   lint:
@@ -11,6 +20,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # This is the slow step, and the reason the triggers above are off.
+      # `luarocks install` compiles luacheck and its dependencies on the
+      # runner. Ubuntu ships a prebuilt `lua-check` package that installs in
+      # seconds, which is worth trying before turning the triggers back on:
+      #
+      #   sudo apt-get update && sudo apt-get install -y lua-check
+      #
+      # Untested here, which is why it is a note rather than the code.
       - name: Install luacheck
         run: |
           sudo apt-get update
