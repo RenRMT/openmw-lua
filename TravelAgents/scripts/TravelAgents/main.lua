@@ -734,6 +734,12 @@ local function onBook(data)
     -- Asked for rather than done here: the player's own script is the only
     -- context allowed to write their dynamic stats.
     player:sendEvent(events.RESTORE, { rests = quote.rests })
+    -- Said out loud for anyone who cares. See events.lua.
+    player:sendEvent(events.ARRIVED, {
+        class = operator.class,
+        place = quote.arrival and quote.arrival.name,
+        hours = quote.hours,
+    })
     player:sendEvent(events.BOOKED, answer)
 end
 

@@ -194,8 +194,12 @@ end
 --
 -- The frame is an l10n message rather than a concatenation here, so the line
 -- break and the order of the two halves are a translator's to change.
-local function framed(flavor)
-    local place = placeName()
+--
+-- `place` may be given by whoever knew better. A travel mod knows the name
+-- of the stop it sold; all this can see is the cell landed in, which for an
+-- interior is the building rather than the town.
+local function framed(flavor, place)
+    place = place or placeName()
     local key = place and 'arrival' or 'arrivalUnplaced'
     local ok, text = pcall(l10n, key, { place = place, flavor = flavor })
     if ok and text and text ~= key then
@@ -263,6 +267,26 @@ local function onUiModeChanged(data)
     end
 end
 
+--- Say something about a journey that has just ended.
+--
+-- The one path both routes take: the vanilla ticket window below, and any
+-- travel mod that announces itself. Disarms on the way through, so a journey
+-- spotted twice is still only spoken about once.
+local function announce(group, place)
+    armedGroup, armedUntil = nil, nil
+    if group == nil then
+        return
+    end
+    local text = lineFor(group) or lineFor(GENERIC)
+    if text == nil then
+        out('no line for %s and none generic either', group)
+        return
+    end
+    out('arrived by %s', group)
+    pendingText = framed(text, place)
+    showAt = core.getRealTime() + SETTLE
+end
+
 --- Somewhere else, suddenly. Travel is not the only way that happens, which
 -- is what the arming is for.
 local function arrived()
@@ -275,22 +299,18 @@ local function arrived()
         return
     end
 
-    local group = armedGroup
-    armedGroup, armedUntil = nil, nil
-    local text = lineFor(group) or lineFor(GENERIC)
-    if text == nil then
-        out('no line for %s and none generic either', group)
-        return
-    end
-    out('arrived by %s', group)
-    pendingText = framed(text)
-    showAt = core.getRealTime() + SETTLE
+    announce(armedGroup)
 end
 
 local function onUpdate()
     local cell = self.cell
     local here = cell and cell.id or nil
-    if here ~= lastCell then
+    if lastCell == nil then
+        -- First frame: note where we are without calling it an arrival.
+        -- Nothing can be armed this early in practice, but a cell change
+        -- from "unknown" is not a journey and should not read as one.
+        lastCell = here
+    elseif here ~= lastCell then
         lastCell = here
         arrived()
     end
@@ -302,11 +322,42 @@ local function onUpdate()
     end
 end
 
+--------------------------------------------------------------------------
+-- Adapters
+--------------------------------------------------------------------------
+--
+-- A travel mod that sells journeys through its own window never opens the
+-- vanilla ticket one, so nothing above sees them. Any that announces an
+-- arrival can be handled here.
+--
+-- These adapt, they do not depend. A handler for an event that is never sent
+-- costs nothing and is never called; nothing is required, no interface is
+-- asked for, no load order is implied, and the mod behaves identically when
+-- the other one is not installed. All that is shared is the name of an
+-- event and the meaning of two of its fields.
+
+--- TravelAgents (optional). Sends the operator's class id rather than its
+-- own vehicle vocabulary, so it maps onto a group here with no translation,
+-- and the stop's name, which beats the cell we would otherwise land on.
+local function onTravelAgentsArrived(data)
+    if data == nil then
+        return
+    end
+    local group = GENERIC
+    if type(data.class) == 'string' and data.class ~= '' then
+        group = string.lower(data.class)
+    end
+    local place = type(data.place) == 'string' and data.place ~= '' and data.place or nil
+    out('TravelAgents arrived: class %s at %s', tostring(data.class), tostring(place))
+    announce(group, place)
+end
+
 return {
     engineHandlers = {
         onUpdate = onUpdate,
     },
     eventHandlers = {
         UiModeChanged = onUiModeChanged,
+        TravelAgentsArrived = onTravelAgentsArrived,
     },
 }

@@ -67,6 +67,23 @@ The mod follows vanilla rather than inventing its own rules:
 A journey that rides anything at all counts as a rest, even if a guild guide
 carries the last leg.
 
+## Telling other mods about a journey
+
+Arriving is silent — the window has already said where, how long and what it
+costs. So that a mod with something more interesting to say can hear about it,
+a completed journey sends the player an event:
+
+```lua
+TravelAgentsArrived = {
+    class = 'caravaner',    -- the operator's class id, as the content files spell it
+    place = 'Ald-ruhn',     -- the stop, which is a better name than the cell's
+    hours = 3.2,            -- 0 for a guild guide, who arrives at the hour they left
+}
+```
+
+The class rather than this mod's own vehicle id, so a listener needs to know
+nothing about how vehicles are filed here. Nothing in this mod listens for it.
+
 ## Compatibility
 
 Should work out of the box with mods that add travel providers.

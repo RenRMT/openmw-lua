@@ -38,3 +38,23 @@ what they drive.
 
 `arrival` and `arrivalUnplaced` are the frame around each line. The line
 break and the order of the two halves live there, not in the script.
+
+## Other travel mods
+
+Journeys sold through a mod's own window never open the vanilla ticket one,
+so they are invisible to the ordinary detection. Any mod that announces an
+arrival is handled in the *Adapters* section of the script — **TravelAgents**
+is, and needs nothing configuring.
+
+This adapts, it does not depend. Nothing is required, no interface is asked
+for and no load order is implied; a handler for an event that is never sent
+is simply never called, and the mod behaves identically on its own.
+
+To announce a journey from your own mod, send the player:
+
+```lua
+player:sendEvent('TravelAgentsArrived', {
+    class = 'shipmaster',   -- the operator's class id, as the content files spell it
+    place = 'Ebonheart',    -- optional; the cell arrived in is used otherwise
+})
+```
