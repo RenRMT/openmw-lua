@@ -239,6 +239,27 @@ local function cellFromHint(hint)
     return nil
 end
 
+--- A cell, in the shape the hint tables use.
+--
+-- Grid for an exterior and a name for an interior, matching cellFromHint's
+-- two lookups, so a hint the walk learns is spelled exactly like one the
+-- shipped table ships.
+local function hintFor(cell)
+    if cell == nil then
+        return nil
+    end
+    if cell.isExterior then
+        if type(cell.gridX) == 'number' and type(cell.gridY) == 'number' then
+            return { x = cell.gridX, y = cell.gridY }
+        end
+        return nil
+    end
+    if type(cell.name) == 'string' and cell.name ~= '' then
+        return { name = cell.name }
+    end
+    return nil
+end
+
 --- Look for the operators the shipped table places, in the cells it names.
 --
 -- Everything the table accounts for is found by opening one cell each --
@@ -262,12 +283,15 @@ end
 --
 -- @param wanted id -> record, every record that offers travel
 -- @param into the operator list to add to
+-- @param learned id -> hint list, what an earlier walk found. Consulted
+--   before the shipped table, because it was measured on this load order and
+--   the shipped table was measured on somebody else's.
 -- @return the ids still unaccounted for, and how many cells were opened
-local function collectHinted(wanted, into)
+local function collectHinted(wanted, into, learned)
     local unaccounted = {}
     local opened = 0
     for id, record in pairs(wanted) do
-        local hints = knownCells[id]
+        local hints = learned[id] or knownCells[id]
         if hints == nil then
             unaccounted[id] = record
         else
@@ -323,12 +347,15 @@ end
 
 -- @param opts optional:
 --   ignoreHints = true  search every cell even for operators the table places
+--   learned = <table>   id -> hint list an earlier walk found, tried before
+--     the shipped table
 --   report = <table>    filled in with what the scan actually did. The two
 --     paths through here cost wildly different amounts and produce the same
 --     graph, so without this the only way to tell which one ran is to time it
 --     and do arithmetic.
 function M.operatorScan(opts)
     local ignoreHints = opts and opts.ignoreHints
+    local learned = (opts and opts.learned) or {}
     local report = (opts and opts.report) or {}
     report.ignoredHints = ignoreHints and true or false
     return coroutine.create(function(deadline)
@@ -358,7 +385,7 @@ function M.operatorScan(opts)
         -- walk below never runs.
         local missing, opened = wanted, 0
         if not ignoreHints then
-            missing, opened = collectHinted(wanted, operators)
+            missing, opened = collectHinted(wanted, operators, learned)
         end
         report.hinted = opened
         checkpoint('hinted', opened)
@@ -388,6 +415,12 @@ function M.operatorScan(opts)
             return operators
         end
 
+        -- Where the walk finds the operators it had to go looking for. Only
+        -- those: everything the tables already place was never searched for,
+        -- so this stays a list of corrections rather than a second copy of
+        -- data/operators.lua.
+        local discovered = {}
+
         local cells = world.cells
         local cellCount = #cells
         for index = 1, cellCount do
@@ -397,11 +430,17 @@ function M.operatorScan(opts)
                 if ok and objects then
                     for _, object in ipairs(objects) do
                         local id = object.recordId
-                        local record = type(id) == 'string' and missing[string.lower(id)]
+                        local key = type(id) == 'string' and string.lower(id) or nil
+                        local record = key and missing[key]
                         if record then
                             local operator = operatorFrom(record, object, cell)
                             if operator then
                                 operators[#operators + 1] = operator
+                            end
+                            local hint = hintFor(cell)
+                            if hint then
+                                discovered[key] = discovered[key] or {}
+                                discovered[key][#discovered[key] + 1] = hint
                             end
                         end
                     end
@@ -412,6 +451,7 @@ function M.operatorScan(opts)
             checkpoint('cells', index, cellCount)
         end
         report.walked = cellCount
+        report.learned = discovered
         report.operators = #operators
         return operators
     end)

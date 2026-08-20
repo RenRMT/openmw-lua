@@ -103,6 +103,89 @@ local function searchEverything()
     return ok and value == true
 end
 
+--------------------------------------------------------------------------
+-- What the walk learned last time
+--------------------------------------------------------------------------
+--
+-- data/operators.lua is generated from one load order and shipped to every
+-- other. A patch that moves a single travel NPC -- Province: Cyrodiil's
+-- Titus Corilex stands in Vvardenfell's Ebonheart until a Tamriel Rebuilt
+-- patch moves him to Old Ebonheart's docks -- makes one entry wrong, and one
+-- wrong entry sends the scan round all ten thousand cells. Every load.
+--
+-- So when the walk does run, it remembers where it found the operators the
+-- tables could not place, and those are tried first next time. A stale table
+-- then costs one slow load rather than all of them, and the shipped file
+-- goes back to being a seed rather than an authority.
+--
+-- The walk only ever looks for what the tables could not place, so normally
+-- this holds those few corrections and nothing else -- and nothing at all on
+-- a load order the shipped table already fits. Ticking "search every cell"
+-- makes the walk look for everybody, and then it learns everybody: about 155
+-- entries, some kilobytes, and a table measured on the load order actually
+-- installed rather than on the one the file was generated from. That is a
+-- fair thing for that setting to leave behind.
+--
+-- Persistent, which in OpenMW means global_storage.bin in the user's
+-- directory -- not the save file. Nothing here grows a savegame.
+local LEARNED = 'TravelAgentsLearned'
+
+local function learnedSection()
+    local ok, section = pcall(storage.globalSection, LEARNED)
+    if not ok or section == nil then
+        return nil
+    end
+    -- Without this the section lives only as long as the session, and the
+    -- walk would re-learn the same corrections on every load.
+    pcall(section.setLifeTime, section, storage.LIFE_TIME.Persistent)
+    return section
+end
+
+--- Hints an earlier walk found, id -> list of { x, y } or { name }.
+local function learnedHints()
+    local section = learnedSection()
+    if section == nil then
+        return {}
+    end
+    local ok, value = pcall(section.get, section, 'places')
+    if not ok or type(value) ~= 'table' then
+        return {}
+    end
+    -- Copied out rather than used in place: storage hands back values that
+    -- are read-only, and collectHinted only ever reads them, but the merge
+    -- below has to build something writable anyway.
+    local hints = {}
+    for id, places in pairs(value) do
+        local copied = {}
+        for _, place in ipairs(places) do
+            copied[#copied + 1] = { x = place.x, y = place.y, name = place.name }
+        end
+        hints[id] = copied
+    end
+    return hints
+end
+
+--- Fold what this walk found into what earlier ones did.
+local function rememberHints(found)
+    if type(found) ~= 'table' or next(found) == nil then
+        return
+    end
+    local section = learnedSection()
+    if section == nil then
+        return
+    end
+    local merged = learnedHints()
+    local added = 0
+    for id, places in pairs(found) do
+        merged[id] = places
+        added = added + 1
+    end
+    if pcall(section.set, section, 'places', merged) then
+        out('remembered where %d operator(s) the tables could not place actually '
+            .. 'stand; the next load opens their cell instead of walking', added)
+    end
+end
+
 -- The cell walk, part-done. nil either before it starts or once it has
 -- finished and `cached` holds the answer.
 local scan = nil
@@ -135,6 +218,7 @@ local lastDone, lastTotal = 0, nil
 local assembleSeconds = 0
 
 local function assemble(operators)
+    rememberHints(scanReport.learned)
     local started = core.getRealTime()
     local built = graph.build(operators)
     graph.link(built, walk.links(interiorStops(built), adapter.doorsFor))
@@ -159,7 +243,11 @@ local function advance(budget)
             ignoreHints = searchEverything()
         end
         scanReport = {}
-        scan = adapter.operatorScan({ ignoreHints = ignoreHints, report = scanReport })
+        scan = adapter.operatorScan({
+            ignoreHints = ignoreHints,
+            learned = learnedHints(),
+            report = scanReport,
+        })
         scanStarted = core.getRealTime()
     end
     local sliceStarted = core.getRealTime()
