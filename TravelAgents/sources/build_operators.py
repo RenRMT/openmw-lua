@@ -55,9 +55,11 @@ DEFAULT_CONTENT = [
     r"D:\Steam\steamapps\common\Morrowind\Data Files\Tribunal.esm",
     r"D:\Steam\steamapps\common\Morrowind\Data Files\Bloodmoon.esm",
     r"D:/Morrowind mods/02 resources/Tamriel_Data_25.05/00 Data Files/Tamriel_Data.esm",
+    # In load order. Later files win, so this list is not a set of content --
+    # it is a sequence, and getting it wrong silently changes the answer.
     str(MODS / "Tamriel Rebuilt 25.08.12-42145-25-08-12-1755040619/00 Core/TR_Mainland.esm"),
-    str(MODS / "Sky_Main-44921-25-05-1746468832/00 Core/Sky_Main.esm"),
     str(MODS / "Cyr_Main-44922-25-05a-1747259314/00 Core/Cyr_Main.esm"),
+    str(MODS / "Sky_Main-44921-25-05-1746468832/00 Core/Sky_Main.esm"),
 ]
 
 CELL_RE = re.compile(r"^Record: CELL")
