@@ -21,9 +21,14 @@ the full walk, so a stale entry costs speed and never correctness.
 
     python TravelAgents/sources/build_operators.py
 
-Add content files with --content. The defaults are the three vanilla files
-plus Tamriel Rebuilt, which is what this machine has; Province: Cyrodiil and
-Skyrim: Home of the Nords belong here too and need someone who has them.
+Add content files with --content, in load order: later files win, so a patch
+that moves an operator must come after the file that placed them.
+
+The defaults are meant to be the load order most people actually run rather
+than the smallest one that works. Province: Cyrodiil is played with Tamriel
+Rebuilt by most of the people who play it at all, and the patch between them
+moves at least one travel operator -- so the patch belongs in this list, and
+leaving it out costs every one of those players a full cell walk per load.
 
 Cells are recorded as grid coordinates for exteriors and as a name for
 interiors, because `world.getExteriorCell` and `world.getCellByName` take
@@ -146,6 +151,10 @@ def render(found: "OrderedDict[str, list]", files: list[pathlib.Path], cells: in
         "-- has never heard of, sends it back to walking every cell. A stale",
         "-- entry costs speed and cannot cost correctness.",
         "--",
+        "-- One entry per operator, from the last file below that places them --",
+        "-- a load order's own rule. A patch that moves someone supersedes the",
+        "-- file that put them where they were.",
+        "--",
         "-- Exteriors are grid coordinates and interiors are cell names, because",
         "-- world.getExteriorCell and world.getCellByName take exactly those.",
         "--",
@@ -186,14 +195,34 @@ def main() -> int:
     wanted = travel_record_ids(args.esmtool, files)
     print("%d record(s) offer travel" % len(wanted))
 
+    # Later files win, because that is what a load order does. A patch that
+    # moves an operator -- Province: Cyrodiil puts Titus Corilex on Vvardenfell
+    # and the Tamriel Rebuilt patch moves him to Old Ebonheart's docks -- must
+    # replace the earlier placement, not add to it. Accumulating both would
+    # give him two hints, and the mod reads a hint list as "standing in all of
+    # these", so he would fail the check and cost a full walk on every load.
+    #
+    # Within one file placements do accumulate: a record genuinely placed
+    # twice by the same file is standing in two cells, and both are real.
     found: "OrderedDict[str, list]" = OrderedDict()
-    total = 0
+    moved: "OrderedDict[str, str]" = OrderedDict()
     for esm in files:
-        before = total
+        here: "OrderedDict[str, list]" = OrderedDict()
         for operator, cell in placements(args.esmtool, esm, wanted):
-            found.setdefault(operator, []).append(cell)
-            total += 1
-        print("  %-22s %d placement(s)" % (esm.name, total - before))
+            here.setdefault(operator, []).append(cell)
+
+        relocated = 0
+        for operator, cells in here.items():
+            if operator in found and found[operator] != cells:
+                moved[operator] = esm.name
+                relocated += 1
+            found[operator] = cells
+
+        note = ", %d moved from an earlier file" % relocated if relocated else ""
+        print("  %-22s %d placement(s)%s"
+              % (esm.name, sum(len(c) for c in here.values()), note))
+
+    total = sum(len(cells) for cells in found.values())
 
     # A record that offers travel and is placed nowhere is still *accounted
     # for*: an empty list says "looked, stands nowhere". Leaving it out would
@@ -211,6 +240,9 @@ def main() -> int:
     if missing:
         print("not placed anywhere (the mod will not find these either): %s"
               % ", ".join(missing))
+    if moved:
+        print("moved by a later file: %s"
+              % ", ".join("%s (%s)" % (o, f) for o, f in sorted(moved.items())))
     return 0
 
 
