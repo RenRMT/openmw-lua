@@ -162,11 +162,20 @@ end
 -- some operators and silently lost others.
 --
 -- @param checkpoint called every so often, to give the frame back
--- @return the id-to-record map, and the record kinds worth walking cells for
+-- @return the id-to-record map, the record kinds worth walking cells for, and
+--   how many records were read
 local function offersTravel(checkpoint)
     local wanted = {}
     local kinds = {}
-    local since = 0
+    -- Counted across both kinds up front so the progress line has a
+    -- denominator, rather than reporting NPCs and creatures as two runs
+    -- that each restart at one.
+    local total = 0
+    for _, kind in ipairs(RECORD_KINDS) do
+        total = total + #kind.records
+    end
+
+    local read, since = 0, 0
     for _, kind in ipairs(RECORD_KINDS) do
         local any = false
         for index = 1, #kind.records do
@@ -178,10 +187,11 @@ local function offersTravel(checkpoint)
             end
             -- Not every record: reading the clock is itself a call, and
             -- there are more records here than cells to walk afterwards.
+            read = read + 1
             since = since + 1
             if since >= config.SCAN_RECORDS_PER_CHECK then
                 since = 0
-                checkpoint('records', since)
+                checkpoint('records', read, total)
             end
         end
         -- Asking every cell for its creatures when no creature record in the
@@ -193,7 +203,7 @@ local function offersTravel(checkpoint)
             kinds[#kinds + 1] = kind
         end
     end
-    return wanted, kinds
+    return wanted, kinds, read
 end
 
 --- The cell walk, as a coroutine that gives the frame back.
@@ -305,8 +315,8 @@ function M.operatorScan(opts)
             end
         end
 
-        local wanted, kinds = offersTravel(checkpoint)
-        checkpoint('records', 0)
+        local wanted, kinds, read = offersTravel(checkpoint)
+        checkpoint('records', read, read)
 
         -- The shipped table first: one cell per operator rather than all of
         -- them. On a load order it covers this is the whole scan, and the
