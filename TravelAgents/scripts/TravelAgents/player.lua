@@ -20,7 +20,6 @@ local restore = require('scripts.TravelAgents.restore')
 local L10N = 'TravelAgents'
 local PAGE = 'TravelAgents'
 local GROUP = 'SettingsPlayerTravelAgents'
-local ROUTING = 'SettingsPlayerTravelAgentsRouting'
 local FARES = 'SettingsPlayerTravelAgentsFares'
 local TRIGGER = 'TravelAgentsPlanner'
 
@@ -144,34 +143,6 @@ I.Settings.registerGroup {
     },
 }
 
--- What a change is worth avoiding, in game units of detour.
-I.Settings.registerGroup {
-    key = ROUTING,
-    page = PAGE,
-    l10n = L10N,
-    name = 'routingGroup',
-    description = 'routingGroupDescription',
-    permanentStorage = true,
-    settings = {
-        {
-            key = 'transferPenalty',
-            name = 'transferPenalty',
-            description = 'transferPenaltyDescription',
-            renderer = 'number',
-            default = config.TRANSFER_PENALTY,
-            argument = { integer = true, min = 0, max = 100000 },
-        },
-        {
-            key = 'modeChangePenalty',
-            name = 'modeChangePenalty',
-            description = 'modeChangePenaltyDescription',
-            renderer = 'number',
-            default = config.MODE_CHANGE_PENALTY,
-            argument = { integer = true, min = 0, max = 100000 },
-        },
-    },
-}
-
 -- What the convenience is worth in gold.
 I.Settings.registerGroup {
     key = FARES,
@@ -209,13 +180,15 @@ local function fraction(percent)
 end
 
 --- Everything the player has set that the global script needs in order to
--- answer: what the planner should avoid, and what the counter should charge.
+-- answer: what the counter should charge.
+--
+-- The routing penalties are not here. They are tie-breakers between two
+-- routes of near-equal cost, which is a thing the shipped network almost
+-- never offers -- config.lua keeps them, and carries what measuring them
+-- found.
 local function preferences()
-    local routing = storage.playerSection(ROUTING)
     local fares = storage.playerSection(FARES)
     return {
-        transferPenalty = routing:get('transferPenalty'),
-        modeChangePenalty = routing:get('modeChangePenalty'),
         legSurcharge = fraction(fares:get('legSurcharge')),
         modeChangeSurcharge = fraction(fares:get('modeChangeSurcharge')),
     }
@@ -286,12 +259,46 @@ local function line()
     return { template = I.MWUI.templates.horizontalLine }
 end
 
+--- Where each character of a UTF-8 string starts.
+--
+-- Names come out of the content files, and on a localised install they are
+-- multi-byte: `#name` counts bytes, so a twelve-character Russian name reads
+-- as twenty-four, gets cut to fit a column it already fitted, and is cut in
+-- the middle of a character. Lua 5.1 has no utf8 library and a continuation
+-- byte is the only thing that has to be spotted -- everything else begins
+-- one character.
+local function characterStarts(text)
+    local starts = {}
+    for index = 1, #text do
+        local byte = string.byte(text, index)
+        if byte < 128 or byte >= 192 then
+            starts[#starts + 1] = index
+        end
+    end
+    return starts
+end
+
 --- Names are as long as the game made them; the column is not.
 local function fit(name, width)
-    if #name <= width then
+    local starts = characterStarts(name)
+    if #starts <= width then
         return name
     end
-    return string.sub(name, 1, width - 3) .. '...'
+    -- Three of the columns go to the ellipsis.
+    local cut = starts[math.max(width - 3, 1) + 1]
+    if cut == nil then
+        return name
+    end
+    return string.sub(name, 1, cut - 1) .. '...'
+end
+
+--- Pad to a column counted in characters, for the same reason.
+local function pad(text, width)
+    local short = width - #characterStarts(text)
+    if short <= 0 then
+        return text
+    end
+    return text .. string.rep(' ', short)
 end
 
 --- Shut the planner, leaving the conversation as it was.
@@ -383,8 +390,8 @@ end
 local function stopRow(stop)
     local marker = (selected == stop.key) and '> ' or '  '
     local price = stop.fare > 0 and tostring(stop.fare) or '-'
-    local label = string.format('%s%-' .. config.NAME_COLUMN .. 's %5s',
-        marker, fit(stop.name, config.NAME_COLUMN), price)
+    local label = string.format('%s%s %5s', marker,
+        pad(fit(stop.name, config.NAME_COLUMN), config.NAME_COLUMN), price)
     return row(label, function() pick(stop.key) end)
 end
 
@@ -399,10 +406,7 @@ local function bucketLabel(bucket)
     return l10n('tabChanges', { changes = bucket })
 end
 
---- One tab per number of changes, in rows that wrap.
---
--- Flex does not wrap, so the row is chunked by hand rather than trusting the
--- buttons to fit across the window.
+--- One tab per number of changes a journey needs, fewest first.
 local function tabRow()
     local order, counts = tabsInPlan()
     if #order < 2 then
@@ -435,31 +439,19 @@ local function tabRow()
     end
     buttons[#buttons + 1] = tabButton(nil, l10n('tabAll'), #current.stops)
 
-    local rows, strip = {}, {}
+    -- One row, and no wrapping. The tabs are the buckets this plan fills
+    -- plus *All*, and MAX_CHANGE_TAB collects everything past it -- five
+    -- buttons at the very most, which fit across the window.
+    local strip = {}
     for _, button in ipairs(buttons) do
         strip[#strip + 1] = button
         strip[#strip + 1] = { template = I.MWUI.templates.interval }
-        if #strip >= config.TABS_PER_ROW * 2 then
-            rows[#rows + 1] = {
-                type = ui.TYPE.Flex,
-                props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
-                content = ui.content(strip),
-            }
-            strip = {}
-        end
-    end
-    if #strip > 0 then
-        rows[#rows + 1] = {
-            type = ui.TYPE.Flex,
-            props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
-            content = ui.content(strip),
-        }
     end
 
     return {
         type = ui.TYPE.Flex,
-        props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
-        content = ui.content(rows),
+        props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
+        content = ui.content(strip),
     }
 end
 
@@ -716,6 +708,10 @@ end
 local function onPlan(data)
     if data == nil or data.origin == nil then
         current = nil
+        -- Whoever this is sells no journeys, so there is nothing to open.
+        -- Leaving the flag armed would spring the window open on the next
+        -- plan that does arrive, which nobody asked for.
+        openWhenReady = false
         return
     end
     -- A plan already in hand means this is the same conversation resumed

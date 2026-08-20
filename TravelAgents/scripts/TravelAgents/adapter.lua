@@ -162,11 +162,20 @@ end
 -- some operators and silently lost others.
 --
 -- @param checkpoint called every so often, to give the frame back
--- @return the id-to-record map, and the record kinds worth walking cells for
+-- @return the id-to-record map, the record kinds worth walking cells for, and
+--   how many records were read
 local function offersTravel(checkpoint)
     local wanted = {}
     local kinds = {}
-    local since = 0
+    -- Counted across both kinds up front so the progress line has a
+    -- denominator, rather than reporting NPCs and creatures as two runs
+    -- that each restart at one.
+    local total = 0
+    for _, kind in ipairs(RECORD_KINDS) do
+        total = total + #kind.records
+    end
+
+    local read, since = 0, 0
     for _, kind in ipairs(RECORD_KINDS) do
         local any = false
         for index = 1, #kind.records do
@@ -178,10 +187,11 @@ local function offersTravel(checkpoint)
             end
             -- Not every record: reading the clock is itself a call, and
             -- there are more records here than cells to walk afterwards.
+            read = read + 1
             since = since + 1
             if since >= config.SCAN_RECORDS_PER_CHECK then
                 since = 0
-                checkpoint('records', since)
+                checkpoint('records', read, total)
             end
         end
         -- Asking every cell for its creatures when no creature record in the
@@ -193,7 +203,7 @@ local function offersTravel(checkpoint)
             kinds[#kinds + 1] = kind
         end
     end
-    return wanted, kinds
+    return wanted, kinds, read
 end
 
 --- The cell walk, as a coroutine that gives the frame back.
@@ -229,6 +239,27 @@ local function cellFromHint(hint)
     return nil
 end
 
+--- A cell, in the shape the hint tables use.
+--
+-- Grid for an exterior and a name for an interior, matching cellFromHint's
+-- two lookups, so a hint the walk learns is spelled exactly like one the
+-- shipped table ships.
+local function hintFor(cell)
+    if cell == nil then
+        return nil
+    end
+    if cell.isExterior then
+        if type(cell.gridX) == 'number' and type(cell.gridY) == 'number' then
+            return { x = cell.gridX, y = cell.gridY }
+        end
+        return nil
+    end
+    if type(cell.name) == 'string' and cell.name ~= '' then
+        return { name = cell.name }
+    end
+    return nil
+end
+
 --- Look for the operators the shipped table places, in the cells it names.
 --
 -- Everything the table accounts for is found by opening one cell each --
@@ -239,17 +270,28 @@ end
 -- for them resolves *and* they are standing in it. A hint that points at a
 -- cell this game does not have, or at a cell they have since been moved out
 -- of, sends them to the full walk -- which is what keeps a stale table a
--- cost in speed rather than in missing boats. An empty hint list is an
--- answer in itself: offers travel, stands nowhere, do not go looking.
+-- cost in speed rather than in missing boats.
+--
+-- With one exception, and it is the only one. An empty hint list means the
+-- record offers travel and the reference load order places it in no cell at
+-- all, so nothing is looked for and nothing is handed back. Were those sent
+-- to the full walk instead, every load would tour ten thousand cells after
+-- four NPCs who stand nowhere, which is the whole cost this table exists to
+-- avoid. The price is that a mod which *does* place one of them is not
+-- noticed: M.standNowhere names them, main.lua says so once when the graph
+-- is ready, and the full-search setting finds them.
 --
 -- @param wanted id -> record, every record that offers travel
 -- @param into the operator list to add to
+-- @param learned id -> hint list, what an earlier walk found. Consulted
+--   before the shipped table, because it was measured on this load order and
+--   the shipped table was measured on somebody else's.
 -- @return the ids still unaccounted for, and how many cells were opened
-local function collectHinted(wanted, into)
+local function collectHinted(wanted, into, learned)
     local unaccounted = {}
     local opened = 0
     for id, record in pairs(wanted) do
-        local hints = knownCells[id]
+        local hints = learned[id] or knownCells[id]
         if hints == nil then
             unaccounted[id] = record
         else
@@ -287,10 +329,35 @@ local function collectHinted(wanted, into)
     return unaccounted, opened
 end
 
--- @param opts optional { ignoreHints = true } to search every cell even for
---   operators data/operators.lua accounts for
+--- The records the shipped table says are placed in no cell at all.
+--
+-- Skipped by the hinted pass by design, and so the one way the table can
+-- cost a missing operator rather than only time. Named so that a load order
+-- which places one of them has something to go on.
+function M.standNowhere()
+    local ids = {}
+    for id, hints in pairs(knownCells) do
+        if #hints == 0 then
+            ids[#ids + 1] = id
+        end
+    end
+    table.sort(ids)
+    return ids
+end
+
+-- @param opts optional:
+--   ignoreHints = true  search every cell even for operators the table places
+--   learned = <table>   id -> hint list an earlier walk found, tried before
+--     the shipped table
+--   report = <table>    filled in with what the scan actually did. The two
+--     paths through here cost wildly different amounts and produce the same
+--     graph, so without this the only way to tell which one ran is to time it
+--     and do arithmetic.
 function M.operatorScan(opts)
     local ignoreHints = opts and opts.ignoreHints
+    local learned = (opts and opts.learned) or {}
+    local report = (opts and opts.report) or {}
+    report.ignoredHints = ignoreHints and true or false
     return coroutine.create(function(deadline)
         local operators = {}
 
@@ -305,16 +372,22 @@ function M.operatorScan(opts)
             end
         end
 
-        local wanted, kinds = offersTravel(checkpoint)
-        checkpoint('records', 0)
+        local wanted, kinds, read = offersTravel(checkpoint)
+        report.records = read
+        report.offerTravel = 0
+        for _ in pairs(wanted) do
+            report.offerTravel = report.offerTravel + 1
+        end
+        checkpoint('records', read, read)
 
         -- The shipped table first: one cell per operator rather than all of
         -- them. On a load order it covers this is the whole scan, and the
         -- walk below never runs.
         local missing, opened = wanted, 0
         if not ignoreHints then
-            missing, opened = collectHinted(wanted, operators)
+            missing, opened = collectHinted(wanted, operators, learned)
         end
+        report.hinted = opened
         checkpoint('hinted', opened)
 
         -- Anything the table did not account for has to be looked for the
@@ -324,9 +397,29 @@ function M.operatorScan(opts)
         for _ in pairs(missing) do
             searching = searching + 1
         end
+        report.unaccounted = searching
+        -- Named, not just counted. One stale entry sends the scan round every
+        -- cell, so which entry it is is the whole of what has to be fixed.
+        -- Not when the table was ignored -- then every record is "missing" by
+        -- construction and the list is the load order.
+        if not ignoreHints then
+            report.unaccountedIds = {}
+            for id in pairs(missing) do
+                report.unaccountedIds[#report.unaccountedIds + 1] = id
+            end
+            table.sort(report.unaccountedIds)
+        end
+        report.walked = 0
         if searching == 0 then
+            report.operators = #operators
             return operators
         end
+
+        -- Where the walk finds the operators it had to go looking for. Only
+        -- those: everything the tables already place was never searched for,
+        -- so this stays a list of corrections rather than a second copy of
+        -- data/operators.lua.
+        local discovered = {}
 
         local cells = world.cells
         local cellCount = #cells
@@ -337,11 +430,17 @@ function M.operatorScan(opts)
                 if ok and objects then
                     for _, object in ipairs(objects) do
                         local id = object.recordId
-                        local record = type(id) == 'string' and missing[string.lower(id)]
+                        local key = type(id) == 'string' and string.lower(id) or nil
+                        local record = key and missing[key]
                         if record then
                             local operator = operatorFrom(record, object, cell)
                             if operator then
                                 operators[#operators + 1] = operator
+                            end
+                            local hint = hintFor(cell)
+                            if hint then
+                                discovered[key] = discovered[key] or {}
+                                discovered[key][#discovered[key] + 1] = hint
                             end
                         end
                     end
@@ -351,6 +450,9 @@ function M.operatorScan(opts)
             -- to be resumed mid-list, and the list is the engine's.
             checkpoint('cells', index, cellCount)
         end
+        report.walked = cellCount
+        report.learned = discovered
+        report.operators = #operators
         return operators
     end)
 end

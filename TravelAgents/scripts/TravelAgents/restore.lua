@@ -6,6 +6,10 @@
 -- 'openmw.self'" from the setter, which is a runtime error and not a
 -- load-time one, so it ships happily and fails on arrival.
 --
+-- Its own file rather than a few lines inside player.lua, because player.lua
+-- requires openmw.self, openmw.ui and openmw.input and so cannot be loaded
+-- headless. This can, which is the whole of why it has a test.
+--
 -- PLAYER context (or the traveller's own local script).
 
 local types = require('openmw.types')

@@ -12,7 +12,6 @@ local storage = require('openmw.storage')
 local I = require('openmw.interfaces')
 
 local adapter = require('scripts.TravelAgents.adapter')
-local book = require('scripts.TravelAgents.book')
 local config = require('scripts.TravelAgents.config')
 local events = require('scripts.TravelAgents.events')
 local money = require('scripts.TravelAgents.money')
@@ -66,8 +65,14 @@ end
 -- from player.lua and this only attaches to it.
 local SETTINGS = 'SettingsGlobalTravelAgents'
 
-if I.Settings and I.Settings.registerGroup then
-    I.Settings.registerGroup {
+-- Behind a pcall because this runs at file scope: were an engine to refuse a
+-- group naming a page a *player* script registers, the raise would take the
+-- whole global script with it -- no graph, no booking, no interface. That
+-- combination is checked working (openmw-lua-notes.md, section 11), but a
+-- mod that loses a checkbox fails far better than one that does not load.
+local registered = I.Settings ~= nil and I.Settings.registerGroup ~= nil
+if registered then
+    registered = pcall(I.Settings.registerGroup, {
         key = SETTINGS,
         page = 'TravelAgents',
         l10n = 'TravelAgents',
@@ -83,7 +88,12 @@ if I.Settings and I.Settings.registerGroup then
                 default = false,
             },
         },
-    }
+    })
+end
+
+if not registered then
+    out('the full-search setting is unavailable; the travel network will '
+        .. 'always be built from the shipped table of operator places')
 end
 
 local function searchEverything()
@@ -93,10 +103,102 @@ local function searchEverything()
     return ok and value == true
 end
 
+--------------------------------------------------------------------------
+-- What the walk learned last time
+--------------------------------------------------------------------------
+--
+-- data/operators.lua is generated from one load order and shipped to every
+-- other. A patch that moves a single travel NPC -- Province: Cyrodiil's
+-- Titus Corilex stands in Vvardenfell's Ebonheart until a Tamriel Rebuilt
+-- patch moves him to Old Ebonheart's docks -- makes one entry wrong, and one
+-- wrong entry sends the scan round all ten thousand cells. Every load.
+--
+-- So when the walk does run, it remembers where it found the operators the
+-- tables could not place, and those are tried first next time. A stale table
+-- then costs one slow load rather than all of them, and the shipped file
+-- goes back to being a seed rather than an authority.
+--
+-- The walk only ever looks for what the tables could not place, so normally
+-- this holds those few corrections and nothing else -- and nothing at all on
+-- a load order the shipped table already fits. Ticking "search every cell"
+-- makes the walk look for everybody, and then it learns everybody: about 155
+-- entries, some kilobytes, and a table measured on the load order actually
+-- installed rather than on the one the file was generated from. That is a
+-- fair thing for that setting to leave behind.
+--
+-- Persistent, which in OpenMW means global_storage.bin in the user's
+-- directory -- not the save file. Nothing here grows a savegame.
+local LEARNED = 'TravelAgentsLearned'
+
+local function learnedSection()
+    local ok, section = pcall(storage.globalSection, LEARNED)
+    if not ok or section == nil then
+        return nil
+    end
+    -- Without this the section lives only as long as the session, and the
+    -- walk would re-learn the same corrections on every load.
+    pcall(section.setLifeTime, section, storage.LIFE_TIME.Persistent)
+    return section
+end
+
+--- Hints an earlier walk found, id -> list of { x, y } or { name }.
+local function learnedHints()
+    local section = learnedSection()
+    if section == nil then
+        return {}
+    end
+    local ok, value = pcall(section.get, section, 'places')
+    if not ok or type(value) ~= 'table' then
+        return {}
+    end
+    -- Copied out rather than used in place: storage hands back values that
+    -- are read-only, and collectHinted only ever reads them, but the merge
+    -- below has to build something writable anyway.
+    local hints = {}
+    for id, places in pairs(value) do
+        local copied = {}
+        for _, place in ipairs(places) do
+            copied[#copied + 1] = { x = place.x, y = place.y, name = place.name }
+        end
+        hints[id] = copied
+    end
+    return hints
+end
+
+--- Fold what this walk found into what earlier ones did.
+local function rememberHints(found)
+    if type(found) ~= 'table' or next(found) == nil then
+        return
+    end
+    local section = learnedSection()
+    if section == nil then
+        return
+    end
+    local merged = learnedHints()
+    local added = 0
+    for id, places in pairs(found) do
+        merged[id] = places
+        added = added + 1
+    end
+    if pcall(section.set, section, 'places', merged) then
+        out('remembered where %d operator(s) the tables could not place actually '
+            .. 'stand; the next load opens their cell instead of walking', added)
+    end
+end
+
 -- The cell walk, part-done. nil either before it starts or once it has
 -- finished and `cached` holds the answer.
 local scan = nil
 local scanStarted = nil
+-- What the scan did, filled in as it goes. The hinted path and the full walk
+-- build the same graph at wildly different cost, so without this the only way
+-- to tell which one ran is to time it and do arithmetic.
+local scanReport = {}
+-- Whether the next scan ignores the shipped table, settled once. The message
+-- announcing a rebuild and the scan that carries it out used to read the
+-- setting separately, which meant they could disagree and nothing would say
+-- so.
+local ignoreHints = nil
 
 -- Kept only to be logged. The whole point of slicing is that no single
 -- slice is long enough to see, and the only way to know whether that held
@@ -116,6 +218,7 @@ local lastDone, lastTotal = 0, nil
 local assembleSeconds = 0
 
 local function assemble(operators)
+    rememberHints(scanReport.learned)
     local started = core.getRealTime()
     local built = graph.build(operators)
     graph.link(built, walk.links(interiorStops(built), adapter.doorsFor))
@@ -136,7 +239,15 @@ local function advance(budget)
         return cached
     end
     if scan == nil then
-        scan = adapter.operatorScan({ ignoreHints = searchEverything() })
+        if ignoreHints == nil then
+            ignoreHints = searchEverything()
+        end
+        scanReport = {}
+        scan = adapter.operatorScan({
+            ignoreHints = ignoreHints,
+            learned = learnedHints(),
+            report = scanReport,
+        })
         scanStarted = core.getRealTime()
     end
     local sliceStarted = core.getRealTime()
@@ -196,14 +307,96 @@ local function current()
     return advance(nil)
 end
 
+--- Which of the two ways of finding operators actually ran, and what it cost.
+--
+-- The hinted path opens one cell per known operator; the full walk opens
+-- every cell in the load order. They produce the same graph and differ by two
+-- orders of magnitude in cost, and the log used to distinguish them not at
+-- all -- so a setting that silently failed to take effect looked exactly like
+-- one that worked.
+local function reportScan()
+    local r = scanReport
+    out('  %d record(s) read, %d offer travel, %d operator(s) placed',
+        r.records or 0, r.offerTravel or 0, r.operators or 0)
+    if r.ignoredHints then
+        out('  every cell searched by setting: %d cell(s) walked', r.walked or 0)
+    elseif (r.walked or 0) > 0 then
+        out('  shipped table: %d cell(s) opened, %d record(s) unaccounted, '
+            .. 'then %d cell(s) walked', r.hinted or 0, r.unaccounted or 0, r.walked)
+        -- The walk this falls back to costs seconds on a cold load, so the
+        -- entry that caused it is worth naming rather than counting.
+        local ids = r.unaccountedIds or {}
+        if #ids > 0 then
+            local named, more = ids, ''
+            if #ids > 12 then
+                named, more = {}, string.format(' and %d more', #ids - 12)
+                for index = 1, 12 do
+                    named[index] = ids[index]
+                end
+            end
+            out('  not where data/operators.lua says, so every cell was walked: %s%s',
+                table.concat(named, ', '), more)
+        end
+    else
+        out('  shipped table: %d cell(s) opened, all accounted for, no walk needed',
+            r.hinted or 0)
+    end
+end
+
+--- The two things a built graph cannot tell you on its own.
+--
+-- Both are silent by nature: an operator the shipped table skips is one
+-- nobody looks for, and a record standing in two cells resolves to one of
+-- them without complaint. Said once per build so that a missing boat has
+-- somewhere to start.
+local function reportBlindSpots(g)
+    if #g.duplicated > 0 then
+        out('%d operator record(s) stand in more than one cell; the planner '
+            .. 'opens from one of them whichever is talked to: %s',
+            #g.duplicated, table.concat(g.duplicated, ', '))
+    end
+    if not searchEverything() then
+        local skipped = adapter.standNowhere()
+        if #skipped > 0 then
+            out('%d record(s) offer travel and are placed nowhere in the shipped '
+                .. 'data, so they were not looked for. Tick "Search every cell" '
+                .. 'if your load order places one: %s',
+                #skipped, table.concat(skipped, ', '))
+        end
+    end
+end
+
 --- Throw the graph away and build another, here and now.
--- Asked for from the console, where waiting for it is the point.
+--
+-- Asked for from the console, where waiting for it is the point. Unsliced:
+-- advance(nil) passes no deadline, so nothing yields and the whole build
+-- happens between two frames -- which makes this the one way to measure what
+-- the build actually costs rather than how well the slicing hides it. The
+-- game freezes for exactly as long as the work takes, and the line below
+-- says how long that was.
+--
+-- It measures a WARM build, though: by the time a console command can be
+-- typed the cells are in cache, and the answer is some thirty times smaller
+-- than the first build after a load. See config.lua on BUILD_SLICE_SECONDS
+-- before drawing conclusions from it.
 local function rebuild()
     cached = nil
     scan = nil
+    ignoreHints = searchEverything()
     slices, longestSlice, lastReport = 0, 0, 0
     lastDone, lastTotal = 0, nil
-    return advance(nil)
+
+    local started = core.getRealTime()
+    local g = advance(nil)
+    local elapsed = core.getRealTime() - started
+    if g then
+        out('rebuilt in one go: %.3fs (%.3fs scanning, %.3fs assembling)',
+            elapsed, elapsed - assembleSeconds, assembleSeconds)
+        out('  %d stops, %d legs', g.stats.nodes, g.stats.edges)
+        reportScan()
+        reportBlindSpots(g)
+    end
+    return g
 end
 
 --- Throw the graph away and let it be built again in the background.
@@ -214,10 +407,13 @@ end
 local function rebuildInBackground()
     cached = nil
     scan = nil
+    -- Read once, here, and handed to the scan. The message below is then a
+    -- report of what will happen rather than a second guess at it.
+    ignoreHints = searchEverything()
     slices, longestSlice, lastReport = 0, 0, 0
     lastDone, lastTotal = 0, nil
     out('the travel network will be rebuilt%s',
-        searchEverything() and ', searching every cell' or '')
+        ignoreHints and ', searching every cell' or '')
 end
 
 -- Ticking the setting rebuilds, so it reads as an action rather than a
@@ -241,9 +437,9 @@ local function dump(opts)
     opts = opts or {}
     local g = current()
 
-    out('%d stops, %d legs (%d on foot), from %d operators (%d unplaced, %d excluded)',
+    out('%d stops, %d legs (%d on foot), from %d operators (%d unplaced, %d excluded, %d doubled)',
         g.stats.nodes, g.stats.edges, g.stats.walkLegs or 0,
-        g.stats.operators, g.stats.unplaced, g.stats.excluded)
+        g.stats.operators, g.stats.unplaced, g.stats.excluded, #g.duplicated)
 
     for _, key in ipairs(g.order) do
         local node = g.nodes[key]
@@ -355,6 +551,10 @@ local function dumpDestinations(fromKey)
 end
 
 --- The player's settings, in the shape route.lua takes.
+--
+-- Only the two surcharges: they price a journey and nothing else, so the
+-- route the planner finds no longer depends on anything the player can set.
+-- The routing penalties live in config.lua.
 local function preferencesFrom(data)
     local sent = data and data.preferences or {}
     local function positive(value)
@@ -365,13 +565,37 @@ local function preferencesFrom(data)
         return nil
     end
     return {
-        transferPenalty = positive(sent.transferPenalty),
-        modeChangePenalty = positive(sent.modeChangePenalty),
         legSurcharge = positive(sent.legSurcharge),
         modeChangeSurcharge = positive(sent.modeChangeSurcharge),
         -- Not a setting and not the player's to send.
         farePerUnit = adapter.travelRate(),
     }
+end
+
+--- The last plan built, and what it was built from.
+--
+-- A plan is a pure function of the graph, the stop it starts from and what
+-- the counter charges. The traveller's gold is not in it -- the window asks
+-- for that when it draws -- and the route stopped depending on any player
+-- setting when the routing penalties became constants.
+--
+-- One entry rather than a table of them, because a plan holds a row per
+-- reachable stop and keeping one per operator would pin a few hundred of
+-- those for the session. What actually repeats is a single conversation:
+-- reopened, or asked twice because the key was pressed before the first
+-- answer came back.
+local lastPlan, lastKey, lastGraph = nil, nil, nil
+
+local function planFor(g, originKey, options)
+    local key = string.format('%s|%s|%s|%s|%s', originKey,
+        tostring(options.legSurcharge), tostring(options.modeChangeSurcharge),
+        tostring(options.farePerUnit), tostring(options.limit))
+    -- Compared by identity, so a rebuilt graph throws its plan away without
+    -- anyone having to remember to.
+    if lastGraph ~= g or lastKey ~= key then
+        lastPlan, lastKey, lastGraph = plan.build(g, originKey, options), key, g
+    end
+    return lastPlan
 end
 
 --- Answer a player script asking where a conversation could take them.
@@ -388,11 +612,12 @@ local function onRequestPlan(data)
     end
     local options = preferencesFrom(data)
     options.limit = data.limit
-    local built = plan.build(g, operator.key, options)
-    if built then
-        built.operator = { name = operator.name, mode = operator.mode }
+    local built = planFor(g, operator.key, options)
+    if built == nil then
+        player:sendEvent(events.PLAN, {})
+        return
     end
-    player:sendEvent(events.PLAN, built or {})
+    player:sendEvent(events.PLAN, { origin = built.origin, stops = built.stops })
 end
 
 --- Every operator class in the load order, and whether the mod knows it.
@@ -461,6 +686,8 @@ local function warmUp()
         out('  %.2fs of play, %d slice(s), longest %.0fms, assembling %.0fms',
             core.getRealTime() - (scanStarted or 0), slices,
             longestSlice * 1000, assembleSeconds * 1000)
+        reportScan()
+        reportBlindSpots(g)
     end
 end
 
@@ -481,7 +708,7 @@ local function onBook(data)
     -- fare the window showed.
     local options = preferencesFrom(data)
     options.gold = money.held(player)
-    local quote = book.quote(g, operator.key, data.to, options)
+    local quote = route.quote(g, operator.key, data.to, options)
     local answer = {
         ok = quote.ok,
         reason = quote.reason,
@@ -525,7 +752,6 @@ return {
         destinations = function(fromKey, opts)
             return route.destinations(current(), fromKey, priced(opts))
         end,
-        transfersAt = function(key) return route.transfersAt(current(), key) end,
         dumpRoute = dumpRoute,
         dumpDestinations = dumpDestinations,
         dumpClasses = dumpClasses,

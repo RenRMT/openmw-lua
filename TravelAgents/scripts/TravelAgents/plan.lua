@@ -6,13 +6,15 @@ local route = require('scripts.TravelAgents.route')
 
 local M = {}
 
+-- A leg as the window needs it. `to` is what it draws -- the via line is
+-- the intermediate stops and nothing else -- and the label and the operator
+-- are what names a journey in a log or a test. The mode id, the near end and
+-- the distance are all the router's business and stay there; every field
+-- here is copied across a context boundary for each of a few hundred stops.
 local function legOf(graph, leg, modes)
     return {
-        mode = leg.mode,
         modeLabel = graphlib.modeLabel(leg.mode, modes),
-        from = graph.nodes[leg.from].name,
         to = graph.nodes[leg.to].name,
-        distance = leg.distance,
         operator = leg.operatorName or leg.operator,
     }
 end
@@ -67,25 +69,18 @@ function M.build(graph, originKey, opts)
                 -- The place is what the list calls it; the stop is where the
                 -- journey actually ends.
                 name = place.name,
-                -- Which networks this place is on. Reachable on foot rather
-                -- than met exactly here, so a stop the vehicles do not touch
-                -- but a short walk does (Caldera, Wolverine Hall) counts as
-                -- being on the network that gets you there.
-                servedBy = graphlib.modesWithinWalk(graph, stop.key),
                 arrival = stop.name,
+                -- The sort key, kept so the order the list is drawn in can
+                -- be checked against the order it was built in.
                 cost = stop.cost,
-                distance = stop.distance,
-                walked = stop.walked,
                 hours = stop.hours,
                 fare = stop.fare,
                 baseFare = stop.baseFare,
                 surcharge = stop.surcharge,
                 surchargePercent = stop.surchargePercent,
-                transfers = stop.transfers,
                 vehicleLegs = stop.vehicleLegs,
                 modeChanges = stop.modeChanges,
                 firstModeLabel = firstModeLabel,
-                modes = stop.modes,
                 legs = legs,
             }
         end
@@ -144,14 +139,6 @@ function M.summarise(stop)
         return 'journeySameVehicle', args
     end
     return 'journeyChanging', args
-end
-
---- One leg, as a line: what carries you, and where it leaves you.
-function M.describeLeg(leg)
-    if leg.mode == 'walk' then
-        return string.format('walk to %s', leg.to)
-    end
-    return string.format('%s to %s (%s)', leg.modeLabel, leg.to, leg.operator or '?')
 end
 
 return M

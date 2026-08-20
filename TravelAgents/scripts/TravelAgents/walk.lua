@@ -24,23 +24,24 @@ local function exitFrom(stop, doorsFor, maxHops)
         local here = queue[index]
         index = index + 1
         for _, door in ipairs(doorsFor(here.cellId) or {}) do
-            local walked = here.walked + distance(here.position, door.position)
+            -- A door the provider could not resolve costs that one door, not
+            -- every door behind it in the cell.
             local destination = door.dest
-            if destination == nil then -- a door the provider could not resolve
-                break
-            end
-            if not destination.isInterior then
-                if best == nil or walked < best.walked then
-                    best = { point = destination, walked = walked }
+            if destination ~= nil then
+                local walked = here.walked + distance(here.position, door.position)
+                if not destination.isInterior then
+                    if best == nil or walked < best.walked then
+                        best = { point = destination, walked = walked }
+                    end
+                elseif here.hops < maxHops and not visited[destination.cellId] then
+                    visited[destination.cellId] = true
+                    queue[#queue + 1] = {
+                        cellId = destination.cellId,
+                        position = destination.position,
+                        walked = walked,
+                        hops = here.hops + 1,
+                    }
                 end
-            elseif here.hops < maxHops and not visited[destination.cellId] then
-                visited[destination.cellId] = true
-                queue[#queue + 1] = {
-                    cellId = destination.cellId,
-                    position = destination.position,
-                    walked = walked,
-                    hops = here.hops + 1,
-                }
             end
         end
     end

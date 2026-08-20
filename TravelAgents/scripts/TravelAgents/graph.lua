@@ -5,7 +5,6 @@
 
 local config = require('scripts.TravelAgents.config')
 local modesData = require('scripts.TravelAgents.data.modes')
-local placesData = require('scripts.TravelAgents.data.places')
 
 local M = {}
 
@@ -15,6 +14,18 @@ end
 
 local function isBlank(text)
     return text == nil or text == ''
+end
+
+--- A set of modes as the sorted list every caller wants back.
+-- Sorted because a mode list is compared, concatenated and shown, and a
+-- pairs() order would make all three unstable.
+local function sorted(set)
+    local list = {}
+    for key in pairs(set) do
+        list[#list + 1] = key
+    end
+    table.sort(list)
+    return list
 end
 
 --- Horizontal distance. Merging ignores height on purpose.
@@ -46,7 +57,7 @@ end
 local function fallbackName(point)
     local where = ''
     if point.gridX and point.gridY then
-        local named = placesData.exteriors[string.format('%d,%d', point.gridX, point.gridY)]
+        local named = modesData.places[string.format('%d,%d', point.gridX, point.gridY)]
         if named then
             return named
         end
@@ -104,10 +115,10 @@ end
 -- A class nobody has declared becomes a mode of its own rather than joining
 -- a shared "unknown" bucket. Otherwise every modded vehicle in a load order
 -- collapses into one heap: a guar caravan, a river strider and a carriage
--- would be indistinguishable, and the planner would offer a single tab
--- holding all three. Deriving the mode from the class means a landmass mod
--- that invents a vehicle gets its own tab without anyone authoring an entry
--- for it. `unknown` is left for an operator with no class at all.
+-- would be indistinguishable, and a journey by any of them would read as
+-- "Unknown". Deriving the mode from the class means a landmass mod that
+-- invents a vehicle is named after it without anyone authoring an entry.
+-- `unknown` is left for an operator with no class at all.
 local function modeFor(operator, modes)
     local override = modes.overrides[lower(operator.id) or '']
     if override then
@@ -159,6 +170,8 @@ function M.build(operators, opts)
         order = {},
         edges = {},
         operators = {},
+        -- Record ids found standing in more than one cell. See below.
+        duplicated = {},
         mergeRadius = mergeRadius,
         stats = { operators = 0, excluded = 0, unplaced = 0, selfEdges = 0, edges = 0, nodes = 0 },
     }
@@ -222,7 +235,19 @@ function M.build(operators, opts)
         -- Which stop an operator stands at. The planner opens from the
         -- caravaner you are talking to, so it needs to get from that actor to
         -- their place in the network without measuring anything.
-        graph.operators[lower(operator.id) or operator.id] = {
+        --
+        -- One record standing in two cells is the case this cannot answer:
+        -- `stopOf` is asked by record id and both instances give the same
+        -- one, so the planner opens from whichever was found last whoever is
+        -- being talked to. Nothing shipped does it. Named rather than
+        -- overwritten in silence, so a load order that does has a thread to
+        -- pull.
+        local id = lower(operator.id) or operator.id
+        local standing = graph.operators[id]
+        if standing and standing.key ~= fromKey then
+            graph.duplicated[#graph.duplicated + 1] = operator.id
+        end
+        graph.operators[id] = {
             key = fromKey,
             name = operator.name,
             mode = mode,
@@ -339,12 +364,7 @@ function M.modesAt(graph, key)
     if not node then
         return {}
     end
-    local list = {}
-    for mode in pairs(node.modes) do
-        list[#list + 1] = mode
-    end
-    table.sort(list)
-    return list
+    return sorted(node.modes)
 end
 
 --- Can you change vehicle here?
@@ -385,12 +405,7 @@ function M.modesWithinWalk(graph, key)
             end
         end
     end
-    local list = {}
-    for mode in pairs(found) do
-        list[#list + 1] = mode
-    end
-    table.sort(list)
-    return list
+    return sorted(found)
 end
 
 --- Legs leaving a stop.
@@ -465,17 +480,11 @@ function M.interchanges(graph)
                 end
             end
 
-            local modeList = {}
-            for mode in pairs(modes) do
-                modeList[#modeList + 1] = mode
-            end
-            table.sort(modeList)
-
             found[#found + 1] = {
                 key = best,
                 name = graph.nodes[best].name,
                 stops = group,
-                modes = modeList,
+                modes = sorted(modes),
                 onFoot = not spot,
             }
         end

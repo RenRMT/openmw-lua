@@ -58,6 +58,15 @@ return {
         ['todd'] = true,
     },
 
+    -- Names for stops the game never named. Keyed by grid reference, which
+    -- is what an unnamed cell has instead of a name; a stop the game did
+    -- name is never looked up here.
+    places = {
+        -- The landing below Holamayan Monastery: the boat from Ebonheart puts
+        -- you on a beach in a cell nobody named.
+        ['19,-5'] = 'Holamayan',
+    },
+
     -- An operator whose class is not in the table still forms edges; it is the
     -- label that degrades, never the routing. A Tamriel Rebuilt caravaner is
     -- handled by class; an invented class shows up as this.
