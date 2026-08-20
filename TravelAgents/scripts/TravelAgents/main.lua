@@ -355,6 +355,10 @@ local function dumpDestinations(fromKey)
 end
 
 --- The player's settings, in the shape route.lua takes.
+--
+-- Only the two surcharges: they price a journey and nothing else, so the
+-- route the planner finds no longer depends on anything the player can set.
+-- The routing penalties live in config.lua.
 local function preferencesFrom(data)
     local sent = data and data.preferences or {}
     local function positive(value)
@@ -365,8 +369,6 @@ local function preferencesFrom(data)
         return nil
     end
     return {
-        transferPenalty = positive(sent.transferPenalty),
-        modeChangePenalty = positive(sent.modeChangePenalty),
         legSurcharge = positive(sent.legSurcharge),
         modeChangeSurcharge = positive(sent.modeChangeSurcharge),
         -- Not a setting and not the player's to send.

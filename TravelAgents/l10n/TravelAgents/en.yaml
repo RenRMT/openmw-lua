@@ -32,15 +32,6 @@ fullSearchDescription: |-
   half a minute in the background after each load, and can only find more
   services, never fewer. Turning it on rebuilds the network straight away.
 
-routingGroup: "Routing"
-routingGroupDescription: "What the planner will go out of its way to avoid. Distances in game units."
-
-transferPenalty: "Detour worth avoiding stop"
-transferPenaltyDescription: "How much of a detour is worth avoiding one extra leg."
-
-modeChangePenalty: "Detour worth avoiding change."
-modeChangePenaltyDescription: "Added on top when the change is from one kind of vehicle to another."
-
 faresGroup: "Fares"
 faresGroupDescription: "What booking a whole journey at one counter costs you extra."
 
@@ -48,7 +39,7 @@ legSurcharge: "Extra per leg (%)"
 legSurchargeDescription: "Added to the fare for every leg past the first."
 
 modeChangeSurcharge: "Extra per change (%)"
-modeChangeSurchargeDescription: "Added  to the fare for every additional mode of transport"
+modeChangeSurchargeDescription: "Added to the fare for every additional mode of transport."
 
 # --- the window ----------------------------------------------------------
 from: "From {place}"

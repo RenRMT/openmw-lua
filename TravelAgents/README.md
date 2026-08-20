@@ -45,9 +45,7 @@ Options → Scripts → Travel Agents.
 |---|---|
 | *Open planner* | The key. Nothing is bound until you bind one |
 | *Extra per leg (%)* | Convenience surcharge for every leg past the first |
-| *Extra per change of vehicle (%)* | Convenience surcharge when the journey changes transport |
-| *Detour worth avoiding stop* | How far out of your way is worth going to save one extra leg |
-| *Detour worth avoiding change* | The same, for changing between kinds of transport |
+| *Extra per change (%)* | Convenience surcharge when the journey changes transport |
 
 ## Setup
 

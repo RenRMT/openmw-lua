@@ -20,7 +20,6 @@ local restore = require('scripts.TravelAgents.restore')
 local L10N = 'TravelAgents'
 local PAGE = 'TravelAgents'
 local GROUP = 'SettingsPlayerTravelAgents'
-local ROUTING = 'SettingsPlayerTravelAgentsRouting'
 local FARES = 'SettingsPlayerTravelAgentsFares'
 local TRIGGER = 'TravelAgentsPlanner'
 
@@ -144,34 +143,6 @@ I.Settings.registerGroup {
     },
 }
 
--- What a change is worth avoiding, in game units of detour.
-I.Settings.registerGroup {
-    key = ROUTING,
-    page = PAGE,
-    l10n = L10N,
-    name = 'routingGroup',
-    description = 'routingGroupDescription',
-    permanentStorage = true,
-    settings = {
-        {
-            key = 'transferPenalty',
-            name = 'transferPenalty',
-            description = 'transferPenaltyDescription',
-            renderer = 'number',
-            default = config.TRANSFER_PENALTY,
-            argument = { integer = true, min = 0, max = 100000 },
-        },
-        {
-            key = 'modeChangePenalty',
-            name = 'modeChangePenalty',
-            description = 'modeChangePenaltyDescription',
-            renderer = 'number',
-            default = config.MODE_CHANGE_PENALTY,
-            argument = { integer = true, min = 0, max = 100000 },
-        },
-    },
-}
-
 -- What the convenience is worth in gold.
 I.Settings.registerGroup {
     key = FARES,
@@ -209,13 +180,15 @@ local function fraction(percent)
 end
 
 --- Everything the player has set that the global script needs in order to
--- answer: what the planner should avoid, and what the counter should charge.
+-- answer: what the counter should charge.
+--
+-- The routing penalties are not here. They are tie-breakers between two
+-- routes of near-equal cost, which is a thing the shipped network almost
+-- never offers -- config.lua keeps them, and carries what measuring them
+-- found.
 local function preferences()
-    local routing = storage.playerSection(ROUTING)
     local fares = storage.playerSection(FARES)
     return {
-        transferPenalty = routing:get('transferPenalty'),
-        modeChangePenalty = routing:get('modeChangePenalty'),
         legSurcharge = fraction(fares:get('legSurcharge')),
         modeChangeSurcharge = fraction(fares:get('modeChangeSurcharge')),
     }
