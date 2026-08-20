@@ -371,6 +371,17 @@ function M.operatorScan(opts)
             searching = searching + 1
         end
         report.unaccounted = searching
+        -- Named, not just counted. One stale entry sends the scan round every
+        -- cell, so which entry it is is the whole of what has to be fixed.
+        -- Not when the table was ignored -- then every record is "missing" by
+        -- construction and the list is the load order.
+        if not ignoreHints then
+            report.unaccountedIds = {}
+            for id in pairs(missing) do
+                report.unaccountedIds[#report.unaccountedIds + 1] = id
+            end
+            table.sort(report.unaccountedIds)
+        end
         report.walked = 0
         if searching == 0 then
             report.operators = #operators

@@ -235,6 +235,20 @@ local function reportScan()
     elseif (r.walked or 0) > 0 then
         out('  shipped table: %d cell(s) opened, %d record(s) unaccounted, '
             .. 'then %d cell(s) walked', r.hinted or 0, r.unaccounted or 0, r.walked)
+        -- The walk this falls back to costs seconds on a cold load, so the
+        -- entry that caused it is worth naming rather than counting.
+        local ids = r.unaccountedIds or {}
+        if #ids > 0 then
+            local named, more = ids, ''
+            if #ids > 12 then
+                named, more = {}, string.format(' and %d more', #ids - 12)
+                for index = 1, 12 do
+                    named[index] = ids[index]
+                end
+            end
+            out('  not where data/operators.lua says, so every cell was walked: %s%s',
+                table.concat(named, ', '), more)
+        end
     else
         out('  shipped table: %d cell(s) opened, all accounted for, no walk needed',
             r.hinted or 0)
@@ -272,6 +286,11 @@ end
 -- the build actually costs rather than how well the slicing hides it. The
 -- game freezes for exactly as long as the work takes, and the line below
 -- says how long that was.
+--
+-- It measures a WARM build, though: by the time a console command can be
+-- typed the cells are in cache, and the answer is some thirty times smaller
+-- than the first build after a load. See config.lua on BUILD_SLICE_SECONDS
+-- before drawing conclusions from it.
 local function rebuild()
     cached = nil
     scan = nil

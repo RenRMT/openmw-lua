@@ -62,20 +62,30 @@ return {
     -- mainland in it, so this trades a second or two of background work for
     -- never stalling.
     -- Real seconds of cell walking per frame. Measured rather than reasoned
-    -- about, on Morrowind + Tribunal + Bloodmoon + Tamriel Rebuilt:
+    -- about, on Morrowind + Tribunal + Bloodmoon + Tamriel Rebuilt.
     --
-    --   10,319 cells, 0.93ms each, so about 9.6s of work in total
-    --   onUpdate fires ~30 times a second, not the 60 first assumed
+    -- The number that matters is the COLD one -- the first build after the
+    -- game starts, when the cells have to come off disk. Re-measure it warm
+    -- and you will get an answer thirty times smaller and conclude the whole
+    -- of this is unnecessary. It is not. Both were measured on 2026-08-20,
+    -- same session, same 10,319 cells, thirteen seconds apart:
     --
-    -- which makes the wall-clock time simply the work divided by the share
-    -- of each second spent on it: 5ms a frame is 15% and took 64s; 10ms is
-    -- 30% and takes about 32.
+    --   cold, first build after load:  529 slices, ~5.3s of work, 14.6s wall
+    --   warm, rebuild() straight after:            ~0.16s of work
+    --
+    -- so about 0.51ms a cell cold against 0.016ms warm. onUpdate fires ~60
+    -- times a second, not the 30 once assumed.
+    --
+    -- 10ms a frame spread that 5.3s over 14.6s of play without a stutter --
+    -- longest slice 19ms. That is the budget doing its job.
     --
     -- This only bites when the walk actually runs. data/operators.lua says
     -- where the operators of the common load orders stand, and the scan
-    -- opens one cell each instead -- about 130, a tenth of a second, over
+    -- opens one cell each instead -- about 155, a tenth of a second, over
     -- before the first frame is done. The budget is for the load order that
-    -- adds a travel service nobody has tabulated.
+    -- adds a travel service nobody has tabulated -- and for a table gone
+    -- stale, since a single unaccounted record sends the scan round every
+    -- cell. The build log names it when that happens.
     BUILD_SLICE_SECONDS = 0.010,
 
     -- How often the build says how far it has got, in real seconds.
