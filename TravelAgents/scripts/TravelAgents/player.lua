@@ -372,10 +372,7 @@ local function bucketLabel(bucket)
     return l10n('tabChanges', { changes = bucket })
 end
 
---- One tab per number of changes, in rows that wrap.
---
--- Flex does not wrap, so the row is chunked by hand rather than trusting the
--- buttons to fit across the window.
+--- One tab per number of changes a journey needs, fewest first.
 local function tabRow()
     local order, counts = tabsInPlan()
     if #order < 2 then
@@ -408,31 +405,19 @@ local function tabRow()
     end
     buttons[#buttons + 1] = tabButton(nil, l10n('tabAll'), #current.stops)
 
-    local rows, strip = {}, {}
+    -- One row, and no wrapping. The tabs are the buckets this plan fills
+    -- plus *All*, and MAX_CHANGE_TAB collects everything past it -- five
+    -- buttons at the very most, which fit across the window.
+    local strip = {}
     for _, button in ipairs(buttons) do
         strip[#strip + 1] = button
         strip[#strip + 1] = { template = I.MWUI.templates.interval }
-        if #strip >= config.TABS_PER_ROW * 2 then
-            rows[#rows + 1] = {
-                type = ui.TYPE.Flex,
-                props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
-                content = ui.content(strip),
-            }
-            strip = {}
-        end
-    end
-    if #strip > 0 then
-        rows[#rows + 1] = {
-            type = ui.TYPE.Flex,
-            props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
-            content = ui.content(strip),
-        }
     end
 
     return {
         type = ui.TYPE.Flex,
-        props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
-        content = ui.content(rows),
+        props = { horizontal = true, arrange = ui.ALIGNMENT.Start },
+        content = ui.content(strip),
     }
 end
 

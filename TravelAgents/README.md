@@ -11,31 +11,29 @@ journey from here*).
 
 Press it and a window opens. **Both halves are the destination list** —
 everywhere you can get to, cheapest first, filling the left column and then the
-right. A `+` beside a fare means that journey changes vehicle on the way.
+right. Each row is a place and its fare.
 
 Under the list is a strip with everything about whichever destination you have
-picked: how many legs and changes, the places it goes **via**, the fare split
-into the base and the surcharge for the convenience, and the button to buy it.
+picked: what the journey asks of you, the places it goes **via**, the fare split
+into the base and the booking fee for the convenience, and the button to buy it.
+When the cheapest way into a town ends in a building rather than the street, the
+strip says where you actually get off.
 
-Above the list is a tab per **network** — silt striders, boats, guild guides,
-gondolas, and whatever a landmass mod adds. The window opens on the network of
-whoever you are talking to, so a silt strider driver shows you where their
-striders go before it shows you the rest of the continent. *All* drops the
-filter.
+Above the list is a tab per **number of changes of vehicle** — *Direct*, then
+*1 change*, *2 changes*, and *3+ changes* for anything beyond. *All* drops the
+filter. Only tabs with something in them appear, and the window opens on the
+fewest changes that gets you anywhere: standing in front of a driver, where you
+can get to without changing is usually the question being asked.
 
-A tab lists the places that network **serves**, not journeys made only by that
-vehicle: picking a Mages Guild off the guild guide tab while standing in Khuul
-still routes you by strider first. The right-hand pane always shows the actual
-legs, the fare and the time before you commit to anything.
-
-Stops no vehicle calls at — Caldera, Wolverine Hall — appear under the network
-you walk to them from, so nothing falls between the tabs.
+Stops no vehicle calls at — Caldera, Wolverine Hall — are reached by the walk
+from the guild hall beside them, so they appear in the list like anywhere else,
+with the walk as one of the legs.
 
 MWUI has no scrollbar, so a list longer than a page is **paged** rather than
 clipped: `< back` and `more >` appear under the columns when they are needed,
 and never in a vanilla-sized world. A page holds 36 places, which is more than
-vanilla has anywhere; the tabs are what keep a mainland-sized load order down
-to one or two pages.
+vanilla has anywhere; on a mainland-sized load order *Direct* is what keeps the
+first thing you see short, and *All* is where the paging shows up.
 
 ## Settings
 
@@ -73,17 +71,17 @@ carries the last leg.
 
 Should work out of the box with mods that add travel providers.
 
-**A vehicle the mod has never heard of still gets its own tab.** The network a
-route belongs to is taken from its operator's class, and a class nothing
-declares becomes a network named after itself rather than joining a shared
-"unknown" heap.
+**A vehicle the mod has never heard of is still named after itself.** What
+carries you on a leg is taken from its operator's class, and a class nothing
+declares becomes a mode named after itself rather than joining a shared
+"unknown" heap — so a modded vehicle reads as what it is in the journey
+strip, not as *Unknown*.
 
 In practice the large landmass mods lean on vanilla's classes: checked against a
 real load order, only **river striders** carry a class of their own
 (`Therionaut`), which `data/modes.lua` names. Guar caravans and carriages are
 authored as ordinary caravaners, so nothing in the game's data distinguishes
-them from a silt strider and they share the overland tab — the right grouping
-for choosing how to travel, even if the label is vanilla's word for it.
+them from a silt strider and they read as one.
 
 To see what your own load order actually contains:
 

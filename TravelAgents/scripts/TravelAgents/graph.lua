@@ -104,10 +104,10 @@ end
 -- A class nobody has declared becomes a mode of its own rather than joining
 -- a shared "unknown" bucket. Otherwise every modded vehicle in a load order
 -- collapses into one heap: a guar caravan, a river strider and a carriage
--- would be indistinguishable, and the planner would offer a single tab
--- holding all three. Deriving the mode from the class means a landmass mod
--- that invents a vehicle gets its own tab without anyone authoring an entry
--- for it. `unknown` is left for an operator with no class at all.
+-- would be indistinguishable, and a journey by any of them would read as
+-- "Unknown". Deriving the mode from the class means a landmass mod that
+-- invents a vehicle is named after it without anyone authoring an entry.
+-- `unknown` is left for an operator with no class at all.
 local function modeFor(operator, modes)
     local override = modes.overrides[lower(operator.id) or '']
     if override then

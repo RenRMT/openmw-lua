@@ -69,11 +69,6 @@ function M.build(graph, originKey, opts)
                 -- The place is what the list calls it; the stop is where the
                 -- journey actually ends.
                 name = place.name,
-                -- Which networks this place is on. Reachable on foot rather
-                -- than met exactly here, so a stop the vehicles do not touch
-                -- but a short walk does (Caldera, Wolverine Hall) counts as
-                -- being on the network that gets you there.
-                servedBy = graphlib.modesWithinWalk(graph, stop.key),
                 arrival = stop.name,
                 -- The sort key, kept so the order the list is drawn in can
                 -- be checked against the order it was built in.

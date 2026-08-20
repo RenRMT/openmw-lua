@@ -49,10 +49,6 @@ return {
     -- rather than merely unseen.
     ROWS_PER_COLUMN = 18,
 
-    -- Tabs across the window before the row wraps. Flex does not wrap on
-    -- its own.
-    TABS_PER_ROW = 5,
-
     -- The last tab in the row, which collects every journey needing this
     -- many changes of vehicle or more. Past it the count stops telling the
     -- player anything they would choose differently on.
