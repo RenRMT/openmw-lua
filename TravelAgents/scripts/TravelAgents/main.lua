@@ -376,6 +376,32 @@ local function preferencesFrom(data)
     }
 end
 
+--- The last plan built, and what it was built from.
+--
+-- A plan is a pure function of the graph, the stop it starts from and what
+-- the counter charges. The traveller's gold is not in it -- the window asks
+-- for that when it draws -- and the route stopped depending on any player
+-- setting when the routing penalties became constants.
+--
+-- One entry rather than a table of them, because a plan holds a row per
+-- reachable stop and keeping one per operator would pin a few hundred of
+-- those for the session. What actually repeats is a single conversation:
+-- reopened, or asked twice because the key was pressed before the first
+-- answer came back.
+local lastPlan, lastKey, lastGraph = nil, nil, nil
+
+local function planFor(g, originKey, options)
+    local key = string.format('%s|%s|%s|%s|%s', originKey,
+        tostring(options.legSurcharge), tostring(options.modeChangeSurcharge),
+        tostring(options.farePerUnit), tostring(options.limit))
+    -- Compared by identity, so a rebuilt graph throws its plan away without
+    -- anyone having to remember to.
+    if lastGraph ~= g or lastKey ~= key then
+        lastPlan, lastKey, lastGraph = plan.build(g, originKey, options), key, g
+    end
+    return lastPlan
+end
+
 --- Answer a player script asking where a conversation could take them.
 local function onRequestPlan(data)
     local player = data and data.player
@@ -390,11 +416,18 @@ local function onRequestPlan(data)
     end
     local options = preferencesFrom(data)
     options.limit = data.limit
-    local built = plan.build(g, operator.key, options)
-    if built then
-        built.operator = { name = operator.name, mode = operator.mode }
+    local built = planFor(g, operator.key, options)
+    if built == nil then
+        player:sendEvent(events.PLAN, {})
+        return
     end
-    player:sendEvent(events.PLAN, built or {})
+    -- Named on the way out rather than in the held plan: two operators can
+    -- stand at one stop and share a plan, but not a name.
+    player:sendEvent(events.PLAN, {
+        origin = built.origin,
+        stops = built.stops,
+        operator = { name = operator.name, mode = operator.mode },
+    })
 end
 
 --- Every operator class in the load order, and whether the mod knows it.
