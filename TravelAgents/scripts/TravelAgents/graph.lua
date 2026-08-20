@@ -251,6 +251,11 @@ function M.build(operators, opts)
             key = fromKey,
             name = operator.name,
             mode = mode,
+            -- Kept raw alongside the mode it was resolved to. `mode` is this
+            -- mod's own vocabulary; the class is what the content files say,
+            -- and it is the only part of this another mod can read without
+            -- learning ours.
+            class = operator.class,
         }
         for _, destination in ipairs(operator.destinations) do
             local toKey = destination._key
