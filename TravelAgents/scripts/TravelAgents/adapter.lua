@@ -8,6 +8,7 @@ local util = require('openmw.util')
 local world = require('openmw.world')
 
 local config = require('scripts.TravelAgents.config')
+local knownCells = require('scripts.TravelAgents.data.operators')
 
 local M = {}
 
@@ -209,7 +210,87 @@ end
 --
 -- @return a coroutine. Resume with a deadline; it yields until it is done,
 --   and returns the operator list.
-function M.operatorScan()
+--- The cell a hint names, or nil if the game has no such cell.
+--
+-- Grid coordinates for exteriors and a name for interiors, which is what the
+-- two engine lookups take -- so nothing here has to know how a cell id is
+-- spelled, and a hint written against a different version of a mod fails by
+-- returning nothing rather than by resolving to the wrong place.
+local function cellFromHint(hint)
+    local ok, cell
+    if hint.x and hint.y then
+        ok, cell = pcall(world.getExteriorCell, hint.x, hint.y)
+    elseif hint.name then
+        ok, cell = pcall(world.getCellByName, hint.name)
+    end
+    if ok then
+        return cell
+    end
+    return nil
+end
+
+--- Look for the operators the shipped table places, in the cells it names.
+--
+-- Everything the table accounts for is found by opening one cell each --
+-- about 130 rather than the whole load order. Anything it does not account
+-- for is handed back, and the caller walks every cell looking for those.
+--
+-- An operator counts as accounted for only when every cell the table names
+-- for them resolves *and* they are standing in it. A hint that points at a
+-- cell this game does not have, or at a cell they have since been moved out
+-- of, sends them to the full walk -- which is what keeps a stale table a
+-- cost in speed rather than in missing boats. An empty hint list is an
+-- answer in itself: offers travel, stands nowhere, do not go looking.
+--
+-- @param wanted id -> record, every record that offers travel
+-- @param into the operator list to add to
+-- @return the ids still unaccounted for, and how many cells were opened
+local function collectHinted(wanted, into)
+    local unaccounted = {}
+    local opened = 0
+    for id, record in pairs(wanted) do
+        local hints = knownCells[id]
+        if hints == nil then
+            unaccounted[id] = record
+        else
+            local accounted = true
+            for _, hint in ipairs(hints) do
+                local cell = cellFromHint(hint)
+                if cell == nil then
+                    accounted = false
+                else
+                    opened = opened + 1
+                    local standingHere = false
+                    for _, kind in ipairs(RECORD_KINDS) do
+                        local ok, objects = pcall(cell.getAll, cell, kind.objectType)
+                        for _, object in ipairs((ok and objects) or {}) do
+                            if type(object.recordId) == 'string'
+                                and string.lower(object.recordId) == id then
+                                local operator = operatorFrom(record, object, cell)
+                                if operator then
+                                    into[#into + 1] = operator
+                                end
+                                standingHere = true
+                            end
+                        end
+                    end
+                    if not standingHere then
+                        accounted = false
+                    end
+                end
+            end
+            if not accounted then
+                unaccounted[id] = record
+            end
+        end
+    end
+    return unaccounted, opened
+end
+
+-- @param opts optional { ignoreHints = true } to search every cell even for
+--   operators data/operators.lua accounts for
+function M.operatorScan(opts)
+    local ignoreHints = opts and opts.ignoreHints
     return coroutine.create(function(deadline)
         local operators = {}
 
@@ -225,6 +306,27 @@ function M.operatorScan()
         end
 
         local wanted, kinds = offersTravel(checkpoint)
+        checkpoint('records', 0)
+
+        -- The shipped table first: one cell per operator rather than all of
+        -- them. On a load order it covers this is the whole scan, and the
+        -- walk below never runs.
+        local missing, opened = wanted, 0
+        if not ignoreHints then
+            missing, opened = collectHinted(wanted, operators)
+        end
+        checkpoint('hinted', opened)
+
+        -- Anything the table did not account for has to be looked for the
+        -- long way. Only those: a single unknown operator should cost one
+        -- walk, not re-find everybody.
+        local searching = 0
+        for _ in pairs(missing) do
+            searching = searching + 1
+        end
+        if searching == 0 then
+            return operators
+        end
 
         local cells = world.cells
         local cellCount = #cells
@@ -235,7 +337,7 @@ function M.operatorScan()
                 if ok and objects then
                     for _, object in ipairs(objects) do
                         local id = object.recordId
-                        local record = type(id) == 'string' and wanted[string.lower(id)]
+                        local record = type(id) == 'string' and missing[string.lower(id)]
                         if record then
                             local operator = operatorFrom(record, object, cell)
                             if operator then
@@ -255,8 +357,8 @@ end
 
 --- The same scan, run to completion here and now.
 -- Kept for anything that has to have an answer before it can return one.
-function M.operators()
-    local scan = M.operatorScan()
+function M.operators(opts)
+    local scan = M.operatorScan(opts)
     while true do
         local ok, result = coroutine.resume(scan)
         if not ok then

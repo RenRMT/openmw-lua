@@ -20,6 +20,18 @@ plannerKeyDescription: "Plan your travels."
 plannerController: "Open planner (controller)"
 plannerControllerDescription: "Plan your travels."
 
+# The escape hatch, for a load order with a travel service the shipped
+# table of operator locations has never heard of.
+searchGroup: "Travel network"
+searchGroupDescription: "How the mod finds the travel services in your load order."
+fullSearch: "Search every cell"
+fullSearchDescription: |-
+  Normally the mod looks up the known travel services directly, which is
+  near-instant, and falls back to searching every cell for any it does not
+  recognise. Turn this on to search every cell regardless. It takes about
+  half a minute in the background after each load, and can only find more
+  services, never fewer. Turning it on rebuilds the network straight away.
+
 routingGroup: "Routing"
 routingGroupDescription: "What the planner will go out of its way to avoid. Distances in game units."
 

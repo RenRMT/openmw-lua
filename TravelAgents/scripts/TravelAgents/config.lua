@@ -56,11 +56,22 @@ return {
     -- rate; the whole walk is nine thousand cells on a load order with a
     -- mainland in it, so this trades a second or two of background work for
     -- never stalling.
-    -- Raised from 2ms after a real run: at 2ms the build had not finished
-    -- after 90 seconds of play, so whatever the per-frame rate turns out to
-    -- be, it was far below the arithmetic. 5ms is under a third of a frame
-    -- at 60fps and four times the work per frame.
-    BUILD_SLICE_SECONDS = 0.005,
+    -- Real seconds of cell walking per frame. Measured rather than reasoned
+    -- about, on Morrowind + Tribunal + Bloodmoon + Tamriel Rebuilt:
+    --
+    --   10,319 cells, 0.93ms each, so about 9.6s of work in total
+    --   onUpdate fires ~30 times a second, not the 60 first assumed
+    --
+    -- which makes the wall-clock time simply the work divided by the share
+    -- of each second spent on it: 5ms a frame is 15% and took 64s; 10ms is
+    -- 30% and takes about 32.
+    --
+    -- This only bites when the walk actually runs. data/operators.lua says
+    -- where the operators of the common load orders stand, and the scan
+    -- opens one cell each instead -- about 130, a tenth of a second, over
+    -- before the first frame is done. The budget is for the load order that
+    -- adds a travel service nobody has tabulated.
+    BUILD_SLICE_SECONDS = 0.010,
 
     -- How often the build says how far it has got, in real seconds.
     BUILD_REPORT_SECONDS = 5,
