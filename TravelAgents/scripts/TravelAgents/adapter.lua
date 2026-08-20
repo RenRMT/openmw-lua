@@ -321,10 +321,16 @@ function M.standNowhere()
     return ids
 end
 
--- @param opts optional { ignoreHints = true } to search every cell even for
---   operators data/operators.lua accounts for
+-- @param opts optional:
+--   ignoreHints = true  search every cell even for operators the table places
+--   report = <table>    filled in with what the scan actually did. The two
+--     paths through here cost wildly different amounts and produce the same
+--     graph, so without this the only way to tell which one ran is to time it
+--     and do arithmetic.
 function M.operatorScan(opts)
     local ignoreHints = opts and opts.ignoreHints
+    local report = (opts and opts.report) or {}
+    report.ignoredHints = ignoreHints and true or false
     return coroutine.create(function(deadline)
         local operators = {}
 
@@ -340,6 +346,11 @@ function M.operatorScan(opts)
         end
 
         local wanted, kinds, read = offersTravel(checkpoint)
+        report.records = read
+        report.offerTravel = 0
+        for _ in pairs(wanted) do
+            report.offerTravel = report.offerTravel + 1
+        end
         checkpoint('records', read, read)
 
         -- The shipped table first: one cell per operator rather than all of
@@ -349,6 +360,7 @@ function M.operatorScan(opts)
         if not ignoreHints then
             missing, opened = collectHinted(wanted, operators)
         end
+        report.hinted = opened
         checkpoint('hinted', opened)
 
         -- Anything the table did not account for has to be looked for the
@@ -358,7 +370,10 @@ function M.operatorScan(opts)
         for _ in pairs(missing) do
             searching = searching + 1
         end
+        report.unaccounted = searching
+        report.walked = 0
         if searching == 0 then
+            report.operators = #operators
             return operators
         end
 
@@ -385,6 +400,8 @@ function M.operatorScan(opts)
             -- to be resumed mid-list, and the list is the engine's.
             checkpoint('cells', index, cellCount)
         end
+        report.walked = cellCount
+        report.operators = #operators
         return operators
     end)
 end

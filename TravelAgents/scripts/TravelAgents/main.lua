@@ -65,8 +65,14 @@ end
 -- from player.lua and this only attaches to it.
 local SETTINGS = 'SettingsGlobalTravelAgents'
 
-if I.Settings and I.Settings.registerGroup then
-    I.Settings.registerGroup {
+-- Behind a pcall because this runs at file scope: were an engine to refuse a
+-- group naming a page a *player* script registers, the raise would take the
+-- whole global script with it -- no graph, no booking, no interface. That
+-- combination is checked working (openmw-lua-notes.md, section 11), but a
+-- mod that loses a checkbox fails far better than one that does not load.
+local registered = I.Settings ~= nil and I.Settings.registerGroup ~= nil
+if registered then
+    registered = pcall(I.Settings.registerGroup, {
         key = SETTINGS,
         page = 'TravelAgents',
         l10n = 'TravelAgents',
@@ -82,7 +88,12 @@ if I.Settings and I.Settings.registerGroup then
                 default = false,
             },
         },
-    }
+    })
+end
+
+if not registered then
+    out('the full-search setting is unavailable; the travel network will '
+        .. 'always be built from the shipped table of operator places')
 end
 
 local function searchEverything()
@@ -96,6 +107,15 @@ end
 -- finished and `cached` holds the answer.
 local scan = nil
 local scanStarted = nil
+-- What the scan did, filled in as it goes. The hinted path and the full walk
+-- build the same graph at wildly different cost, so without this the only way
+-- to tell which one ran is to time it and do arithmetic.
+local scanReport = {}
+-- Whether the next scan ignores the shipped table, settled once. The message
+-- announcing a rebuild and the scan that carries it out used to read the
+-- setting separately, which meant they could disagree and nothing would say
+-- so.
+local ignoreHints = nil
 
 -- Kept only to be logged. The whole point of slicing is that no single
 -- slice is long enough to see, and the only way to know whether that held
@@ -135,7 +155,11 @@ local function advance(budget)
         return cached
     end
     if scan == nil then
-        scan = adapter.operatorScan({ ignoreHints = searchEverything() })
+        if ignoreHints == nil then
+            ignoreHints = searchEverything()
+        end
+        scanReport = {}
+        scan = adapter.operatorScan({ ignoreHints = ignoreHints, report = scanReport })
         scanStarted = core.getRealTime()
     end
     local sliceStarted = core.getRealTime()
@@ -200,6 +224,7 @@ end
 local function rebuild()
     cached = nil
     scan = nil
+    ignoreHints = searchEverything()
     slices, longestSlice, lastReport = 0, 0, 0
     lastDone, lastTotal = 0, nil
     return advance(nil)
@@ -213,10 +238,13 @@ end
 local function rebuildInBackground()
     cached = nil
     scan = nil
+    -- Read once, here, and handed to the scan. The message below is then a
+    -- report of what will happen rather than a second guess at it.
+    ignoreHints = searchEverything()
     slices, longestSlice, lastReport = 0, 0, 0
     lastDone, lastTotal = 0, nil
     out('the travel network will be rebuilt%s',
-        searchEverything() and ', searching every cell' or '')
+        ignoreHints and ', searching every cell' or '')
 end
 
 -- Ticking the setting rebuilds, so it reads as an action rather than a
@@ -464,6 +492,28 @@ local function dumpClasses()
     out('--------------------------------------------------------')
 end
 
+--- Which of the two ways of finding operators actually ran, and what it cost.
+--
+-- The hinted path opens one cell per known operator; the full walk opens
+-- every cell in the load order. They produce the same graph and differ by two
+-- orders of magnitude in cost, and the log used to distinguish them not at
+-- all -- so a setting that silently failed to take effect looked exactly like
+-- one that worked.
+local function reportScan()
+    local r = scanReport
+    out('  %d record(s) read, %d offer travel, %d operator(s) placed',
+        r.records or 0, r.offerTravel or 0, r.operators or 0)
+    if r.ignoredHints then
+        out('  every cell searched by setting: %d cell(s) walked', r.walked or 0)
+    elseif (r.walked or 0) > 0 then
+        out('  shipped table: %d cell(s) opened, %d record(s) unaccounted, '
+            .. 'then %d cell(s) walked', r.hinted or 0, r.unaccounted or 0, r.walked)
+    else
+        out('  shipped table: %d cell(s) opened, all accounted for, no walk needed',
+            r.hinted or 0)
+    end
+end
+
 --- The two things a built graph cannot tell you on its own.
 --
 -- Both are silent by nature: an operator the shipped table skips is one
@@ -512,6 +562,7 @@ local function warmUp()
         out('  %.2fs of play, %d slice(s), longest %.0fms, assembling %.0fms',
             core.getRealTime() - (scanStarted or 0), slices,
             longestSlice * 1000, assembleSeconds * 1000)
+        reportScan()
         reportBlindSpots(g)
     end
 end
