@@ -3,10 +3,8 @@
 Arrive by silt strider, boat, gondola, river strider or guild guide and a
 short line describes the trip you did not have to sit through.
 
-```
 > You arrive in Balmora.
 > The driver spent the journey counting gold from the morning's fares.
-```
 
 ## Setup
 
