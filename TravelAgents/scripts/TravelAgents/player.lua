@@ -708,6 +708,10 @@ end
 local function onPlan(data)
     if data == nil or data.origin == nil then
         current = nil
+        -- Whoever this is sells no journeys, so there is nothing to open.
+        -- Leaving the flag armed would spring the window open on the next
+        -- plan that does arrive, which nobody asked for.
+        openWhenReady = false
         return
     end
     -- A plan already in hand means this is the same conversation resumed
