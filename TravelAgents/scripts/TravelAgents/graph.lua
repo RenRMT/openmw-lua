@@ -159,6 +159,8 @@ function M.build(operators, opts)
         order = {},
         edges = {},
         operators = {},
+        -- Record ids found standing in more than one cell. See below.
+        duplicated = {},
         mergeRadius = mergeRadius,
         stats = { operators = 0, excluded = 0, unplaced = 0, selfEdges = 0, edges = 0, nodes = 0 },
     }
@@ -222,7 +224,19 @@ function M.build(operators, opts)
         -- Which stop an operator stands at. The planner opens from the
         -- caravaner you are talking to, so it needs to get from that actor to
         -- their place in the network without measuring anything.
-        graph.operators[lower(operator.id) or operator.id] = {
+        --
+        -- One record standing in two cells is the case this cannot answer:
+        -- `stopOf` is asked by record id and both instances give the same
+        -- one, so the planner opens from whichever was found last whoever is
+        -- being talked to. Nothing shipped does it. Named rather than
+        -- overwritten in silence, so a load order that does has a thread to
+        -- pull.
+        local id = lower(operator.id) or operator.id
+        local standing = graph.operators[id]
+        if standing and standing.key ~= fromKey then
+            graph.duplicated[#graph.duplicated + 1] = operator.id
+        end
+        graph.operators[id] = {
             key = fromKey,
             name = operator.name,
             mode = mode,

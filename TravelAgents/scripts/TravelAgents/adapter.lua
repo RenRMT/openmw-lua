@@ -249,8 +249,16 @@ end
 -- for them resolves *and* they are standing in it. A hint that points at a
 -- cell this game does not have, or at a cell they have since been moved out
 -- of, sends them to the full walk -- which is what keeps a stale table a
--- cost in speed rather than in missing boats. An empty hint list is an
--- answer in itself: offers travel, stands nowhere, do not go looking.
+-- cost in speed rather than in missing boats.
+--
+-- With one exception, and it is the only one. An empty hint list means the
+-- record offers travel and the reference load order places it in no cell at
+-- all, so nothing is looked for and nothing is handed back. Were those sent
+-- to the full walk instead, every load would tour ten thousand cells after
+-- four NPCs who stand nowhere, which is the whole cost this table exists to
+-- avoid. The price is that a mod which *does* place one of them is not
+-- noticed: M.standNowhere names them, main.lua says so once when the graph
+-- is ready, and the full-search setting finds them.
 --
 -- @param wanted id -> record, every record that offers travel
 -- @param into the operator list to add to
@@ -295,6 +303,22 @@ local function collectHinted(wanted, into)
         end
     end
     return unaccounted, opened
+end
+
+--- The records the shipped table says are placed in no cell at all.
+--
+-- Skipped by the hinted pass by design, and so the one way the table can
+-- cost a missing operator rather than only time. Named so that a load order
+-- which places one of them has something to go on.
+function M.standNowhere()
+    local ids = {}
+    for id, hints in pairs(knownCells) do
+        if #hints == 0 then
+            ids[#ids + 1] = id
+        end
+    end
+    table.sort(ids)
+    return ids
 end
 
 -- @param opts optional { ignoreHints = true } to search every cell even for

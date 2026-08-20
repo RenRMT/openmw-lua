@@ -241,9 +241,9 @@ local function dump(opts)
     opts = opts or {}
     local g = current()
 
-    out('%d stops, %d legs (%d on foot), from %d operators (%d unplaced, %d excluded)',
+    out('%d stops, %d legs (%d on foot), from %d operators (%d unplaced, %d excluded, %d doubled)',
         g.stats.nodes, g.stats.edges, g.stats.walkLegs or 0,
-        g.stats.operators, g.stats.unplaced, g.stats.excluded)
+        g.stats.operators, g.stats.unplaced, g.stats.excluded, #g.duplicated)
 
     for _, key in ipairs(g.order) do
         local node = g.nodes[key]
@@ -465,6 +465,29 @@ local function dumpClasses()
     out('--------------------------------------------------------')
 end
 
+--- The two things a built graph cannot tell you on its own.
+--
+-- Both are silent by nature: an operator the shipped table skips is one
+-- nobody looks for, and a record standing in two cells resolves to one of
+-- them without complaint. Said once per build so that a missing boat has
+-- somewhere to start.
+local function reportBlindSpots(g)
+    if #g.duplicated > 0 then
+        out('%d operator record(s) stand in more than one cell; the planner '
+            .. 'opens from one of them whichever is talked to: %s',
+            #g.duplicated, table.concat(g.duplicated, ', '))
+    end
+    if not searchEverything() then
+        local skipped = adapter.standNowhere()
+        if #skipped > 0 then
+            out('%d record(s) offer travel and are placed nowhere in the shipped '
+                .. 'data, so they were not looked for. Tick "Search every cell" '
+                .. 'if your load order places one: %s',
+                #skipped, table.concat(skipped, ', '))
+        end
+    end
+end
+
 --- Build the graph before anything asks for it.
 --
 -- The build walks every cell in the load order looking for placed
@@ -490,6 +513,7 @@ local function warmUp()
         out('  %.2fs of play, %d slice(s), longest %.0fms, assembling %.0fms',
             core.getRealTime() - (scanStarted or 0), slices,
             longestSlice * 1000, assembleSeconds * 1000)
+        reportBlindSpots(g)
     end
 end
 
