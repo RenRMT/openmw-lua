@@ -259,12 +259,46 @@ local function line()
     return { template = I.MWUI.templates.horizontalLine }
 end
 
+--- Where each character of a UTF-8 string starts.
+--
+-- Names come out of the content files, and on a localised install they are
+-- multi-byte: `#name` counts bytes, so a twelve-character Russian name reads
+-- as twenty-four, gets cut to fit a column it already fitted, and is cut in
+-- the middle of a character. Lua 5.1 has no utf8 library and a continuation
+-- byte is the only thing that has to be spotted -- everything else begins
+-- one character.
+local function characterStarts(text)
+    local starts = {}
+    for index = 1, #text do
+        local byte = string.byte(text, index)
+        if byte < 128 or byte >= 192 then
+            starts[#starts + 1] = index
+        end
+    end
+    return starts
+end
+
 --- Names are as long as the game made them; the column is not.
 local function fit(name, width)
-    if #name <= width then
+    local starts = characterStarts(name)
+    if #starts <= width then
         return name
     end
-    return string.sub(name, 1, width - 3) .. '...'
+    -- Three of the columns go to the ellipsis.
+    local cut = starts[math.max(width - 3, 1) + 1]
+    if cut == nil then
+        return name
+    end
+    return string.sub(name, 1, cut - 1) .. '...'
+end
+
+--- Pad to a column counted in characters, for the same reason.
+local function pad(text, width)
+    local short = width - #characterStarts(text)
+    if short <= 0 then
+        return text
+    end
+    return text .. string.rep(' ', short)
 end
 
 --- Shut the planner, leaving the conversation as it was.
@@ -356,8 +390,8 @@ end
 local function stopRow(stop)
     local marker = (selected == stop.key) and '> ' or '  '
     local price = stop.fare > 0 and tostring(stop.fare) or '-'
-    local label = string.format('%s%-' .. config.NAME_COLUMN .. 's %5s',
-        marker, fit(stop.name, config.NAME_COLUMN), price)
+    local label = string.format('%s%s %5s', marker,
+        pad(fit(stop.name, config.NAME_COLUMN), config.NAME_COLUMN), price)
     return row(label, function() pick(stop.key) end)
 end
 
