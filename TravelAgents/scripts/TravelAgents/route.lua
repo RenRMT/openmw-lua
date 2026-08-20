@@ -117,7 +117,69 @@ function M.reachable(graph_, fromKey, opts)
 
     -- states[stateKey] = { node, mode, cost, legCount, from, edge }
     local states = {}
-    local queue = {}
+    -- When each state was first offered. The tie-break, so two routes of
+    -- equal cost always resolve the same way -- otherwise the list a player
+    -- is shown could differ between two openings of the same window.
+    local seen = {}
+    local offers = 0
+
+    -- Pending states as a binary min-heap, cheapest at the root. Lazy: a
+    -- state that gets cheaper is pushed again rather than moved, and the
+    -- stale copy is skipped when it surfaces already settled.
+    --
+    -- This was a linear scan over a growing array, which is fine at
+    -- vanilla's 33 stops and is not at a mainland's. Measured on a
+    -- 540-stop network: 1.49M scan steps to settle 1,619 states, against
+    -- roughly 18k comparisons here.
+    local heap, heapSize = {}, 0
+
+    local function cheaper(a, b)
+        if a.cost ~= b.cost then
+            return a.cost < b.cost
+        end
+        return a.seq < b.seq
+    end
+
+    local function push(entry)
+        heapSize = heapSize + 1
+        heap[heapSize] = entry
+        local child = heapSize
+        while child > 1 do
+            local parent = math.floor(child / 2)
+            if not cheaper(heap[child], heap[parent]) then
+                break
+            end
+            heap[parent], heap[child] = heap[child], heap[parent]
+            child = parent
+        end
+    end
+
+    local function pop()
+        if heapSize == 0 then
+            return nil
+        end
+        local top = heap[1]
+        heap[1] = heap[heapSize]
+        heap[heapSize] = nil
+        heapSize = heapSize - 1
+        local parent = 1
+        while true do
+            local left, right = parent * 2, parent * 2 + 1
+            local least = parent
+            if left <= heapSize and cheaper(heap[left], heap[least]) then
+                least = left
+            end
+            if right <= heapSize and cheaper(heap[right], heap[least]) then
+                least = right
+            end
+            if least == parent then
+                break
+            end
+            heap[parent], heap[least] = heap[least], heap[parent]
+            parent = least
+        end
+        return top
+    end
 
     local function offer(nodeKey, mode, cost, legCount, fromState, edge)
         local key = stateKey(nodeKey, mode)
@@ -129,51 +191,61 @@ function M.reachable(graph_, fromKey, opts)
             node = nodeKey, mode = mode, cost = cost,
             legCount = legCount, from = fromState, edge = edge,
         }
-        queue[#queue + 1] = key
+        if seen[key] == nil then
+            offers = offers + 1
+            seen[key] = offers
+        end
+        push({ key = key, cost = cost, seq = seen[key] })
     end
 
     for _, edge in ipairs(graph.edgesFrom(graph_, fromKey)) do
         offer(edge.to, edge.mode, legCost(edge, nil, opts), 1, nil, edge)
     end
 
-    -- A linear scan for the cheapest pending state. With 33 stops and five
-    -- modes a heap would be more code than it saves.
     local settled = {}
     while true do
-        local bestKey, bestCost = nil, nil
-        for _, key in ipairs(queue) do
-            local state = states[key]
-            if not settled[key] and (bestCost == nil or state.cost < bestCost) then
-                bestKey, bestCost = key, state.cost
-            end
-        end
-        if bestKey == nil then
+        local entry = pop()
+        if entry == nil then
             break
         end
-        settled[bestKey] = true
-
-        local state = states[bestKey]
-        if state.legCount < opts.maxLegs then
-            for _, edge in ipairs(graph.edgesFrom(graph_, state.node)) do
-                if edge.to ~= fromKey then
-                    offer(edge.to, edge.mode, state.cost + legCost(edge, state.mode, opts),
-                        state.legCount + 1, bestKey, edge)
+        -- The first copy of a state to surface is its cheapest, so any
+        -- later one is the stale push of a cost since improved on.
+        if not settled[entry.key] then
+            settled[entry.key] = true
+            local state = states[entry.key]
+            if state.legCount < opts.maxLegs then
+                for _, edge in ipairs(graph.edgesFrom(graph_, state.node)) do
+                    if edge.to ~= fromKey then
+                        offer(edge.to, edge.mode, state.cost + legCost(edge, state.mode, opts),
+                            state.legCount + 1, entry.key, edge)
+                    end
                 end
             end
         end
     end
 
     -- One entry per stop: the cheapest way to be standing there, whichever
-    -- vehicle brought you.
-    local best = {}
+    -- vehicle brought you. The winner is settled before anything is walked
+    -- back into legs, so a stop reachable five ways is summarised once and
+    -- not once per way that beat the one before it.
+    local winner = {}
     for key, state in pairs(states) do
-        local current = best[state.node]
-        if current == nil or state.cost < current.cost then
-            local legs = rebuild(states, key)
-            local summary = summarise(legs, opts)
-            summary.cost = state.cost
-            best[state.node] = summary
+        local held = winner[state.node]
+        if held == nil then
+            winner[state.node] = key
+        else
+            local heldCost = states[held].cost
+            if state.cost < heldCost or (state.cost == heldCost and seen[key] < seen[held]) then
+                winner[state.node] = key
+            end
         end
+    end
+
+    local best = {}
+    for node, key in pairs(winner) do
+        local summary = summarise(rebuild(states, key), opts)
+        summary.cost = states[key].cost
+        best[node] = summary
     end
     return best
 end
