@@ -421,13 +421,7 @@ local function onRequestPlan(data)
         player:sendEvent(events.PLAN, {})
         return
     end
-    -- Named on the way out rather than in the held plan: two operators can
-    -- stand at one stop and share a plan, but not a name.
-    player:sendEvent(events.PLAN, {
-        origin = built.origin,
-        stops = built.stops,
-        operator = { name = operator.name, mode = operator.mode },
-    })
+    player:sendEvent(events.PLAN, { origin = built.origin, stops = built.stops })
 end
 
 --- Every operator class in the load order, and whether the mod knows it.
