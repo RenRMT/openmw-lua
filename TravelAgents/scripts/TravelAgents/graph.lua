@@ -5,7 +5,6 @@
 
 local config = require('scripts.TravelAgents.config')
 local modesData = require('scripts.TravelAgents.data.modes')
-local placesData = require('scripts.TravelAgents.data.places')
 
 local M = {}
 
@@ -15,6 +14,18 @@ end
 
 local function isBlank(text)
     return text == nil or text == ''
+end
+
+--- A set of modes as the sorted list every caller wants back.
+-- Sorted because a mode list is compared, concatenated and shown, and a
+-- pairs() order would make all three unstable.
+local function sorted(set)
+    local list = {}
+    for key in pairs(set) do
+        list[#list + 1] = key
+    end
+    table.sort(list)
+    return list
 end
 
 --- Horizontal distance. Merging ignores height on purpose.
@@ -46,7 +57,7 @@ end
 local function fallbackName(point)
     local where = ''
     if point.gridX and point.gridY then
-        local named = placesData.exteriors[string.format('%d,%d', point.gridX, point.gridY)]
+        local named = modesData.places[string.format('%d,%d', point.gridX, point.gridY)]
         if named then
             return named
         end
@@ -353,12 +364,7 @@ function M.modesAt(graph, key)
     if not node then
         return {}
     end
-    local list = {}
-    for mode in pairs(node.modes) do
-        list[#list + 1] = mode
-    end
-    table.sort(list)
-    return list
+    return sorted(node.modes)
 end
 
 --- Can you change vehicle here?
@@ -399,12 +405,7 @@ function M.modesWithinWalk(graph, key)
             end
         end
     end
-    local list = {}
-    for mode in pairs(found) do
-        list[#list + 1] = mode
-    end
-    table.sort(list)
-    return list
+    return sorted(found)
 end
 
 --- Legs leaving a stop.
@@ -479,17 +480,11 @@ function M.interchanges(graph)
                 end
             end
 
-            local modeList = {}
-            for mode in pairs(modes) do
-                modeList[#modeList + 1] = mode
-            end
-            table.sort(modeList)
-
             found[#found + 1] = {
                 key = best,
                 name = graph.nodes[best].name,
                 stops = group,
-                modes = modeList,
+                modes = sorted(modes),
                 onFoot = not spot,
             }
         end

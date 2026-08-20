@@ -12,7 +12,6 @@ local storage = require('openmw.storage')
 local I = require('openmw.interfaces')
 
 local adapter = require('scripts.TravelAgents.adapter')
-local book = require('scripts.TravelAgents.book')
 local config = require('scripts.TravelAgents.config')
 local events = require('scripts.TravelAgents.events')
 local money = require('scripts.TravelAgents.money')
@@ -534,7 +533,7 @@ local function onBook(data)
     -- fare the window showed.
     local options = preferencesFrom(data)
     options.gold = money.held(player)
-    local quote = book.quote(g, operator.key, data.to, options)
+    local quote = route.quote(g, operator.key, data.to, options)
     local answer = {
         ok = quote.ok,
         reason = quote.reason,
@@ -578,7 +577,6 @@ return {
         destinations = function(fromKey, opts)
             return route.destinations(current(), fromKey, priced(opts))
         end,
-        transfersAt = function(key) return route.transfersAt(current(), key) end,
         dumpRoute = dumpRoute,
         dumpDestinations = dumpDestinations,
         dumpClasses = dumpClasses,
