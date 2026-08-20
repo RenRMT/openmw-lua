@@ -709,15 +709,14 @@ local function onBook(data)
     local options = preferencesFrom(data)
     options.gold = money.held(player)
     local quote = route.quote(g, operator.key, data.to, options)
+    -- Only what a refusal has to say. Arriving is silent, so the place, the
+    -- hours and the leg counts were being copied across a context boundary
+    -- for nobody. `legs` and `transfers` had no reader even before that.
     local answer = {
         ok = quote.ok,
         reason = quote.reason,
         fare = quote.fare,
         short = quote.short,
-        hours = quote.hours,
-        legs = quote.legs,
-        transfers = quote.transfers,
-        place = quote.arrival and quote.arrival.name,
     }
     if not quote.ok then
         player:sendEvent(events.BOOKED, answer)

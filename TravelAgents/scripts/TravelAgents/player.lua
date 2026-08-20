@@ -756,24 +756,20 @@ local function onTalk(actor)
 end
 
 --- What became of a booking.
+--
+-- Only when it went wrong. Arriving says nothing: the window has already
+-- shown where, how long and what it costs, and the traveller standing
+-- somewhere else with less gold is its own confirmation -- which is all
+-- vanilla does. A refusal is different, because a booking that fails in
+-- silence reads as a bug.
+--
+-- The quiet arrival is also what leaves room for a mod that has something
+-- more interesting to say about the journey.
 local function onBooked(data)
-    if data == nil then
+    if data == nil or data.ok then
         return
     end
-    if data.ok then
-        local hours = string.format('%.1f', data.hours or 0)
-        local paid = (data.fare or 0) > 0
-        if (data.hours or 0) <= 0 then
-            -- A guild guide puts you down at the hour you left. "0.0 hours
-            -- on the road" is technically true and reads as a bug.
-            ui.showMessage(l10n(paid and 'arrivedInstantly' or 'arrivedInstantlyFree',
-                { place = data.place, fare = data.fare }))
-        elseif paid then
-            ui.showMessage(l10n('arrived', { place = data.place, hours = hours, fare = data.fare }))
-        else
-            ui.showMessage(l10n('arrivedFree', { place = data.place, hours = hours }))
-        end
-    elseif data.reason == 'gold' then
+    if data.reason == 'gold' then
         ui.showMessage(l10n('cannotAfford', { fare = data.fare, short = data.short }))
     elseif data.reason == 'route' then
         ui.showMessage(l10n('noRoute'))
