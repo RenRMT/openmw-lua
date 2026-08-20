@@ -219,15 +219,77 @@ local function current()
     return advance(nil)
 end
 
+--- Which of the two ways of finding operators actually ran, and what it cost.
+--
+-- The hinted path opens one cell per known operator; the full walk opens
+-- every cell in the load order. They produce the same graph and differ by two
+-- orders of magnitude in cost, and the log used to distinguish them not at
+-- all -- so a setting that silently failed to take effect looked exactly like
+-- one that worked.
+local function reportScan()
+    local r = scanReport
+    out('  %d record(s) read, %d offer travel, %d operator(s) placed',
+        r.records or 0, r.offerTravel or 0, r.operators or 0)
+    if r.ignoredHints then
+        out('  every cell searched by setting: %d cell(s) walked', r.walked or 0)
+    elseif (r.walked or 0) > 0 then
+        out('  shipped table: %d cell(s) opened, %d record(s) unaccounted, '
+            .. 'then %d cell(s) walked', r.hinted or 0, r.unaccounted or 0, r.walked)
+    else
+        out('  shipped table: %d cell(s) opened, all accounted for, no walk needed',
+            r.hinted or 0)
+    end
+end
+
+--- The two things a built graph cannot tell you on its own.
+--
+-- Both are silent by nature: an operator the shipped table skips is one
+-- nobody looks for, and a record standing in two cells resolves to one of
+-- them without complaint. Said once per build so that a missing boat has
+-- somewhere to start.
+local function reportBlindSpots(g)
+    if #g.duplicated > 0 then
+        out('%d operator record(s) stand in more than one cell; the planner '
+            .. 'opens from one of them whichever is talked to: %s',
+            #g.duplicated, table.concat(g.duplicated, ', '))
+    end
+    if not searchEverything() then
+        local skipped = adapter.standNowhere()
+        if #skipped > 0 then
+            out('%d record(s) offer travel and are placed nowhere in the shipped '
+                .. 'data, so they were not looked for. Tick "Search every cell" '
+                .. 'if your load order places one: %s',
+                #skipped, table.concat(skipped, ', '))
+        end
+    end
+end
+
 --- Throw the graph away and build another, here and now.
--- Asked for from the console, where waiting for it is the point.
+--
+-- Asked for from the console, where waiting for it is the point. Unsliced:
+-- advance(nil) passes no deadline, so nothing yields and the whole build
+-- happens between two frames -- which makes this the one way to measure what
+-- the build actually costs rather than how well the slicing hides it. The
+-- game freezes for exactly as long as the work takes, and the line below
+-- says how long that was.
 local function rebuild()
     cached = nil
     scan = nil
     ignoreHints = searchEverything()
     slices, longestSlice, lastReport = 0, 0, 0
     lastDone, lastTotal = 0, nil
-    return advance(nil)
+
+    local started = core.getRealTime()
+    local g = advance(nil)
+    local elapsed = core.getRealTime() - started
+    if g then
+        out('rebuilt in one go: %.3fs (%.3fs scanning, %.3fs assembling)',
+            elapsed, elapsed - assembleSeconds, assembleSeconds)
+        out('  %d stops, %d legs', g.stats.nodes, g.stats.edges)
+        reportScan()
+        reportBlindSpots(g)
+    end
+    return g
 end
 
 --- Throw the graph away and let it be built again in the background.
@@ -490,51 +552,6 @@ local function dumpClasses()
     end
     out('%d class(es), %d not claimed by data/modes.lua', #names, unclaimed)
     out('--------------------------------------------------------')
-end
-
---- Which of the two ways of finding operators actually ran, and what it cost.
---
--- The hinted path opens one cell per known operator; the full walk opens
--- every cell in the load order. They produce the same graph and differ by two
--- orders of magnitude in cost, and the log used to distinguish them not at
--- all -- so a setting that silently failed to take effect looked exactly like
--- one that worked.
-local function reportScan()
-    local r = scanReport
-    out('  %d record(s) read, %d offer travel, %d operator(s) placed',
-        r.records or 0, r.offerTravel or 0, r.operators or 0)
-    if r.ignoredHints then
-        out('  every cell searched by setting: %d cell(s) walked', r.walked or 0)
-    elseif (r.walked or 0) > 0 then
-        out('  shipped table: %d cell(s) opened, %d record(s) unaccounted, '
-            .. 'then %d cell(s) walked', r.hinted or 0, r.unaccounted or 0, r.walked)
-    else
-        out('  shipped table: %d cell(s) opened, all accounted for, no walk needed',
-            r.hinted or 0)
-    end
-end
-
---- The two things a built graph cannot tell you on its own.
---
--- Both are silent by nature: an operator the shipped table skips is one
--- nobody looks for, and a record standing in two cells resolves to one of
--- them without complaint. Said once per build so that a missing boat has
--- somewhere to start.
-local function reportBlindSpots(g)
-    if #g.duplicated > 0 then
-        out('%d operator record(s) stand in more than one cell; the planner '
-            .. 'opens from one of them whichever is talked to: %s',
-            #g.duplicated, table.concat(g.duplicated, ', '))
-    end
-    if not searchEverything() then
-        local skipped = adapter.standNowhere()
-        if #skipped > 0 then
-            out('%d record(s) offer travel and are placed nowhere in the shipped '
-                .. 'data, so they were not looked for. Tick "Search every cell" '
-                .. 'if your load order places one: %s',
-                #skipped, table.concat(skipped, ', '))
-        end
-    end
 end
 
 --- Build the graph before anything asks for it.
