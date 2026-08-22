@@ -97,7 +97,6 @@ local function recordOf(actor)
 end
 
 --- Which group of lines describes travelling with this actor.
---
 -- `record.class` is the class record id. Creatures have no class
 -- and will fall back to generic. (Just one in TR)
 local function travelGroupOf(actor)
@@ -145,7 +144,6 @@ local function framed(flavor, place)
     if ok and text and text ~= key then
         return text
     end
-    -- No frame in this locale's file: the line alone still beats nothing.
     return flavor
 end
 
@@ -238,7 +236,6 @@ local function onUpdate()
     end
 end
 
--- Adapters
 -- Adapter mostly for my other mod TravelAgents.
 -- Behavior is identical if the mod isn't installed.
 local function onTravelAgentsArrived(data)

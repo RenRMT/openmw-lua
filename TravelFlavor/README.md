@@ -2,10 +2,8 @@
 
 After arriving by silt strider, boat, gondola, or guild guide, a short line describes the trip you did not have to sit through.
 
-```
-You arrive in Balmora.
-The driver spent the journey counting gold from the morning's fares.
-```
+> You arrive in Balmora.
+> The driver spent the journey counting gold from the morning's fares.
 
 ## Setup
 
