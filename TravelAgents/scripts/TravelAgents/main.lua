@@ -165,13 +165,20 @@ local function learnedHints()
     return hints
 end
 
+--- Write the whole hint map back.
+-- @return true when it was stored, so a caller can tell a correction that
+--   will survive the session from one that has nowhere to go
+local function writeHints(hints)
+    local section = learnedSection()
+    if section == nil then
+        return false
+    end
+    return pcall(section.set, section, 'places', hints) and true or false
+end
+
 --- Fold what this walk found into what earlier ones did.
 local function rememberHints(found)
     if type(found) ~= 'table' or next(found) == nil then
-        return
-    end
-    local section = learnedSection()
-    if section == nil then
         return
     end
     local merged = learnedHints()
@@ -180,10 +187,52 @@ local function rememberHints(found)
         merged[id] = places
         added = added + 1
     end
-    if pcall(section.set, section, 'places', merged) then
+    if writeHints(merged) then
         out('remembered where %d operator(s) the tables could not place actually '
             .. 'stand; the next load opens their cell instead of walking', added)
     end
+end
+
+--- Remember where an operator the player is talking to actually stands.
+--
+-- The cheapest placement there is. Booking happens face to face, so at this
+-- moment the operator is a live object and their cell costs nothing to read
+-- -- against the ten thousand `getAll` calls it takes to find the same fact
+-- by walking. Every conversation with somebody who sells travel is a free
+-- correction to the tables.
+--
+-- It corrects as well as adds, and by the same rule: what is written down
+-- has to agree with where they are standing. A record nothing places gets an
+-- entry; a record the shipped table places somewhere they have since been
+-- moved from gets that entry replaced. Those are the same case -- the tables
+-- do not say where this operator is -- and Titus Corilex, who stands in
+-- Vvardenfell's Ebonheart until a patch moves him to Old Ebonheart, is the
+-- second of them.
+--
+-- Learning something means the graph in hand was built from a table now
+-- known to be wrong, so it is thrown away and built again in the background.
+-- With the correction in place that rebuild takes the hinted path, which is
+-- a tenth of a second, rather than the walk that the stale entry would have
+-- forced on this load and every load after it.
+local function noteOperator(actor)
+    if actor == nil or type(actor.recordId) ~= 'string' then
+        return
+    end
+    local hint = adapter.hintFor(actor.cell)
+    if hint == nil then
+        return
+    end
+    local id = string.lower(actor.recordId)
+    local learned = learnedHints()
+    if adapter.knowsPlacement(id, hint, learned) then
+        return
+    end
+    learned[id] = { hint }
+    if not writeHints(learned) then
+        return
+    end
+    out('%s stands somewhere the tables did not say; remembered', id)
+    return true
 end
 
 -- The cell walk, part-done. nil either before it starts or once it has
@@ -599,10 +648,19 @@ local function planFor(g, originKey, options)
 end
 
 --- Answer a player script asking where a conversation could take them.
+--
+-- The one moment an operator's own cell is free, so it is taken whether the
+-- graph needed it or not. A correction here lands in the graph the next
+-- conversation asks for, not this one: the rebuild it starts runs in the
+-- background, and making the player wait on it to answer a question the
+-- stale graph can still answer would be the freeze this all exists to avoid.
 local function onRequestPlan(data)
     local player = data and data.player
     if player == nil then
         return
+    end
+    if data.actor and noteOperator(data.actor) then
+        rebuildInBackground()
     end
     local g = current()
     local operator = data.actor and graph.stopOf(g, data.actor.recordId)

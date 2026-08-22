@@ -4,13 +4,10 @@
 -- every cell in the load order. Built by
 -- TravelAgents/sources/build_operators.py.
 --
--- A hint, never an authority. The mod reads the live position off the
--- object it finds here; an operator that has moved, or one this table
--- has never heard of, sends it back to walking every cell. A stale
--- entry costs speed and cannot cost correctness.
---
--- Exteriors are grid coordinates and interiors are cell names, because
--- world.getExteriorCell and world.getCellByName take exactly those.
+-- The mod reads the live position off the object it finds here;
+-- an operator that has moved, or one this table has never heard of,
+-- sends it back to walking every cell. Exteriors are grid coordinates
+-- and interiors are cell names.
 --
 -- Built from:
 --   Morrowind.esm
@@ -21,8 +18,6 @@
 --   Sky_Main.esm
 --   Cyr_Main.esm
 -- 159 record(s) that offer travel, 155 placement(s) between them.
--- An empty list is a record that offers travel and stands nowhere:
--- looked for, not found, and not worth looking for again.
 
 return {
     ['adondasi sadalvel'] = { { x = 3, y = -9 } },

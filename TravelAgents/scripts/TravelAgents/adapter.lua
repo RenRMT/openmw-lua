@@ -1,7 +1,5 @@
 -- The engine-facing half: everything that knows about cells, records and
--- GameObjects, so that graph.lua can know about none of it. Reading the world
--- to build the graph, and the two calls that change it when a journey is
--- bought -- moving the traveller and moving the clock.
+-- GameObjects, so that graph.lua can know about none of it.
 local core = require('openmw.core')
 local types = require('openmw.types')
 local util = require('openmw.util')
@@ -36,7 +34,7 @@ local function pointFromCell(cell, position)
 end
 
 --- Where a travel destination actually is.
--- The id is real for exteriors as well as interiors -- an exterior one reads
+-- The id is real for exteriors as well as interiors. An exterior one reads
 -- `Esm3ExteriorCell:<x>:<y>` and resolves to the cell whose name is the town,
 -- which is where every exterior stop's name comes from.
 local function pointFromDestination(destination)
@@ -68,7 +66,6 @@ local function operatorFrom(record, object, cell)
 end
 
 --- Teleport doors in one cell, in the shape walk.links takes.
---
 -- Only cells that hold a stop, and the few a door chain passes through, are
 -- ever asked.
 function M.doorsFor(cellId)
@@ -97,11 +94,8 @@ function M.doorsFor(cellId)
 end
 
 --- Put a traveller down at a stop, at the end of a journey they paid for.
---
 -- An exterior is teleported to with an empty cell name. An interior is named
--- by its own cell. No `onGround`. The position is an authored travel
--- destination.
-
+-- by its own cell.
 -- @return false when the arrival cell cannot be resolved, so a caller can
 --   decline to charge for a journey it could not make
 function M.arrive(traveller, arrival)
@@ -122,7 +116,6 @@ function M.arrive(traveller, arrival)
 end
 
 --- What a unit of travel is worth in gold, as the loaded content prices it.
---
 -- @return gold per game unit, or nil when the setting is missing or unusable,
 --   in which case config.FARE_PER_UNIT stands
 function M.travelRate()
@@ -133,11 +126,8 @@ function M.travelRate()
     return 1 / multiplier
 end
 
---- Move the clock forward by the length of a journey.
---
--- Weather and AI move with it; regeneration does not, which is why arriving
--- restores stats separately -- and why that happens in the player script
--- rather than here. See restore.lua.
+--- Move the clock forward by the length of a journey. Regeneration does not
+-- move, so arriving restores stats separately. See restore.lua.
 function M.advanceTime(hours)
     if hours and hours > 0 then
         world.advanceTime(hours)
@@ -145,22 +135,7 @@ function M.advanceTime(hours)
 end
 
 --- Every record id in the load order that offers travel at all.
---
--- Asked of the record lists once, before any cell is touched. The cell walk
--- below then tests each placed object against a plain Lua table rather than
--- indexing the record list and reading a field off the result -- a hash
--- lookup instead of a trip into the engine, run against every NPC and
--- creature standing anywhere in the world.
---
--- Roughly one record in a hundred offers travel, so the set stays small
--- however large the load order gets.
---
--- Keyed on the lowercased id, and looked up the same way. The record store
--- is a C++ map that resolves an id however it is capitalised; a plain Lua
--- table is not, and the ESM capitalises inconsistently -- 'Nevosi Hlan' sits
--- next to 'navam veran' in the same file. Matching exactly would have found
--- some operators and silently lost others.
---
+-- Asked once. Keyed on lowercased id.
 -- @param checkpoint called every so often, to give the frame back
 -- @return the id-to-record map, the record kinds worth walking cells for, and
 --   how many records were read
@@ -194,10 +169,7 @@ local function offersTravel(checkpoint)
                 checkpoint('records', read, total)
             end
         end
-        -- Asking every cell for its creatures when no creature record in the
-        -- load order offers travel is half the walk spent on a question whose
-        -- answer cannot matter. Nothing in Morrowind, Tribunal, Bloodmoon or
-        -- Tamriel Rebuilt travels by creature -- but a mod may, and then the
+        -- If a mod adds travel by creature then the
         -- pass above finds it and this turns itself back on.
         if any then
             kinds[#kinds + 1] = kind
@@ -206,8 +178,6 @@ local function offersTravel(checkpoint)
     return wanted, kinds, read
 end
 
---- The cell walk, as a coroutine that gives the frame back.
---
 -- Finding an operator's own position means asking every cell in the load
 -- order what is standing in it: a travel destination lives on a record, but
 -- the near end of every leg does not. On a load order with a mainland in it
@@ -244,7 +214,7 @@ end
 -- Grid for an exterior and a name for an interior, matching cellFromHint's
 -- two lookups, so a hint the walk learns is spelled exactly like one the
 -- shipped table ships.
-local function hintFor(cell)
+function M.hintFor(cell)
     if cell == nil then
         return nil
     end
@@ -327,6 +297,38 @@ local function collectHinted(wanted, into, learned)
         end
     end
     return unaccounted, opened
+end
+
+--- Does anything already place this operator in this cell?
+--
+-- Asked of an operator the player is standing in front of, whose cell is
+-- therefore known for nothing. Two answers are "yes": the learned table
+-- says so, or -- when nothing has been learned for them -- the shipped one
+-- does. Learned wins outright rather than being merged, because it was
+-- measured on this load order and a patch that moves somebody makes the
+-- shipped entry not incomplete but wrong.
+--
+-- @param id lowercased record id
+-- @param hint from M.hintFor
+-- @param learned id -> hint list, what earlier observation found
+function M.knowsPlacement(id, hint, learned)
+    if id == nil or hint == nil then
+        return true
+    end
+    local hints = (learned and learned[id]) or knownCells[id]
+    if hints == nil then
+        return false
+    end
+    for _, known in ipairs(hints) do
+        if hint.name ~= nil then
+            if known.name == hint.name then
+                return true
+            end
+        elseif known.x == hint.x and known.y == hint.y then
+            return true
+        end
+    end
+    return false
 end
 
 --- The records the shipped table says are placed in no cell at all.
@@ -437,7 +439,7 @@ function M.operatorScan(opts)
                             if operator then
                                 operators[#operators + 1] = operator
                             end
-                            local hint = hintFor(cell)
+                            local hint = M.hintFor(cell)
                             if hint then
                                 discovered[key] = discovered[key] or {}
                                 discovered[key][#discovered[key] + 1] = hint

@@ -1,22 +1,15 @@
 # TravelAgents -- English strings.
-#
-# Keys match the settings entries in scripts/TravelAgents/player.lua and the
-# planner window it draws. A setting named `foo` takes its description from
-# `fooDescription`, so the two always travel together.
 
 # --- settings ------------------------------------------------------------
 settingsPage: "Travel Agents"
 settingsPageDescription: "Plan journeys across travel modes."
 
 plannerGroup: "Planner"
-plannerGroupDescription: "What opens the journey planner. Either key or controller input"
+plannerGroupDescription: "Set keybinds for the travel planner."
 
 plannerKey: "Open planner"
 plannerKeyDescription: "Plan your travels."
 
-# A second binding on the same trigger. The engine's binding row records
-# whatever is pressed, so this one will take a key as readily as a button --
-# it is where a controller player puts theirs, not a row that refuses a key.
 plannerController: "Open planner (controller)"
 plannerControllerDescription: "Plan your travels."
 
@@ -26,39 +19,33 @@ searchGroup: "Travel network"
 searchGroupDescription: "How the mod finds the travel services in your load order."
 fullSearch: "Search every cell"
 fullSearchDescription: |-
-  Normally the mod looks up the known travel services directly, which is
-  near-instant, and falls back to searching every cell for any it does not
-  recognise. Turn this on to search every cell regardless. It takes about
-  half a minute in the background after each load, and can only find more
-  services, never fewer. Turning it on rebuilds the network straight away.
+  Turn this on if Travel operators are not included in the network.
+  This will rebuild the network by searching every cell, and takes
+  about half a minute in the background.
 
 faresGroup: "Fares"
-faresGroupDescription: "What booking a whole journey at one counter costs you extra."
+faresGroupDescription: "Added cost for booking a whole journey"
 
 legSurcharge: "Extra per leg (%)"
-legSurchargeDescription: "Added to the fare for every leg past the first."
+legSurchargeDescription: "Added for every leg past the first."
 
 modeChangeSurcharge: "Extra per change (%)"
-modeChangeSurchargeDescription: "Added to the fare for every additional mode of transport."
+modeChangeSurchargeDescription: "Added for every additional mode of transport."
 
 # --- the window ----------------------------------------------------------
 from: "From {place}"
 nowhereToGo: "No stop can be reached from here."
 nowhereWithThisManyChanges: "Nothing that far from here."
 
-# One tab per number of changes of vehicle a journey needs, fewest first.
-# The last one collects everything at or beyond it, so a route needing five
-# changes is filed under "3+" rather than earning a tab of its own.
+# Tabs, grouped by number of transfers
 tabDirect: "Direct"
 tabChanges: "{changes, plural, one {1 change} other {# changes}}"
 tabChangesPlus: "{changes}+ changes"
-
-# The tab that drops the filter and lists every reachable place.
 tabAll: "All"
 
 # The destination list is paged: MWUI has no scrollbar, so a list longer
 # than the window would otherwise put its tail out of reach.
-pageOf: "page {page} of {pages}"
+pageOf: " {page} / {pages}"
 pagePrev: "< back"
 pageNext: "more >"
 
@@ -67,27 +54,21 @@ via: "via {places}"
 pickAStop: "Pick a place to see the journey."
 arrivingAt: "Arriving at {place}"
 plannerHint: "Press {key} to plan a journey from here."
-plannerUnbound: "Bind a key under Options, Scripts, Travel Agents to plan a journey."
-# Named from the engine's own button constants, so an unusual pad still
-# reads as something rather than a number.
-controllerButton: "Controller {button}"
-# Shown when both rows are filled in: either one opens the planner.
+plannerUnbound: "Bind a key in the script options to plan a journey."
+controllerButton: "{button}"
 eitherBinding: "{first} or {second}"
 close: "Close"
 
 # --- how a journey reads --------------------------------------------------
-# One vehicle from end to end is "direct" however many doors it passes
-# through; what a player wants to spot in a list is the journey that makes
-# them change.
 journeyDirect: "direct: {hours} h, {fare} gold"
 journeyOnFoot: "on foot: {hours} h"
-journeySameVehicle: "{legs} legs, all by {mode}: {hours} h, {fare} gold"
-journeyChanging: "{changes, plural, one {1 change of vehicle} other {# changes of vehicle}}: {hours} h, {fare} gold"
+journeySameVehicle: "{legs} legs: {hours} h, {fare} gold"
+journeyChanging: "{changes, plural, one {1 change} other {# changes}}: {hours} h, {fare} gold"
 
 # --- booking -------------------------------------------------------------
 book: "Travel here"
-fareLine: "{base} gold in fares"
-surchargeLine: "plus {extra} gold booking fees"
+fareLine: "fare: {base} gold"
+surchargeLine: ", plus {extra} gold fees"
 youHave: "You have {gold} gold"
 bookFree: "Travel here"
 cannotAfford: "That journey costs {fare} gold; you are {short} short."
