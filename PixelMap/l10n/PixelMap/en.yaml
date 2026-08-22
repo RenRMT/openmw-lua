@@ -1,0 +1,40 @@
+# Pixel Map -- English strings.
+#
+# Keys match the `name` fields in scripts/PixelMap/player.lua and the
+# l10n() calls in scripts/PixelMap/window.lua. A setting named `foo` takes
+# its help text from `fooDescription`, so the two always travel together.
+#
+# `relief` and `flat` are setting values and l10n keys at once: the
+# select renderer localises whatever value it is showing.
+
+settingsPage: "Pixel Map"
+settingsPageDescription: "A world map drawn in Lua."
+
+settingsGroup: "Map"
+settingsGroupDescription: |-
+  No key is bound out of the box. Bind one of the rows below to open the
+  map.
+
+terrainStyle: "Terrain colouring"
+terrainStyleDescription: |-
+  Relief shades the map by height, like a physical map. Flat uses one
+  colour for land and one for sea, which is clearer under another mod's
+  overlay and quicker to draw.
+relief: "Relief"
+flat: "Flat"
+
+openKey: "Open map"
+openKeyDescription: "Opens and closes the map window."
+openController: "Open map (controller)"
+openControllerDescription: |-
+  A second slot for the same action, so a controller can reach the map
+  without giving up the key.
+
+windowTitle: "Map"
+noLayers: "No layers registered."
+interior: "Interior -- no exterior map to show."
+status: "Cell {cellX}, {cellY} -- {cellPixels}px per cell"
+zoomIn: "+"
+zoomOut: "-"
+recenter: "Centre on me"
+close: "Close"
