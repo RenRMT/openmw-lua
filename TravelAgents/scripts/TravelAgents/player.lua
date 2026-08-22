@@ -59,9 +59,7 @@ local selected = nil
 -- Set when the key was pressed before a plan had arrived: open the window as
 -- soon as one does, rather than making the player press again.
 local openWhenReady = false
--- Which page of the destination list is showing. There is no scrollbar in
--- MWUI, so a list longer than the window is paged rather than clipped --
--- otherwise the tail is unreachable rather than merely out of sight.
+-- Which page of the destination list is showing. Paginated.
 local page = 1
 -- Which tab is open, as a number of changes of vehicle -- nil means every
 -- stop. Opens on 0: the places reachable without changing are the ones
@@ -70,9 +68,7 @@ local tab = nil
 -- The plan for the operator currently being talked to, fetched when the
 -- conversation opens so the keypress has nothing to wait for.
 local current = nil
--- Who is being talked to. Kept so a booking can name them: the global script
--- resolves the origin from the operator rather than trusting the window, and
--- this is the window's half of that.
+-- Who is being talked to. Kept so a booking can name them.
 local interlocutor = nil
 
 --------------------------------------------------------------------------
@@ -282,16 +278,13 @@ end
 -- Tabs, one per number of changes
 --------------------------------------------------------------------------
 
---- Which tab a journey belongs under. The counting is the plan's, not the
--- window's, so anything else asking the same question gets the same answer.
+--- Which tab a journey belongs under.
 local function bucketOf(stop)
     return plan.changeBucket(stop, config.MAX_CHANGE_TAB)
 end
 
 --- The buckets this plan actually fills, ascending, with their sizes.
---
--- Only occupied buckets get a tab: from a stop with nothing beyond one
--- change, a `3+` tab reading zero is furniture.
+-- Only occupied buckets get a tab.
 local function tabsInPlan()
     local counts, order = {}, {}
     for _, stop in ipairs(current.stops) do
@@ -302,8 +295,7 @@ local function tabsInPlan()
         end
         counts[bucket] = counts[bucket] + 1
     end
-    -- Fewest changes first. Unlike the networks this replaced there is a
-    -- natural order here, and it is also the order of preference.
+    -- Fewest changes first.
     table.sort(order)
     return order, counts
 end
@@ -351,7 +343,6 @@ local function pick(key)
     selected = key
     render()
 end
-
 
 -- The list of places
 -- Destination row with fare
@@ -663,8 +654,6 @@ local function onPlan(data)
     if data == nil or data.origin == nil then
         current = nil
         -- Whoever this is sells no journeys, so there is nothing to open.
-        -- Leaving the flag armed would spring the window open on the next
-        -- plan that does arrive, which nobody asked for.
         openWhenReady = false
         return
     end
@@ -676,9 +665,7 @@ local function onPlan(data)
 
     -- Open on the places reachable without changing vehicle: standing in
     -- front of a driver, that is the question being asked. Falls back to the
-    -- fewest changes anywhere goes, so a stop whose every destination needs
-    -- a transfer opens on a tab with something in it rather than an empty
-    -- one.
+    -- fewest changes anywhere goes, although this should never occur.
     if not resumed then
         current.stops = current.stops or {}
         local order = tabsInPlan()

@@ -60,18 +60,15 @@ local function summarise(legs, opts)
         vehicleLegs = 0,
         modeChanges = 0,
         -- Whether the traveller spent the journey aboard something that
-        -- took time. Vanilla treats such a trip as a rest -- health,
-        -- magicka and fatigue all come back -- while a guild guide is a
-        -- wait and returns fatigue alone.
+        -- took time. Treated as a rest -- health, magicka and fatigue all
+        -- restore -- while a guild guide is a wait, and returns fatigue alone.
         rests = false,
     }
     local lastVehicle = nil
     for index, leg in ipairs(legs) do
         summary.distance = summary.distance + leg.distance
         -- A teleport covers its distance in no time at all, so its length
-        -- prices the ticket and not the clock. Charging hours for a guild
-        -- guide would make the mod strictly worse than the service it
-        -- replaces: vanilla puts you in Balmora at the hour you left.
+        -- prices the ticket and not the clock.
         if not modesData.instant[leg.mode] then
             summary.hours = summary.hours + leg.distance * config.HOURS_PER_UNIT
             if leg.mode ~= 'walk' then
@@ -123,11 +120,6 @@ function M.reachable(graph_, fromKey, opts)
     -- Pending states as a binary min-heap, cheapest at the root. Lazy: a
     -- state that gets cheaper is pushed again rather than moved, and the
     -- stale copy is skipped when it surfaces already settled.
-    --
-    -- This was a linear scan over a growing array, which is fine at
-    -- vanilla's 33 stops and is not at a mainland's. Measured on a
-    -- 540-stop network: 1.49M scan steps to settle 1,619 states, against
-    -- roughly 18k comparisons here.
     local heap, heapSize = {}, 0
 
     local function cheaper(a, b)
@@ -262,10 +254,7 @@ end
 -- Buying one
 --------------------------------------------------------------------------
 --
--- Everything about a purchase that can be decided without the engine. It
--- lives beside the search because it is the same journey asked a second
--- question: the router finds the cheapest way there, and this says what it
--- costs and whether it can be had.
+-- Everything about a purchase that can be decided without the engine.
 
 local function refuse(reason, quote)
     quote = quote or {}

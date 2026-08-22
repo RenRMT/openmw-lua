@@ -105,16 +105,8 @@ local function newNode(key, point)
 end
 
 --- The mode an operator's legs are labelled with.
--- An id override beats the class, because four vanilla operators are authored
--- with a class that describes the person rather than the vehicle.
---
--- A class nobody has declared becomes a mode of its own rather than joining
--- a shared "unknown" bucket. Otherwise every modded vehicle in a load order
--- collapses into one heap: a guar caravan, a river strider and a carriage
--- would be indistinguishable, and a journey by any of them would read as
--- "Unknown". Deriving the mode from the class means a landmass mod that
--- invents a vehicle is named after it without anyone authoring an entry.
--- `unknown` is left for an operator with no class at all.
+-- An id override beats the class. A class nobody has declared becomes a
+-- mode of its own.
 local function modeFor(operator, modes)
     local override = modes.overrides[lower(operator.id) or '']
     if override then
@@ -223,16 +215,7 @@ function M.build(operators, opts)
     for _, operator in ipairs(usable) do
         local fromKey = operator.place._key
         local mode = modeFor(operator, modes)
-        -- Which stop an operator stands at. The planner opens from the
-        -- caravaner you are talking to, so it needs to get from that actor to
-        -- their place in the network without measuring anything.
-        --
-        -- One record standing in two cells is the case this cannot answer:
-        -- `stopOf` is asked by record id and both instances give the same
-        -- one, so the planner opens from whichever was found last whoever is
-        -- being talked to. Nothing shipped does it. Named rather than
-        -- overwritten in silence, so a load order that does has a thread to
-        -- pull.
+        -- Which stop an operator stands at.
         local id = lower(operator.id) or operator.id
         local standing = graph.operators[id]
         if standing and standing.key ~= fromKey then
@@ -242,7 +225,7 @@ function M.build(operators, opts)
             key = fromKey,
             name = operator.name,
             mode = mode,
-            -- Raw class alongside resolved mode; class is what other mods read.
+            -- Raw class alongside resolved mode.
             class = operator.class,
         }
         for _, destination in ipairs(operator.destinations) do
@@ -347,7 +330,7 @@ function M.remeasure(graph)
 end
 
 --- The modes meeting at a stop, sorted. More than one means you can change
--- vehicles there, which is the whole question the mod exists to answer.
+-- vehicles there.
 function M.modesAt(graph, key)
     local node = graph.nodes[key]
     if not node then
@@ -356,9 +339,7 @@ function M.modesAt(graph, key)
     return sorted(node.modes)
 end
 
---- Can you change vehicle here?
--- `modesAt` remains the narrower fact -- what meets on this exact spot -- for
--- anything that needs to tell the two apart.
+-- `modesAt` remains the narrower fact: what meets on this exact spot.
 function M.isTransfer(graph, key)
     return #M.modesWithinWalk(graph, key) > 1
 end
@@ -441,7 +422,6 @@ function M.place(graph, key)
     return { key = best, name = graph.nodes[best].name, stops = group }
 end
 
---- The interchanges, counted as places rather than as stops.
 -- `onFoot` says whether the change costs a walk: false at Khuul, where boat
 -- and strider meet on the spot, true at Balmora, where they do not.
 function M.interchanges(graph)

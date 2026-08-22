@@ -90,12 +90,6 @@ end
 
 --- How many times a journey puts the traveller onto a different kind of
 -- vehicle.
---
--- Boarding a second silt strider is not a change; leaving one for a boat is.
--- The question this answers is whether the traveller has to find a different
--- kind of dock, not how many times they get off, so riding three striders in
--- a row counts as none.
---
 -- Neither `transfers` nor `vehicleLegs` says this. `transfers` counts every
 -- leg including the walk to the dock, and the walk to the dock is not a
 -- change of anything.
