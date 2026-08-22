@@ -1,7 +1,4 @@
--- Nothing in the engine announces "the player has travelled", so it is
--- inferred: a conversation with somebody who sells travel, followed shortly
--- by arriving somewhere else. Neither half is enough on its own.
-
+-- PLAYER context only.
 local core = require('openmw.core')
 local self = require('openmw.self')
 local types = require('openmw.types')
@@ -10,22 +7,19 @@ local ui = require('openmw.ui')
 local L10N = 'TravelFlavor'
 local l10n = core.l10n(L10N, 'en')
 
--- Set true and the log says what the engine reports
+-- Set true and the log says what the engine reported at every step.
 local DEBUG = false
 
--- Lines that suit any journey, used when the operator's own class has none
--- written for it.
+-- Fallback lines that suit any journey.
 local GENERIC = 'generic'
 
--- Real seconds an arrival may lag the conversation closing before it stops
--- counting as the journey that conversation sold.
+-- Real seconds an arrival may lag the conversation closing.
 local ARRIVAL_WINDOW = 3.0
 
 -- Real seconds to wait after arriving before saying anything.
 local SETTLE = 0.5
 
--- No group is ever going to have this many lines; it is here so a gap in the
--- numbering cannot spin the counting loop forever.
+-- So a gap in the numbering cannot spin the counting loop forever.
 local MAX_LINES = 500
 
 local function out(fmt, ...)
@@ -34,17 +28,11 @@ local function out(fmt, ...)
     end
 end
 
---------------------------------------------------------------------------
 -- The lines
---------------------------------------------------------------------------
 --
--- A group is an operator's class id, lowercased, and the l10n keys are that
--- id numbered from one: `shipmaster_1`, `guild guide_1`,
--- `t_mw_riverstriderservice_1`.
---
--- What a missing key looks like is not worth being sure about: l10n may hand
--- back the key itself, or nothing, or raise. All three mean "there is no line
--- number `index`", so all three end the count.
+-- A group is an operator's class id, lowercased. Counted on first use.
+-- A missing key may come back as the key, as nil or empty, or raise; all three
+-- mean the numbering has run out.
 local counts = {}
 
 local function lineCount(group)
@@ -65,8 +53,6 @@ local function lineCount(group)
     return found
 end
 
--- math.random without a seed deals the same hand every session. Seeded at the
--- first journey.
 local seeded = false
 
 local function seed()
@@ -79,7 +65,6 @@ local function seed()
     end)
 end
 
--- What each group said last, so it does not say it twice running.
 local lastShown = {}
 
 local function lineFor(group)
@@ -99,8 +84,6 @@ local function lineFor(group)
 end
 
 -- Who sells travel, and what kind
---
---- An actor's record, whether they are an NPC or a creature.
 local function recordOf(actor)
     local ok, record = pcall(types.NPC.record, actor)
     if ok and record then
@@ -113,10 +96,9 @@ local function recordOf(actor)
     return nil
 end
 
---- Which group of lines describes travelling with this actor, or nil when
--- they sell no travel at all.
---
--- A creature has no class at all, and so falls back to generic lines.
+--- Which group of lines describes travelling with this actor.
+-- `record.class` is the class record id. Creatures have no class
+-- and will fall back to generic. (Just one in TR)
 local function travelGroupOf(actor)
     if actor == nil then
         return nil
@@ -125,8 +107,7 @@ local function travelGroupOf(actor)
     if record == nil then
         return nil
     end
-    -- The one thing that actually says "this person sells travel". 
-    -- Length, not type.
+    -- Length because engine hands these lists back as userdata.
     local ok, count = pcall(function() return #record.travelDestinations end)
     if not ok or count == nil or count == 0 then
         out('%s sells no travel (%s)', tostring(record.id), type(record.travelDestinations))
@@ -138,9 +119,8 @@ local function travelGroupOf(actor)
     return string.lower(record.class)
 end
 
---- Where the traveller has washed up, as something to call it.
---
--- A named cell names itself. An unnamed exterior has only its region.
+-- Named cells provide specific context (e.g. "Balmora, Guild of Mages").
+-- Unnamed exteriors fall back to region.
 local function placeName()
     local cell = self.cell
     if cell == nil then
@@ -155,9 +135,8 @@ local function placeName()
     return nil
 end
 
---- The flavour line inside its frame: where you are, then what happened.
---
--- The frame is an l10n message rather than a concatenation here.
+-- The frame is an l10n message. Line break and the order
+-- have to be changed there.
 local function framed(flavor, place)
     place = place or placeName()
     local key = place and 'arrival' or 'arrivalUnplaced'
@@ -169,16 +148,10 @@ local function framed(flavor, place)
 end
 
 -- Spotting the journey
---
--- The group to draw a line from when the traveller arrives, and the real time
--- after which the conversation that armed it is too old to have caused it.
 local armedGroup = nil
 local armedUntil = nil
-
--- Where the player was last seen.
 local lastCell = nil
 
--- A line waiting for the screen to settle, and when to show it.
 local pendingText = nil
 local showAt = nil
 
@@ -188,18 +161,19 @@ local function onUiModeChanged(data)
     end
     out('mode -> %s (arg %s)', tostring(data.newMode), tostring(data.arg))
 
+    -- Travel window is the moment worth watching.
     if data.newMode == 'Travel' then
         local group = travelGroupOf(data.arg)
         if group then
             out('armed: %s', group)
             armedGroup = group
-            -- No deadline yet
             armedUntil = nil
         end
         return
     end
 
-    -- closed the travel window
+    -- Player closed the ticket window without buying.
+    -- Travel also passes through Dialogue, but without actor attached.
     if armedGroup and data.newMode == 'Dialogue' and data.arg then
         out('ticket window closed without travelling; disarming')
         armedGroup, armedUntil = nil, nil
@@ -213,6 +187,8 @@ local function onUiModeChanged(data)
 end
 
 --- Say something about a journey that has just ended.
+-- Disarms on the way through, so a journey
+-- spotted twice is still only spoken about once.
 local function announce(group, place)
     armedGroup, armedUntil = nil, nil
     if group == nil then
@@ -228,7 +204,7 @@ local function announce(group, place)
     showAt = core.getRealTime() + SETTLE
 end
 
---- Somewhere else, suddenly.
+--- Somewhere else, suddenly. (Alone. Naked. )
 local function arrived()
     if armedGroup == nil then
         return
@@ -246,7 +222,7 @@ local function onUpdate()
     local cell = self.cell
     local here = cell and cell.id or nil
     if lastCell == nil then
-        -- Nothing can be armed this early in practice
+        -- First frame: note without calling it an arrival.
         lastCell = here
     elseif here ~= lastCell then
         lastCell = here
@@ -260,15 +236,8 @@ local function onUpdate()
     end
 end
 
--- Adapters
---
--- A mod that adds travel through its own window never opens the
--- vanilla one, so nothing above sees them. Any that announces an
--- arrival can be handled here.
-
---- TravelAgents (optional). Sends the operator's class id rather than its
--- own vehicle vocabulary, so it maps onto a group here with no translation,
--- and the stop's name, which beats the cell we would otherwise land on.
+-- Adapter mostly for my other mod TravelAgents.
+-- Behavior is identical if the mod isn't installed.
 local function onTravelAgentsArrived(data)
     if data == nil then
         return
