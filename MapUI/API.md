@@ -1,0 +1,136 @@
+# Map UI — drawing your own layer
+
+Map UI is a map window with a stack of layers in it. The two that ship
+with it — terrain and cell grid — register through exactly the call your
+mod uses, so anything they can do, yours can.
+
+Everything here is player context. `I.MapUI` is only reachable from a
+player script.
+
+## Registering
+
+```lua
+local I = require('openmw.interfaces')
+
+local function register()
+    I.MapUI.registerLayer {
+        key = 'MyMod_territory',
+        name = 'Territory',
+        draw = function(view)
+            return { I.MapUI.cell(gridX, gridY, myColor, 0.5) }
+        end,
+    }
+end
+```
+
+**Load order is not yours to control**, so `I.MapUI` may not exist when
+your script loads. Handle `MapUIReady` as well as calling directly:
+
+```lua
+return {
+    engineHandlers = {
+        onInit = function() if I.MapUI then register() end end,
+        onLoad = function() if I.MapUI then register() end end,
+    },
+    eventHandlers = {
+        MapUIReady = register,
+    },
+}
+```
+
+Registering the same `key` twice replaces the layer rather than stacking
+a second copy, so being called both ways is harmless — and so is
+`reloadlua`.
+
+### Layer fields
+
+| Field | |
+| --- | --- |
+| `key` | Required, unique. Prefix it with your mod name. |
+| `name` | Shown on the toggle button. Defaults to `key`. |
+| `order` | Low draws first. Built-ins are 10 terrain, 20 grid. Default 100. |
+| `enabled` | Default `true`. A layer that costs real time to draw should ship `false` and let the player ask for it. |
+| `alpha` | 0–1, applied to the layer as a whole; its widgets inherit it. |
+| `interactive` | Needed for clicks and hover. See below. Default `false`. |
+| `draw` | Required. `draw(view)` returns a flat list of layouts. |
+
+## Drawing
+
+`draw(view)` is called on every redraw — open, pan, zoom, resize, toggle
+— and returns a flat list of `openmw.ui` layouts positioned in canvas
+pixels. It runs inside a `pcall`: a layer that errors switches itself off
+rather than taking the window down with it.
+
+Three helpers save you the arithmetic:
+
+```lua
+-- A solid rectangle, in canvas pixels.
+I.MapUI.quad(x, y, w, h, color, alpha)
+
+-- One exterior cell, by grid coordinates. The unit for territory,
+-- ownership, danger, anything painted per cell.
+I.MapUI.cell(gridX, gridY, color, alpha)
+
+-- A marker centred on a world position.
+I.MapUI.marker {
+    position = obj.position,        -- Vector3 or Vector2, world
+    size     = 40,                  -- screen pixels
+    color    = util.color.rgb(1, 0, 0),
+    tooltip  = 'Balmora',
+    onClick  = async:callback(function() ... end),
+}
+```
+
+Marker sizes are **screen pixels and do not scale with zoom**. That is
+deliberate: a marker is a thing to aim at, and one that shrinks when the
+player zooms out is exactly what a controller's cursor cannot hit.
+
+### The view
+
+| | |
+| --- | --- |
+| `view.center` | Vector2, world coordinates at the centre of the canvas |
+| `view.zoom` | Canvas pixels per world unit |
+| `view.canvasSize` | Vector2, pixels |
+| `view.cell` | The player's exterior cell, `nil` in an interior |
+| `view.worldSpaceId` | Which worldspace is being drawn |
+| `view.worldToCanvas(x, y)` | World → canvas pixels |
+| `view.canvasToWorld(x, y)` | Canvas pixels → world |
+| `view.bounds()` | `minX, minY, maxX, maxY` in world units |
+
+**Cull against `bounds()`.** The map covers hundreds of cells when zoomed
+out, and every layout you return becomes a widget. For per-cell fills,
+turn the bounds into a cell range and loop over that, not over your whole
+dataset.
+
+`view.cell` is the test for "is there an exterior to draw" — not
+`worldSpaceId`, which a cell is allowed not to have.
+
+## Clicks and tooltips
+
+A transparent sheet sits over the drawing layers and catches drags for
+panning, so a widget in an ordinary layer never sees a mouse event.
+
+Set `interactive = true` and your layer is drawn **above** that sheet.
+Its widgets then get `mouseClick` and `focusGain`/`focusLoss`, which is
+what `onClick` and `tooltip` are built on. The trade is that a drag begun
+on one of your widgets does not pan the map, so use it for the layers
+that need input and leave the rest alone.
+
+Those are the only mouse events available to a child widget. `mousePress`
+is never delivered at all, and `mouseMove`/`mouseRelease` reach only the
+window itself — which is why `tooltip` takes a string rather than letting
+you place one yourself.
+
+## The rest of the interface
+
+| | |
+| --- | --- |
+| `I.MapUI.unregisterLayer(key)` | Removes it. Returns `false` if it was not there. |
+| `I.MapUI.setLayerEnabled(key, on)` | What the toggle button does. |
+| `I.MapUI.setLayerAlpha(key, alpha)` | Fade a layer. |
+| `I.MapUI.open()` / `close()` | Open and close the window. |
+| `I.MapUI.redraw()` | Redraw now. A no-op while the window is shut, so call it blindly when your data changes. |
+| `I.MapUI.isOpen()` | |
+| `I.MapUI.view` | The table above. |
+| `I.MapUI.version` | Currently 1. |
