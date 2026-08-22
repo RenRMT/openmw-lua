@@ -1,4 +1,4 @@
--- Map window: frame, chrome (controls), and canvas for layers. See DESIGN.md for frame and event delivery.
+-- Map window: frame, chrome, and the canvas the layers draw into.
 
 local async = require('openmw.async')
 local core = require('openmw.core')

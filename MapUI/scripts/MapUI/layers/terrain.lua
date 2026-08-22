@@ -1,4 +1,4 @@
--- Terrain fills; merges runs by drawn colour to reduce quad count; see DESIGN.md.
+-- Terrain fills; merges runs by drawn colour to reduce quad count.
 
 local draw = require('scripts.MapUI.core.draw')
 local profile = require('scripts.MapUI.core.profile')

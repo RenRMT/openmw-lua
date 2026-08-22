@@ -1,4 +1,4 @@
--- Hover tooltips on Popup layer, not in canvas (avoids redraws). See DESIGN.md for two-part architecture.
+-- Hover tooltips on the Popup layer, not in the canvas, so a hover costs no redraw.
 
 local ui = require('openmw.ui')
 local util = require('openmw.util')

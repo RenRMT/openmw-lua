@@ -1,4 +1,4 @@
--- Window frame: eight invisible grab strips for resize/move. See DESIGN.md for why hand-rolled.
+-- Window frame: eight invisible grab strips for resize/move. Hand-rolled: ui.TYPE.Window cannot resize.
 
 local ui = require('openmw.ui')
 local util = require('openmw.util')
