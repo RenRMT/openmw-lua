@@ -367,11 +367,18 @@ local function reportScan()
     local r = scanReport
     out('  %d record(s) read, %d offer travel, %d operator(s) placed',
         r.records or 0, r.offerTravel or 0, r.operators or 0)
+    -- The walk stops once everybody has been found, so what it cost is what
+    -- it opened, not the size of the load order. Both numbers are said,
+    -- because their ratio is the whole of what the early exit is worth and
+    -- neither one shows it alone.
+    local outstanding = (r.unaccounted or 0) - (r.found or 0)
     if r.ignoredHints then
-        out('  every cell searched by setting: %d cell(s) walked', r.walked or 0)
+        out('  every record searched for by setting: %d cell(s) walked of %d',
+            r.walked or 0, r.cells or 0)
     elseif (r.walked or 0) > 0 then
         out('  shipped table: %d cell(s) opened, %d record(s) unaccounted, '
-            .. 'then %d cell(s) walked', r.hinted or 0, r.unaccounted or 0, r.walked)
+            .. 'then %d cell(s) walked of %d', r.hinted or 0, r.unaccounted or 0,
+            r.walked, r.cells or 0)
         -- The walk this falls back to costs seconds on a cold load, so the
         -- entry that caused it is worth naming rather than counting.
         local ids = r.unaccountedIds or {}
@@ -383,8 +390,15 @@ local function reportScan()
                     named[index] = ids[index]
                 end
             end
-            out('  not where data/operators.lua says, so every cell was walked: %s%s',
+            out('  not where data/operators.lua says, so the world was walked: %s%s',
                 table.concat(named, ', '), more)
+        end
+        -- Found means the walk could stop. Anyone still outstanding is a
+        -- record that offers travel and stands in no cell this load order
+        -- has, and they are what made the walk run to the end.
+        if outstanding > 0 then
+            out('  %d of those were never found, which is why the walk ran to '
+                .. 'the end', outstanding)
         end
     else
         out('  shipped table: %d cell(s) opened, all accounted for, no walk needed',
