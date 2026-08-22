@@ -238,6 +238,14 @@ end
 -- The cell walk, part-done. nil either before it starts or once it has
 -- finished and `cached` holds the answer.
 local scan = nil
+-- The walk the hinted pass handed back rather than doing, and the coroutine
+-- running it. Both nil on a load order the tables cover, which is the point.
+local owedWalk = nil
+local walkScan = nil
+local walkStarted = nil
+-- What the hinted pass placed, kept so the walk's findings can be added to it
+-- without asking the tables a second time.
+local hintedOperators = nil
 local scanStarted = nil
 -- What the scan did, filled in as it goes. The hinted path and the full walk
 -- build the same graph at wildly different cost, so without this the only way
@@ -277,6 +285,37 @@ local function assemble(operators)
     return built
 end
 
+--- Fold what the deferred walk found into the graph the tables gave.
+--
+-- A second assemble rather than a patch: adding an operator means new stops,
+-- new legs, and new door links between them, and graph.build already knows
+-- how to do all three. It runs on the whole list because the alternative is a
+-- second way of building a graph that has to stay in step with the first.
+local function absorb(found)
+    walkScan, owedWalk = nil, nil
+    if found == nil or #found == 0 then
+        out('the walk found none of them; the network is unchanged')
+        hintedOperators = nil
+        return cached
+    end
+    local operators = {}
+    for _, operator in ipairs(hintedOperators or {}) do
+        operators[#operators + 1] = operator
+    end
+    for _, operator in ipairs(found) do
+        operators[#operators + 1] = operator
+    end
+    hintedOperators = nil
+    local before = cached and cached.stats.nodes or 0
+    local built = assemble(operators)
+    -- The walk's report counts only what the walk found. The line reportScan
+    -- prints is about the network, so it gets the whole of it.
+    scanReport.operators = #operators
+    out('the walk added %d operator(s): %d stops, %d legs (was %d stops)',
+        #found, built.stats.nodes, built.stats.edges, before)
+    return built
+end
+
 --- Push the cell walk along, for at most `budget` real seconds.
 --
 -- A nil budget means run it out here and now, which is what every caller
@@ -294,6 +333,7 @@ local function advance(budget)
         scanReport = {}
         scan = adapter.operatorScan({
             ignoreHints = ignoreHints,
+            deferWalk = true,
             learned = learnedHints(),
             report = scanReport,
         })
@@ -314,7 +354,12 @@ local function advance(budget)
         return assemble({})
     end
     if coroutine.status(scan) == 'dead' then
-        return assemble(result or {})
+        local found = result or {}
+        if scanReport.owed then
+            hintedOperators = found
+            owedWalk = scanReport.owed
+        end
+        return assemble(found)
     end
 
     -- Say how it is going, occasionally. Without this the only way to know
@@ -334,22 +379,85 @@ local function advance(budget)
     return nil
 end
 
+--- Push the deferred walk along, for at most `budget` real seconds.
+--
+-- Runs behind a graph that is already answering questions, which is the
+-- whole of the deferral: the tables place everybody a normal load order has,
+-- so this exists for the ones they do not, and nobody waits on it to plan a
+-- journey between stops it was never going to change.
+--
+-- A nil budget runs it out here and now, which is what a traveller standing
+-- in front of an operator the graph does not know does.
+--
+-- @return the rebuilt graph when the walk finished on this call, else nil
+local function advanceWalk(budget)
+    if owedWalk == nil then
+        return nil
+    end
+    if walkScan == nil then
+        walkScan = adapter.walkScan(owedWalk, { report = scanReport })
+        walkStarted = core.getRealTime()
+        out('%d record(s) the tables could not place; walking for them in the '
+            .. 'background', scanReport.unaccounted or 0)
+    end
+    local sliceStarted = core.getRealTime()
+    local ok, result, done, total = coroutine.resume(
+        walkScan, budget and (sliceStarted + budget) or nil)
+    local slice = core.getRealTime() - sliceStarted
+    if slice > longestSlice then
+        longestSlice = slice
+    end
+    slices = slices + 1
+    if not ok then
+        -- The graph built from the tables is still good; only the corrections
+        -- are lost. Said once and then dropped, rather than retried forever.
+        out('the deferred walk failed: %s', tostring(result))
+        walkScan, owedWalk, hintedOperators = nil, nil, nil
+        return nil
+    end
+    if coroutine.status(walkScan) == 'dead' then
+        return absorb(result)
+    end
+    if result == 'cells' then
+        lastDone, lastTotal = done, total
+    end
+    local now = core.getRealTime()
+    if now - lastReport >= config.BUILD_REPORT_SECONDS then
+        lastReport = now
+        out('  walking: %s/%s, %d slice(s) in %.0fs, longest %.0fms',
+            tostring(done), tostring(total or '?'),
+            slices, now - (walkStarted or now), longestSlice * 1000)
+    end
+    return nil
+end
+
+--- Finish the deferred walk now, because somebody is waiting on it.
+-- @return the graph, rebuilt if the walk changed anything
+local function finishWalk(why)
+    if owedWalk == nil then
+        return cached
+    end
+    out('%s; finishing the deferred walk now', why)
+    local started = core.getRealTime()
+    local built = advanceWalk(nil)
+    out('  the walk took %.3fs', core.getRealTime() - started)
+    return built or cached
+end
+
 --- The graph, whatever it takes.
 --
--- The guard for a player who reaches a travel service before the walk has
--- finished: rather than answer from a half-built graph, or make them wait
--- for a frame that a paused game may never run, the rest of the walk happens
--- now. That is the stall this whole change exists to avoid -- but it is only
--- ever the part not already done, it is logged so it can be told apart from
--- the old behaviour, and walking anywhere for a second or two after load
--- makes it impossible.
+-- The guard for a player who reaches a travel service before the build has
+-- finished. What it has to finish is now only the hinted pass -- one cell per
+-- operator the tables place, a tenth of a second -- because the walk is
+-- deferred and nothing here waits on it. A traveller who turns out to need
+-- the walk asks for it by name; see onRequestPlan.
 local function current()
     if cached then
         return cached
     end
-    if scan and lastTotal then
-        out('a travel service was reached with %d of %d cells walked; '
-            .. 'finishing the last %d now', lastDone, lastTotal, lastTotal - lastDone)
+    if scan then
+        out('a travel service was reached before the tables had been read; '
+            .. 'finishing that now')
     else
         out('a travel service was reached before the graph was started; building it now')
     end
@@ -445,12 +553,17 @@ end
 local function rebuild()
     cached = nil
     scan = nil
+    walkScan, owedWalk, hintedOperators = nil, nil, nil
     ignoreHints = searchEverything()
     slices, longestSlice, lastReport = 0, 0, 0
     lastDone, lastTotal = 0, nil
 
     local started = core.getRealTime()
     local g = advance(nil)
+    -- The console asked for the whole thing, so the deferral does not apply:
+    -- a rebuild that left the walk owed would report a graph smaller than the
+    -- one the game settles on a few seconds later.
+    g = finishWalk('rebuilding in one go') or g
     local elapsed = core.getRealTime() - started
     if g then
         out('rebuilt in one go: %.3fs (%.3fs scanning, %.3fs assembling)',
@@ -470,6 +583,7 @@ end
 local function rebuildInBackground()
     cached = nil
     scan = nil
+    walkScan, owedWalk, hintedOperators = nil, nil, nil
     -- Read once, here, and handed to the scan. The message below is then a
     -- report of what will happen rather than a second guess at it.
     ignoreHints = searchEverything()
@@ -678,6 +792,15 @@ local function onRequestPlan(data)
     end
     local g = current()
     local operator = data.actor and graph.stopOf(g, data.actor.recordId)
+    if operator == nil and data.actor and owedWalk then
+        -- The one thing the deferred walk is actually for. Somebody who sells
+        -- travel is standing here and the graph has never heard of them, so
+        -- the tables did not place them and this is the load order the walk
+        -- exists to cope with. Finishing it now costs a pause on this one
+        -- greeting instead of on every load.
+        g = finishWalk('a travel service the tables do not place was reached')
+        operator = graph.stopOf(g, data.actor.recordId)
+    end
     if operator == nil then
         player:sendEvent(events.PLAN, {})
         return
@@ -750,6 +873,9 @@ end
 -- before it is finished.
 local function warmUp()
     if cached then
+        -- The graph is up and answering; anything still owed is the walk,
+        -- and it gets the same slice the build had.
+        advanceWalk(config.BUILD_SLICE_SECONDS)
         return
     end
     local g = advance(config.BUILD_SLICE_SECONDS)

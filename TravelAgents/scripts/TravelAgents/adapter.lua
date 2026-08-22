@@ -347,6 +347,120 @@ function M.standNowhere()
     return ids
 end
 
+--- Look for records the tables could not place, by opening cells.
+--
+-- The expensive half, and the one that can be put off: `M.operatorScan` hands
+-- it back undone when asked to, so a graph can be built from what the tables
+-- already know and this can run behind it.
+--
+-- @param missing id -> record, only what is still to be found
+-- @param kinds the record kinds worth opening cells for
+-- @param operators the list to append to
+-- @param report filled in with what the walk cost
+-- @param checkpoint called between cells, to give the frame back
+local function walkFor(missing, kinds, operators, report, checkpoint)
+    local searching = 0
+    for _ in pairs(missing) do
+        searching = searching + 1
+    end
+
+    -- Where the walk finds the operators it had to go looking for. Only
+    -- those: everything the tables already place was never searched for,
+    -- so this stays a list of corrections rather than a second copy of
+    -- data/operators.lua.
+    local discovered = {}
+
+    -- Exteriors first, and it is worth being plain about why: 131 of the
+    -- 155 operators the shipped table places stand out of doors, and the
+    -- walk stops the moment it has found everybody. Looking outside first
+    -- is therefore not a preference but the shorter half of the search --
+    -- most of the time the interiors are never opened at all.
+    --
+    -- Both halves come out of the one `world.cells`, ordered without
+    -- opening anything: `isExterior` is a field, and it is `getAll` that
+    -- costs.
+    local cells = world.cells
+    local cellCount = #cells
+    local outside, inside = {}, {}
+    for index = 1, cellCount do
+        local cell = cells[index]
+        if cell.isExterior then
+            outside[#outside + 1] = cell
+        else
+            inside[#inside + 1] = cell
+        end
+    end
+
+    -- Stopping early is the whole of the saving, so what is left to find
+    -- has to be counted rather than inferred from the operator list: one
+    -- record may be placed in several cells, and #operators would then
+    -- reach `searching` while somebody was still missing.
+    local outstanding = searching
+    local seen = {}
+    local walked = 0
+    local function sweep(list)
+        for index = 1, #list do
+            if outstanding == 0 then
+                return true
+            end
+            local cell = list[index]
+            for _, kind in ipairs(kinds) do
+                local ok, objects = pcall(cell.getAll, cell, kind.objectType)
+                if ok and objects then
+                    for _, object in ipairs(objects) do
+                        local id = object.recordId
+                        local key = type(id) == 'string' and string.lower(id) or nil
+                        local record = key and missing[key]
+                        if record then
+                            local operator = operatorFrom(record, object, cell)
+                            if operator then
+                                operators[#operators + 1] = operator
+                            end
+                        -- Sighting is what ends the search, not
+                        -- learning: a cell with no name to write down
+                        -- still answers where this record is, and a
+                        -- record whose destinations will not resolve
+                        -- has still been looked for and found. Tying
+                        -- the count to the hint instead would walk the
+                        -- whole load order after operators that were
+                        -- located in the first hundred cells.
+                            if not seen[key] then
+                                seen[key] = true
+                                outstanding = outstanding - 1
+                            end
+                        -- The first cell a record turns up in is the
+                        -- one it is remembered by. A record in two
+                        -- cells is already more than the graph can
+                        -- express -- see graph.duplicated -- and
+                        -- walking on for the second copy would cost
+                        -- the load order to learn something nothing
+                        -- reads.
+                            local hint = M.hintFor(cell)
+                            if hint and discovered[key] == nil then
+                                discovered[key] = { hint }
+                            end
+                        end
+                    end
+                end
+            end
+            walked = walked + 1
+        -- Between cells, never inside one: a half-scanned cell would
+        -- have to be resumed mid-list, and the list is the engine's.
+            checkpoint('cells', walked, cellCount)
+        end
+        return outstanding == 0
+    end
+
+    if not sweep(outside) then
+        sweep(inside)
+    end
+    report.walked = walked
+    report.cells = cellCount
+    report.found = searching - outstanding
+    report.learned = discovered
+    return operators
+end
+
 -- @param opts optional:
 --   ignoreHints = true  search every cell even for operators the table places
 --   learned = <table>   id -> hint list an earlier walk found, tried before
@@ -357,6 +471,10 @@ end
 --     and do arithmetic.
 function M.operatorScan(opts)
     local ignoreHints = opts and opts.ignoreHints
+    -- Deferring means answering from what the tables placed while the walk
+    -- runs behind. Ignoring the tables leaves nothing to answer from, so the
+    -- two cancel: asked for both, the walk is not put off.
+    local deferWalk = (opts and opts.deferWalk) and not ignoreHints
     local learned = (opts and opts.learned) or {}
     local report = (opts and opts.report) or {}
     report.ignoredHints = ignoreHints and true or false
@@ -417,100 +535,35 @@ function M.operatorScan(opts)
             return operators
         end
 
-        -- Where the walk finds the operators it had to go looking for. Only
-        -- those: everything the tables already place was never searched for,
-        -- so this stays a list of corrections rather than a second copy of
-        -- data/operators.lua.
-        local discovered = {}
+        if deferWalk then
+            -- Handed back rather than done. The caller assembles a graph from
+            -- what the tables already placed -- which on a covered load order
+            -- is everybody -- and runs this behind it.
+            report.owed = { missing = missing, kinds = kinds }
+            report.operators = #operators
+            return operators
+        end
 
-        -- Exteriors first, and it is worth being plain about why: 131 of the
-        -- 155 operators the shipped table places stand out of doors, and the
-        -- walk stops the moment it has found everybody. Looking outside first
-        -- is therefore not a preference but the shorter half of the search --
-        -- most of the time the interiors are never opened at all.
-        --
-        -- Both halves come out of the one `world.cells`, ordered without
-        -- opening anything: `isExterior` is a field, and it is `getAll` that
-        -- costs.
-        local cells = world.cells
-        local cellCount = #cells
-        local outside, inside = {}, {}
-        for index = 1, cellCount do
-            local cell = cells[index]
-            if cell.isExterior then
-                outside[#outside + 1] = cell
-            else
-                inside[#inside + 1] = cell
+        walkFor(missing, kinds, operators, report, checkpoint)
+        report.operators = #operators
+        return operators
+    end)
+end
+
+--- The deferred half, as its own coroutine.
+-- @param owed `report.owed` from a scan that was asked to defer
+-- @return a coroutine yielding like M.operatorScan, returning the operators
+--   the walk found -- only those, to be added to what the hinted pass gave
+function M.walkScan(owed, opts)
+    local report = (opts and opts.report) or {}
+    return coroutine.create(function(deadline)
+        local function checkpoint(phase, done, total)
+            if deadline and core.getRealTime() >= deadline then
+                deadline = coroutine.yield(phase, done, total)
             end
         end
-
-        -- Stopping early is the whole of the saving, so what is left to find
-        -- has to be counted rather than inferred from the operator list: one
-        -- record may be placed in several cells, and #operators would then
-        -- reach `searching` while somebody was still missing.
-        local outstanding = searching
-        local seen = {}
-        local walked = 0
-        local function sweep(list)
-            for index = 1, #list do
-                if outstanding == 0 then
-                    return true
-                end
-                local cell = list[index]
-                for _, kind in ipairs(kinds) do
-                    local ok, objects = pcall(cell.getAll, cell, kind.objectType)
-                    if ok and objects then
-                        for _, object in ipairs(objects) do
-                            local id = object.recordId
-                            local key = type(id) == 'string' and string.lower(id) or nil
-                            local record = key and missing[key]
-                            if record then
-                                local operator = operatorFrom(record, object, cell)
-                                if operator then
-                                    operators[#operators + 1] = operator
-                                end
-                                -- Sighting is what ends the search, not
-                                -- learning: a cell with no name to write down
-                                -- still answers where this record is, and a
-                                -- record whose destinations will not resolve
-                                -- has still been looked for and found. Tying
-                                -- the count to the hint instead would walk the
-                                -- whole load order after operators that were
-                                -- located in the first hundred cells.
-                                if not seen[key] then
-                                    seen[key] = true
-                                    outstanding = outstanding - 1
-                                end
-                                -- The first cell a record turns up in is the
-                                -- one it is remembered by. A record in two
-                                -- cells is already more than the graph can
-                                -- express -- see graph.duplicated -- and
-                                -- walking on for the second copy would cost
-                                -- the load order to learn something nothing
-                                -- reads.
-                                local hint = M.hintFor(cell)
-                                if hint and discovered[key] == nil then
-                                    discovered[key] = { hint }
-                                end
-                            end
-                        end
-                    end
-                end
-                walked = walked + 1
-                -- Between cells, never inside one: a half-scanned cell would
-                -- have to be resumed mid-list, and the list is the engine's.
-                checkpoint('cells', walked, cellCount)
-            end
-            return outstanding == 0
-        end
-
-        if not sweep(outside) then
-            sweep(inside)
-        end
-        report.walked = walked
-        report.cells = cellCount
-        report.found = searching - outstanding
-        report.learned = discovered
+        local operators = {}
+        walkFor(owed.missing, owed.kinds, operators, report, checkpoint)
         report.operators = #operators
         return operators
     end)
