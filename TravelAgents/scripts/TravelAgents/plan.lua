@@ -6,11 +6,7 @@ local route = require('scripts.TravelAgents.route')
 
 local M = {}
 
--- A leg as the window needs it. `to` is what it draws -- the via line is
--- the intermediate stops and nothing else -- and the label and the operator
--- are what names a journey in a log or a test. The mode id, the near end and
--- the distance are all the router's business and stay there; every field
--- here is copied across a context boundary for each of a few hundred stops.
+-- Leg as window needs it: destination, via line, label. Router details stay there.
 local function legOf(graph, leg, modes)
     return {
         modeLabel = graphlib.modeLabel(leg.mode, modes),
@@ -44,7 +40,7 @@ function M.build(graph, originKey, opts)
         stops = {},
     }
 
-    -- One row per place, not per stop.
+    -- One row per place (not per stop).
     local here, taken = {}, {}
     for _, member in ipairs(graphlib.walkGroup(graph, originKey)) do
         here[member] = true
@@ -52,7 +48,7 @@ function M.build(graph, originKey, opts)
 
     for _, stop in ipairs(route.destinations(graph, originKey, opts)) do
         local place = graphlib.place(graph, stop.key)
-        -- Somewhere you already are is not a journey.
+        -- Skip places already reachable.
         local worth = not here[stop.key] and not taken[place.key]
         if worth then
             taken[place.key] = true
@@ -108,8 +104,7 @@ function M.changes(stop)
 end
 
 --- The same, but with everything at or past `most` sharing its answer.
--- Long journeys are rare and differ from each other in ways the count stops
--- describing, so a window grouping by it has somewhere to put them.
+-- Long journeys differ in ways count stops describing.
 function M.changeBucket(stop, most)
     local changes = M.changes(stop)
     if most and changes > most then

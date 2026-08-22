@@ -1,9 +1,6 @@
 -- TravelAgents -- global script.
 --
--- The graph is built here because only global scripts may walk cells, and
--- journeys are sold here because only global scripts may move the player, take
--- their gold or advance the clock. The window that asks for both lives in
--- player.lua and is told nothing it could get wrong.
+-- Graph building and journey selling (only global scripts can do these).
 
 local async = require('openmw.async')
 local core = require('openmw.core')
@@ -26,6 +23,7 @@ local TAG = '[TravelAgents]'
 local cached = nil
 
 local function out(fmt, ...)
+    -- Tagged output line
     if select('#', ...) > 0 then
         print(TAG .. ' ' .. string.format(fmt, ...))
     else
@@ -33,7 +31,7 @@ local function out(fmt, ...)
     end
 end
 
---- Stops that sit inside a building, which are the ones needing a way out.
+--- Interior stops (need walk links to outside).
 local function interiorStops(g)
     local stops = {}
     for _, key in ipairs(g.order) do
@@ -96,6 +94,7 @@ if not registered then
         .. 'always be built from the shipped table of operator places')
 end
 
+-- Check if full-search setting is enabled
 local function searchEverything()
     local ok, value = pcall(function()
         return storage.globalSection(SETTINGS):get('fullSearch')
@@ -128,6 +127,7 @@ end
 --
 -- Persistent, which in OpenMW means global_storage.bin in the user's
 -- directory -- not the save file. Nothing here grows a savegame.
+-- Learned operator placements (persisted in global_storage.bin)
 local LEARNED = 'TravelAgentsLearned'
 
 local function learnedSection()
@@ -141,7 +141,7 @@ local function learnedSection()
     return section
 end
 
---- Hints an earlier walk found, id -> list of { x, y } or { name }.
+--- Earlier walk findings (id -> hints).
 local function learnedHints()
     local section = learnedSection()
     if section == nil then
@@ -165,9 +165,8 @@ local function learnedHints()
     return hints
 end
 
---- Write the whole hint map back.
--- @return true when it was stored, so a caller can tell a correction that
---   will survive the session from one that has nowhere to go
+--- Save learned hints back to storage.
+-- @return true if stored
 local function writeHints(hints)
     local section = learnedSection()
     if section == nil then
@@ -176,7 +175,7 @@ local function writeHints(hints)
     return pcall(section.set, section, 'places', hints) and true or false
 end
 
---- Fold what this walk found into what earlier ones did.
+--- Merge walk findings with previous learns.
 local function rememberHints(found)
     if type(found) ~= 'table' or next(found) == nil then
         return
@@ -431,7 +430,7 @@ local function advanceWalk(budget)
     return nil
 end
 
---- Finish the deferred walk now, because somebody is waiting on it.
+--- Finish deferred walk now (blocking).
 -- @return the graph, rebuilt if the walk changed anything
 local function finishWalk(why)
     if owedWalk == nil then
@@ -537,7 +536,7 @@ local function reportBlindSpots(g)
     end
 end
 
---- Throw the graph away and build another, here and now.
+--- Rebuild graph here and now (console only).
 --
 -- Asked for from the console, where waiting for it is the point. Unsliced:
 -- advance(nil) passes no deadline, so nothing yields and the whole build
@@ -575,7 +574,7 @@ local function rebuild()
     return g
 end
 
---- Throw the graph away and let it be built again in the background.
+--- Trigger background rebuild (for full-search setting).
 --
 -- What ticking the full-search setting does. Rebuilding on the spot would
 -- freeze the game for as long as the search takes, which is the thing this
@@ -775,7 +774,7 @@ local function planFor(g, originKey, options)
     return lastPlan
 end
 
---- Answer a player script asking where a conversation could take them.
+--- Answer plan request (note operator placement).
 --
 -- The one moment an operator's own cell is free, so it is taken whether the
 -- graph needed it or not. A correction here lands in the graph the next
@@ -815,7 +814,7 @@ local function onRequestPlan(data)
     player:sendEvent(events.PLAN, { origin = built.origin, stops = built.stops })
 end
 
---- Every operator class in the load order, and whether the mod knows it.
+--- Operator classes and their declarations (diagnostic).
 --
 -- The mode a vehicle is filed under comes from its operator's class, which
 -- is a string a content pack's author typed. Vanilla's four are known; a
@@ -856,7 +855,7 @@ local function dumpClasses()
     out('--------------------------------------------------------')
 end
 
---- Build the graph before anything asks for it.
+--- Build graph incrementally in background.
 --
 -- The build walks every cell in the load order looking for placed
 -- operators, because a travel destination lives on a record and the near
@@ -889,7 +888,7 @@ local function warmUp()
     end
 end
 
---- Sell a journey and make it.
+--- Book and execute a journey.
 local function onBook(data)
     local player = data and data.player
     if player == nil then

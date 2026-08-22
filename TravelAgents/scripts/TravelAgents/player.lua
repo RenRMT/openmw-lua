@@ -1,5 +1,4 @@
--- TravelAgents -- player script: the keybind, the settings, the window.
--- PLAYER context only.
+-- Player script: keybinding, settings, planner window (PLAYER context only).
 
 local async = require('openmw.async')
 local core = require('openmw.core')
@@ -23,28 +22,16 @@ local GROUP = 'SettingsPlayerTravelAgents'
 local FARES = 'SettingsPlayerTravelAgentsFares'
 local TRIGGER = 'TravelAgentsPlanner'
 
--- The ids the bindings are filed under. Two of them, both firing the same
--- trigger: bindings are keyed by id rather than by what they fire, so a
--- keyboard key and a controller button can be bound at once and either one
--- opens the planner.
+-- Two binding ids, one trigger: keyboard and controller both open planner.
 local BINDING = 'TravelAgentsPlannerBinding'
 local CONTROLLER_BINDING = 'TravelAgentsPlannerControllerBinding'
 local BINDINGS_SECTION = 'OMWInputBindings'
 
--- The engine's own labels for these live in a local table in that file, so
--- the few that are not keyboard keys are spelled out again here.
+-- Mouse button labels (engine defines keyboard keys).
 local MOUSE_BUTTONS = { [1] = 'Left', [2] = 'Middle', [3] = 'Right', [4] = '4', [5] = '5' }
 
--- Controller buttons, code to label.
---
--- Built by asking `input.CONTROLLER_BUTTON` for each name rather than by
--- iterating it: that table is read-only *userdata*, so `pairs` over it is an
--- error rather than an empty loop, and this runs at load. Indexing is what
--- the userdata is for.
---
--- The names match OpenMW's own Controls page so the two read alike, and the
--- list runs past the sixteenth button, which the engine's hand-written one
--- stops at.
+-- Controller buttons code->label (can't iterate userdata, must index).
+-- Names match OpenMW Controls page; extends past engine's 16 buttons.
 local CONTROLLER_BUTTONS = {}
 for name, label in pairs({
     A = 'A', B = 'B', X = 'X', Y = 'Y',
@@ -57,9 +44,7 @@ for name, label in pairs({
     Paddle1 = 'Paddle 1', Paddle2 = 'Paddle 2',
     Paddle3 = 'Paddle 3', Paddle4 = 'Paddle 4',
 }) do
-    -- Behind a pcall because a read-only table can be the strict kind, which
-    -- raises on a key it has never heard of. The paddles and the touchpad
-    -- are 0.51 names; an older engine simply will not have them.
+    -- Pcall: strict tables raise on unknown keys. Paddles/touchpad are 0.51+.
     local ok, code = pcall(function() return input.CONTROLLER_BUTTON[name] end)
     if ok and code ~= nil then
         CONTROLLER_BUTTONS[code] = label
@@ -121,18 +106,14 @@ I.Settings.registerGroup {
             name = 'plannerKey',
             description = 'plannerKeyDescription',
             renderer = 'inputBinding',
-            -- The value is the binding's own id; the argument names the
-            -- trigger it fires, which is why that is registered first. No key
-            -- is bound by default -- the player picks one on this page.
+            -- Value is binding id; argument is trigger (registered first).
+            -- No default; player picks key on settings page.
             default = BINDING,
             argument = { type = 'trigger', key = TRIGGER },
         },
         {
-            -- The same trigger under a second id, so a controller can reach
-            -- the planner without giving up the keyboard key. The renderer
-            -- records whatever is pressed, so this row will take a key as
-            -- readily as a button -- it is the row a controller player fills
-            -- in, not a row that refuses anything else.
+            -- Second binding id for same trigger (controller & keyboard together).
+            -- Renderer takes any input; controller players fill this row.
             key = 'plannerController',
             name = 'plannerController',
             description = 'plannerControllerDescription',
@@ -143,7 +124,7 @@ I.Settings.registerGroup {
     },
 }
 
--- What the convenience is worth in gold.
+-- Surcharge settings: convenience cost in gold.
 I.Settings.registerGroup {
     key = FARES,
     page = PAGE,
@@ -171,7 +152,7 @@ I.Settings.registerGroup {
     },
 }
 
---- A percentage as the fraction the fare arithmetic works in.
+--- Convert percentage to fraction for fare calculation.
 local function fraction(percent)
     if type(percent) ~= 'number' then
         return nil
@@ -179,13 +160,8 @@ local function fraction(percent)
     return percent / 100
 end
 
---- Everything the player has set that the global script needs in order to
--- answer: what the counter should charge.
---
--- The routing penalties are not here. They are tie-breakers between two
--- routes of near-equal cost, which is a thing the shipped network almost
--- never offers -- config.lua keeps them, and carries what measuring them
--- found.
+--- Player settings for fare calculation.
+-- Routing penalties stay in config.lua (tie-breakers, not player-facing).
 local function preferences()
     local fares = storage.playerSection(FARES)
     return {
@@ -194,7 +170,7 @@ local function preferences()
     }
 end
 
---- What one binding reads as, or nil when that row is empty.
+--- Binding label (human-readable) or nil if unbound.
 local function labelOf(settingKey, fallbackId)
     local id = storage.playerSection(GROUP):get(settingKey) or fallbackId
     local binding = storage.playerSection(BINDINGS_SECTION):get(id)
@@ -214,10 +190,8 @@ local function labelOf(settingKey, fallbackId)
     return nil
 end
 
---- The keybind, as the player sees it.
--- Both rows if both are filled in, since either one opens the planner and a
--- hint naming only one of them is wrong for whoever bound the other.
--- @return the label, or nil when nothing is bound
+--- Both bindings if both set (either opens planner).
+-- @return label or nil
 local function boundKey()
     local labels = {}
     local keyboard = labelOf('plannerKey', BINDING)
@@ -237,8 +211,7 @@ local function boundKey()
     return l10n('eitherBinding', { first = labels[1], second = labels[2] })
 end
 
--- Two window panes: the list of places on the left, the journey to the one you
--- picked on the right.
+-- Two-pane window: places left, journey detail right.
 local function text(content, template)
     return {
         template = template or I.MWUI.templates.textNormal,
@@ -246,7 +219,7 @@ local function text(content, template)
     }
 end
 
---- A line the player can click.
+--- Clickable UI row.
 local function row(label, onClick)
     return {
         template = I.MWUI.templates.textNormal,
@@ -259,14 +232,8 @@ local function line()
     return { template = I.MWUI.templates.horizontalLine }
 end
 
---- Where each character of a UTF-8 string starts.
---
--- Names come out of the content files, and on a localised install they are
--- multi-byte: `#name` counts bytes, so a twelve-character Russian name reads
--- as twenty-four, gets cut to fit a column it already fitted, and is cut in
--- the middle of a character. Lua 5.1 has no utf8 library and a continuation
--- byte is the only thing that has to be spotted -- everything else begins
--- one character.
+--- Character start positions in UTF-8 string (multi-byte names).
+-- Lua 5.1 has no utf8; spot continuation bytes to avoid cutting chars.
 local function characterStarts(text)
     local starts = {}
     for index = 1, #text do
@@ -278,7 +245,7 @@ local function characterStarts(text)
     return starts
 end
 
---- Names are as long as the game made them; the column is not.
+--- Fit name to column width (truncate with ellipsis if needed).
 local function fit(name, width)
     local starts = characterStarts(name)
     if #starts <= width then
@@ -292,7 +259,7 @@ local function fit(name, width)
     return string.sub(name, 1, cut - 1) .. '...'
 end
 
---- Pad to a column counted in characters, for the same reason.
+--- Pad string to width in characters.
 local function pad(text, width)
     local short = width - #characterStarts(text)
     if short <= 0 then
@@ -355,7 +322,7 @@ local function stopsInTab()
     return out
 end
 
---- The conversation is over: the planner it offered goes with it.
+--- Dialogue ended; clear planner state.
 local function leaveDialogue()
     current = nil
     interlocutor = nil
@@ -363,7 +330,7 @@ local function leaveDialogue()
     close()
 end
 
---- Buy the journey and be taken on it.
+--- Book journey (check affordability, then send to global).
 local function bookTo(stop)
     local gold = money.held(self.object)
     if stop.fare > gold then
@@ -387,6 +354,7 @@ end
 
 
 -- The list of places
+-- Destination row with fare
 local function stopRow(stop)
     local marker = (selected == stop.key) and '> ' or '  '
     local price = stop.fare > 0 and tostring(stop.fare) or '-'
@@ -395,7 +363,7 @@ local function stopRow(stop)
     return row(label, function() pick(stop.key) end)
 end
 
---- What to call a bucket on its tab.
+--- Tab label for change-count bucket.
 local function bucketLabel(bucket)
     if bucket == 0 then
         return l10n('tabDirect')
@@ -406,11 +374,11 @@ local function bucketLabel(bucket)
     return l10n('tabChanges', { changes = bucket })
 end
 
---- One tab per number of changes a journey needs, fewest first.
+--- Tabs by journey complexity (fewest changes first).
 local function tabRow()
     local order, counts = tabsInPlan()
     if #order < 2 then
-        -- Everything reachable the same way: a row of one tab is furniture.
+        -- One tab = furniture (everything reachable same way).
         return nil
     end
 
@@ -455,16 +423,9 @@ local function tabRow()
     }
 end
 
---- The destination list, filling one column and then the next.
---
--- Both halves of the window are the list now. What used to sit on the right
--- -- the legs of the chosen journey, one per line -- is a strip along the
--- bottom instead, because a load order with a mainland in it has far more
--- destinations than a single column can hold and the leg list was the only
--- thing in the window that could afford to shrink.
---
--- Flowed down the left column and then down the right, so the list still
--- reads cheapest-first in the order the router returned.
+--- Destination list filling two columns, then paging.
+-- Two-column layout (mainland has more destinations than one column holds).
+-- Flows left column then right, maintaining cheapest-first order.
 local function destinations()
     local stops = stopsInTab()
     local capacity = config.ROWS_PER_COLUMN * 2
@@ -516,7 +477,7 @@ local function destinations()
         return body
     end
 
-    -- Paging only appears when it is needed, so vanilla never sees it.
+    -- Paging only shown when needed (vanilla never sees it).
     local controls = {}
     if page > 1 then
         controls[#controls + 1] = row(l10n('pagePrev'), function() page = page - 1 render() end)
@@ -542,7 +503,7 @@ local function destinations()
     }
 end
 
--- The journey to the place you picked
+-- Get chosen destination's details
 local function chosen()
     if selected == nil then
         return nil
@@ -555,7 +516,7 @@ local function chosen()
     return nil
 end
 
---- The button, and the reason it is greyed out when it is.
+--- Book button (greyed if unaffordable).
 local function bookButton(stop)
     local gold = money.held(self.object)
     local label = stop.fare > 0 and l10n('book', { fare = stop.fare }) or l10n('bookFree')
@@ -567,8 +528,7 @@ local function bookButton(stop)
             },
         }
     end
-    -- Shaded and unclickable rather than clickable and refused: the answer is
-    -- already known, and finding it out by being told off is worse.
+    -- Greyed instead of clickable+refused (answer is known).
     return {
         {
             template = I.MWUI.templates.disabled,
@@ -580,12 +540,8 @@ local function bookButton(stop)
     }
 end
 
---- Everything about the chosen journey, in a strip a few lines deep.
---
--- The condensed form of what used to be the right-hand pane: where you are
--- going, what it asks of you, what it costs and the button. The per-leg
--- breakdown collapses to one "via" line -- the intermediate stops are the
--- part of it a traveller actually reads.
+--- Chosen journey details (destination, cost, button).
+-- Condensed form of old right pane; per-leg detail collapses to via line.
 local function footer()
     local stop = chosen()
     if stop == nil then
@@ -594,7 +550,7 @@ local function footer()
 
     local rows = {}
 
-    -- Where, and what it asks of you, on one line.
+    -- Destination and journey summary on one line.
     local heading = stop.name
     if stop.arrival and stop.arrival ~= stop.name then
         heading = l10n('arrivingAt', { place = stop.arrival })
@@ -609,7 +565,7 @@ local function footer()
         },
     }
 
-    -- The legs, as the places they pass through rather than a line each.
+    -- Intermediate stops as one line (better than per-leg breakdown).
     if #stop.legs > 1 then
         local via = {}
         for index = 1, #stop.legs - 1 do
@@ -618,7 +574,7 @@ local function footer()
         rows[#rows + 1] = text(l10n('via', { places = table.concat(via, ', ') }))
     end
 
-    -- What it costs, broken into the parts the player is being charged.
+    -- Cost breakdown: base + surcharge (if any).
     local fare = l10n('fareLine', { base = stop.baseFare })
     if (stop.surcharge or 0) > 0 then
         fare = fare .. '  ' .. l10n('surchargeLine', {
@@ -649,7 +605,7 @@ local function footer()
     }
 end
 
--- Putting it together
+-- Assemble full window
 local function body()
     local heading = current.origin.name
     if #current.origin.modes > 0 then
@@ -685,9 +641,7 @@ render = function()
         return
     end
     if window then
-        -- Only the contents are replaced. The window's own position is left
-        -- alone, because the player may have dragged it somewhere they want it
-        -- and re-applying the props would snap it back to the middle.
+        -- Replace contents only; preserve player-positioned window.
         window.layout.content = ui.content { body() }
         window:update()
         return
@@ -748,6 +702,7 @@ local function onPlan(data)
     end
 end
 
+-- Request plan for an operator
 local function onTalk(actor)
     interlocutor = actor
     core.sendGlobalEvent(events.REQUEST_PLAN, {
@@ -755,16 +710,8 @@ local function onTalk(actor)
     })
 end
 
---- What became of a booking.
---
--- Only when it went wrong. Arriving says nothing: the window has already
--- shown where, how long and what it costs, and the traveller standing
--- somewhere else with less gold is its own confirmation -- which is all
--- vanilla does. A refusal is different, because a booking that fails in
--- silence reads as a bug.
---
--- The quiet arrival is also what leaves room for a mod that has something
--- more interesting to say about the journey.
+--- Handle booking result (silent on success, messages on failure).
+-- Arrival is silent (confirmation is obvious); refusal must say why.
 local function onBooked(data)
     if data == nil or data.ok then
         return
@@ -783,6 +730,7 @@ local function onRestore(data)
     restore.afterJourney(self.object, data and data.rests)
 end
 
+-- Toggle planner window open/closed
 local function toggle()
     if window then
         close()
@@ -801,8 +749,7 @@ end
 
 input.registerTriggerHandler(TRIGGER, async:callback(toggle))
 
---- Dialogue opening is what offers the planner; dialogue *ending* withdraws
--- it.
+--- Dialogue open/close controls planner availability.
 local function onUiModeChanged(data)
     if data.newMode == 'Dialogue' then
         if data.arg then
@@ -815,8 +762,7 @@ local function onUiModeChanged(data)
         return
     end
 
-    -- Something else owns the screen. The planner goes away with it, but the
-    -- conversation underneath does not: only every window closing ends that.
+    -- Other screen: planner closes but dialogue continues.
     close()
     if data.newMode == nil then
         leaveDialogue()

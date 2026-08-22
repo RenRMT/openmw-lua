@@ -11,7 +11,7 @@ local function stateKey(nodeKey, mode)
     return nodeKey .. '|' .. mode
 end
 
---- What it costs to take this leg, having arrived on `arrivedBy`
+--- Leg cost, accounting for transfer and mode change penalties.
 local function legCost(edge, arrivedBy, opts)
     local cost = edge.distance
     if arrivedBy ~= nil then
@@ -46,8 +46,7 @@ local function rebuild(states, finalKey)
     return legs
 end
 
---- Add up a journey: how far, how long, what it asks of the traveller, and
--- what it costs once the convenience of buying it in one go is priced in.
+--- Summarize journey: distance, time, what traveller pays (with surcharges).
 local function summarise(legs, opts)
     local summary = {
         legs = legs,
@@ -117,9 +116,7 @@ function M.reachable(graph_, fromKey, opts)
 
     -- states[stateKey] = { node, mode, cost, legCount, from, edge }
     local states = {}
-    -- When each state was first offered. The tie-break, so two routes of
-    -- equal cost always resolve the same way -- otherwise the list a player
-    -- is shown could differ between two openings of the same window.
+    -- Sequence number for tie-breaking so cost-equal routes resolve consistently.
     local seen = {}
     local offers = 0
 
@@ -134,6 +131,7 @@ function M.reachable(graph_, fromKey, opts)
     local heap, heapSize = {}, 0
 
     local function cheaper(a, b)
+        -- Cost first, then sequence for tie-breaking.
         if a.cost ~= b.cost then
             return a.cost < b.cost
         end
@@ -208,8 +206,7 @@ function M.reachable(graph_, fromKey, opts)
         if entry == nil then
             break
         end
-        -- The first copy of a state to surface is its cheapest, so any
-        -- later one is the stale push of a cost since improved on.
+        -- First state surface is cheapest (later ones are stale pushes).
         if not settled[entry.key] then
             settled[entry.key] = true
             local state = states[entry.key]
@@ -224,10 +221,7 @@ function M.reachable(graph_, fromKey, opts)
         end
     end
 
-    -- One entry per stop: the cheapest way to be standing there, whichever
-    -- vehicle brought you. The winner is settled before anything is walked
-    -- back into legs, so a stop reachable five ways is summarised once and
-    -- not once per way that beat the one before it.
+    -- One entry per stop: cheapest way there. Settled before walking back legs.
     local winner = {}
     for key, state in pairs(states) do
         local held = winner[state.node]
@@ -280,16 +274,12 @@ local function refuse(reason, quote)
     return quote
 end
 
---- What a journey costs, and whether it can be bought.
---
--- @param graph_ the built graph
--- @param fromKey the operator's stop.
--- @param toKey the stop the player picked
--- @param opts optional { gold = <what the player holds> } plus anything
---   route.find takes
--- @return a quote. `fare` and `hours` are filled in whenever a route exists,
---   including when it is refused, so the refusal can say what the journey
---   would have cost. `reason` is 'route' or 'gold'.
+--- Quote a journey's cost and feasibility.
+-- @param graph_ built graph
+-- @param fromKey operator stop
+-- @param toKey chosen stop
+-- @param opts { gold = <held> } + route.find options
+-- @return quote with fare/hours even when refused (reason: 'route' or 'gold')
 function M.quote(graph_, fromKey, toKey, opts)
     opts = opts or {}
     if type(fromKey) ~= 'string' or type(toKey) ~= 'string' or fromKey == toKey then
@@ -313,9 +303,7 @@ function M.quote(graph_, fromKey, toKey, opts)
         surcharge = journey.surcharge,
         surchargePercent = journey.surchargePercent,
         hours = journey.hours,
-        -- Whether arriving counts as a rest. Carried on the quote rather
-        -- than worked out again at the far end, because the far end is a
-        -- player script and cannot see the legs.
+        -- Whether arriving counts as rest (worked out here, not player-side).
         rests = journey.rests,
         distance = journey.distance,
         walked = journey.walked,

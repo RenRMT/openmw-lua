@@ -8,8 +8,7 @@ return {
     -- deepest stop is two doors in.
     MAX_DOOR_HOPS = 3,
 
-    -- Routing costs in game units; the penalties are the cost of an interchange
-    -- so a route does not bounce between two modes to save a few metres.
+    -- Routing costs in game units. Penalties prevent bouncing between modes.
     --
     -- Tie-breakers, and nothing more. A vanilla vehicle leg runs a median
     -- 76,000 units, so distance decides every route that is not already
@@ -30,39 +29,26 @@ return {
     FARE_LEG_SURCHARGE = 0.10,
     FARE_MODE_CHANGE_SURCHARGE = 0.20,
 
-    -- The planner window, in pixels.
+    -- Window dimensions in pixels.
     WINDOW_WIDTH = 640,
     WINDOW_HEIGHT = 560,
     NAME_COLUMN = 24,
 
-    -- Both halves of the window are the destination list, so a column is
-    -- half of it less the gap between them.
+    -- Column width: half the window minus gap.
     COLUMN_WIDTH = 290,
-    -- What is left once the title, the tabs, the footer and the close row
-    -- have taken theirs.
+    -- Height after title, tabs, footer, close row.
     LIST_HEIGHT = 360,
     FOOTER_HEIGHT = 90,
 
-    -- Rows in one column. Two columns to a page, so a page holds twice
-    -- this; anything past it pages rather than overflowing the window,
-    -- because MWUI has no scrollbar and a clipped row is unreachable
-    -- rather than merely unseen.
+    -- Rows per column. MWUI has no scrollbar, so excess pages instead of clips.
     ROWS_PER_COLUMN = 18,
 
-    -- The last tab in the row, which collects every journey needing this
-    -- many changes of vehicle or more. Past it the count stops telling the
-    -- player anything they would choose differently on.
+    -- Last tab collects journeys with this many+ changes; beyond this count matters less.
     MAX_CHANGE_TAB = 3,
     HOURS_PER_UNIT = 0.00012,
     MAX_ROUTE_LEGS = 8,
 
-    -- Real seconds of cell walking to do per frame while building the graph.
-    -- Small enough to disappear into a frame's slack at any playable frame
-    -- rate; the whole walk is nine thousand cells on a load order with a
-    -- mainland in it, so this trades a second or two of background work for
-    -- never stalling.
-    -- Real seconds of cell walking per frame. Measured rather than reasoned
-    -- about, on Morrowind + Tribunal + Bloodmoon + Tamriel Rebuilt.
+    -- Real seconds of cell walking per frame. Measured on MW+Tribunal+Bloodmoon+TR.
     --
     -- The number that matters is the COLD one -- the first build after the
     -- game starts, when the cells have to come off disk. Re-measure it warm

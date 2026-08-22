@@ -1,4 +1,4 @@
--- What each operator drives. Inferred from the operator's class.
+-- Operator modes: class -> vehicle type mapping.
 
 return {
     classes = {
@@ -14,9 +14,7 @@ return {
         ['t_glb_fisherman'] = { id = 'boat', label = 'Boat' },
     },
 
-    -- Operators whose class describes the person rather than what they drive.
-    -- The vanilla three all run boats: the Holamayan pair, and Molag Mar's
-    -- captain who is authored as a Rogue. TR adds a Daedroth.
+    -- Classes that describe person, not vehicle (three vanilla boats, one TR guide).
     overrides = {
         ['blatta hateria']          = 'boat',
         ['vevrana aryon']           = 'boat',
@@ -24,26 +22,22 @@ return {
         ['tr_m1_daedrothgindaman']  = 'guide',
     },
 
-    -- Transport that arrives the moment it leaves.
+    -- Instant transport (no travel time).
     instant = {
         ['guide'] = true,
     },
 
-    -- Bethesda's test NPC.
+    -- Bethesda test NPC (excluded).
     exclude = {
         ['todd'] = true,
     },
 
-    -- Names for stops the game never named. Keyed by grid reference, which
-    -- is what an unnamed cell has instead of a name; a stop the game did
-    -- name is never looked up here.
+    -- Fallback names for unnamed stops (grid reference -> name).
     places = {
-        -- The landing below Holamayan Monastery: the boat from Ebonheart puts
-        -- you on a beach in a cell nobody named.
+        -- Landing below Holamayan (Ebonheart boat destination).
         ['19,-5'] = 'Holamayan',
     },
 
-    -- An operator whose class is not in the table still forms edges but the
-    -- label degrades to unknown.
+    -- Undeclared class: forms edges, label degrades to unknown.
     unknown = { id = 'unknown', label = 'Unknown' },
 }

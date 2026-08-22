@@ -34,9 +34,7 @@ local function pointFromCell(cell, position)
 end
 
 --- Where a travel destination actually is.
--- The id is real for exteriors as well as interiors. An exterior one reads
--- `Esm3ExteriorCell:<x>:<y>` and resolves to the cell whose name is the town,
--- which is where every exterior stop's name comes from.
+-- Exterior ids resolve to the cell whose name is the town.
 local function pointFromDestination(destination)
     local ok, cell = pcall(world.getCellById, destination.cellId)
     if not ok or cell == nil then
@@ -178,24 +176,10 @@ local function offersTravel(checkpoint)
     return wanted, kinds, read
 end
 
--- Finding an operator's own position means asking every cell in the load
--- order what is standing in it: a travel destination lives on a record, but
--- the near end of every leg does not. On a load order with a mainland in it
--- that is nine thousand cells and eighteen thousand `getAll` calls, which is
--- somewhere between a stutter and a hang if it happens between two frames.
---
--- So it happens across many. `resume` hands in the real time to run until;
--- the body checks the clock between cells and yields when it is spent, which
--- keeps a slice near the budget however slow the cells in it turn out to be.
---
--- @return a coroutine. Resume with a deadline; it yields until it is done,
---   and returns the operator list.
---- The cell a hint names, or nil if the game has no such cell.
---
--- Grid coordinates for exteriors and a name for interiors, which is what the
--- two engine lookups take -- so nothing here has to know how a cell id is
--- spelled, and a hint written against a different version of a mod fails by
--- returning nothing rather than by resolving to the wrong place.
+-- Finding operator positions requires asking every cell. Sliced across
+-- frames to stay within budget. @return a coroutine yielding until done.
+--- The cell a hint names, or nil if not found.
+-- Grid or name, matching the engine lookups.
 local function cellFromHint(hint)
     local ok, cell
     if hint.x and hint.y then
@@ -209,11 +193,7 @@ local function cellFromHint(hint)
     return nil
 end
 
---- A cell, in the shape the hint tables use.
---
--- Grid for an exterior and a name for an interior, matching cellFromHint's
--- two lookups, so a hint the walk learns is spelled exactly like one the
--- shipped table ships.
+--- A cell shape for hint tables: grid for exterior, name for interior.
 function M.hintFor(cell)
     if cell == nil then
         return nil
@@ -230,33 +210,12 @@ function M.hintFor(cell)
     return nil
 end
 
---- Look for the operators the shipped table places, in the cells it names.
---
--- Everything the table accounts for is found by opening one cell each --
--- about 130 rather than the whole load order. Anything it does not account
--- for is handed back, and the caller walks every cell looking for those.
---
--- An operator counts as accounted for only when every cell the table names
--- for them resolves *and* they are standing in it. A hint that points at a
--- cell this game does not have, or at a cell they have since been moved out
--- of, sends them to the full walk -- which is what keeps a stale table a
--- cost in speed rather than in missing boats.
---
--- With one exception, and it is the only one. An empty hint list means the
--- record offers travel and the reference load order places it in no cell at
--- all, so nothing is looked for and nothing is handed back. Were those sent
--- to the full walk instead, every load would tour ten thousand cells after
--- four NPCs who stand nowhere, which is the whole cost this table exists to
--- avoid. The price is that a mod which *does* place one of them is not
--- noticed: M.standNowhere names them, main.lua says so once when the graph
--- is ready, and the full-search setting finds them.
---
--- @param wanted id -> record, every record that offers travel
--- @param into the operator list to add to
--- @param learned id -> hint list, what an earlier walk found. Consulted
---   before the shipped table, because it was measured on this load order and
---   the shipped table was measured on somebody else's.
--- @return the ids still unaccounted for, and how many cells were opened
+--- Look for the operators the shipped table places.
+-- Opens one cell per known operator; stale entries force full walk.
+-- @param wanted id->record map
+-- @param into operator list to add to
+-- @param learned id->hint list from earlier walk
+-- @return unaccounted ids, cells opened
 local function collectHinted(wanted, into, learned)
     local unaccounted = {}
     local opened = 0
@@ -300,13 +259,7 @@ local function collectHinted(wanted, into, learned)
 end
 
 --- Does anything already place this operator in this cell?
---
--- Asked of an operator the player is standing in front of, whose cell is
--- therefore known for nothing. Two answers are "yes": the learned table
--- says so, or -- when nothing has been learned for them -- the shipped one
--- does. Learned wins outright rather than being merged, because it was
--- measured on this load order and a patch that moves somebody makes the
--- shipped entry not incomplete but wrong.
+-- Learned (measured on this load order) takes precedence over shipped.
 --
 -- @param id lowercased record id
 -- @param hint from M.hintFor
@@ -347,11 +300,8 @@ function M.standNowhere()
     return ids
 end
 
---- Look for records the tables could not place, by opening cells.
---
--- The expensive half, and the one that can be put off: `M.operatorScan` hands
--- it back undone when asked to, so a graph can be built from what the tables
--- already know and this can run behind it.
+--- Look for records the tables could not place.
+-- Expensive but can be deferred to run behind the graph.
 --
 -- @param missing id -> record, only what is still to be found
 -- @param kinds the record kinds worth opening cells for
@@ -550,10 +500,9 @@ function M.operatorScan(opts)
     end)
 end
 
---- The deferred half, as its own coroutine.
--- @param owed `report.owed` from a scan that was asked to defer
--- @return a coroutine yielding like M.operatorScan, returning the operators
---   the walk found -- only those, to be added to what the hinted pass gave
+--- The deferred walk half, as its own coroutine.
+-- @param owed `report.owed` from deferred scan
+-- @return coroutine yielding found operators only
 function M.walkScan(owed, opts)
     local report = (opts and opts.report) or {}
     return coroutine.create(function(deadline)
