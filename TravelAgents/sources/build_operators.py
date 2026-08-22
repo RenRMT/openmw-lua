@@ -148,17 +148,10 @@ def render(found: "OrderedDict[str, list]", files: list[pathlib.Path], cells: in
         "-- every cell in the load order. Built by",
         "-- TravelAgents/sources/build_operators.py.",
         "--",
-        "-- A hint, never an authority. The mod reads the live position off the",
-        "-- object it finds here; an operator that has moved, or one this table",
-        "-- has never heard of, sends it back to walking every cell. A stale",
-        "-- entry costs speed and cannot cost correctness.",
-        "--",
-        "-- One entry per operator, from the last file below that places them --",
-        "-- a load order's own rule. A patch that moves someone supersedes the",
-        "-- file that put them where they were.",
-        "--",
-        "-- Exteriors are grid coordinates and interiors are cell names, because",
-        "-- world.getExteriorCell and world.getCellByName take exactly those.",
+        "-- The mod reads the live position off the object it finds here;",
+        "-- an operator that has moved, or one this table has never heard of,",
+        "-- sends it back to walking every cell. Exteriors are grid coordinates",
+        "-- and interiors are cell names.",
         "--",
         "-- Built from:",
     ]
@@ -167,8 +160,6 @@ def render(found: "OrderedDict[str, list]", files: list[pathlib.Path], cells: in
     lines += [
         "-- %d record(s) that offer travel, %d placement(s) between them."
         % (len(found), cells),
-        "-- An empty list is a record that offers travel and stands nowhere:",
-        "-- looked for, not found, and not worth looking for again.",
         "",
         "return {",
     ]

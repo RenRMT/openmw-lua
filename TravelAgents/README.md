@@ -68,10 +68,23 @@ luag require('openmw.interfaces').TravelAgents.dumpClasses()
 It lists every operator class found, how many operators carry it, and which
 ones no entry claims. Output goes to `openmw.log`.
 
-The travel graph is built once, on the first frame after a save loads, because
-finding operators means walking every cell in the load order — a travel
+The travel graph is built once, on the first frame after a save loads. A travel
 destination lives on a record, but the near end of every route is wherever the
-operator happens to be standing. On a large load order such as Tamriel Rebuilt
-that is a few seconds of work; doing it here keeps it out of your first
-conversation with a travel NPC. The log line `graph ready: N stops, M legs,
-built in T` says how long it took.
+operator happens to be standing, and nothing in the engine indexes that — so a
+shipped table says where the operators of the common load orders stand, and the
+build opens one cell each rather than all of them. That is about 155 cells and
+a tenth of a second. The log line `graph ready: N stops, M legs` says what came
+out.
+
+A load order that adds a travel service the table has never heard of still
+needs the long way round: opening cells until the missing operators turn up.
+That search is deferred — the graph is built and answering from the table
+first, and the search runs behind it a slice at a time, outdoors before indoors
+and stopping the moment everybody has been found. Talking to an operator the
+graph does not know finishes it on the spot rather than making you wait for it
+on every load.
+
+Talking to any operator is also how the table corrects itself: at that moment
+they are standing in front of you, so where they are costs nothing to read. An
+operator a patch has moved, or one no table places, is remembered from the
+conversation and looked up directly on every load after.

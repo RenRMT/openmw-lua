@@ -1,8 +1,4 @@
--- Where a stop inside a building lets you out.
--- A door, as the provider must hand it over:
---   { position = {x=, y=, z=}, dest = <point> }
--- where `dest` is a point in graph.lua's sense -- cell, position, and whether
--- it is interior.
+-- How stops inside buildings exit. Doors have position and dest (a graph point).
 
 local config = require('scripts.TravelAgents.config')
 
@@ -24,8 +20,7 @@ local function exitFrom(stop, doorsFor, maxHops)
         local here = queue[index]
         index = index + 1
         for _, door in ipairs(doorsFor(here.cellId) or {}) do
-            -- A door the provider could not resolve costs that one door, not
-            -- every door behind it in the cell.
+            -- Unresolved door costs one door, not every door behind it.
             local destination = door.dest
             if destination ~= nil then
                 local walked = here.walked + distance(here.position, door.position)

@@ -1,32 +1,16 @@
 -- Event names
 
 return {
-    -- player -> global: "where can I get to from here?"
+    -- player -> global: plan request from current position
     REQUEST_PLAN = 'TravelAgentsRequestPlan',
-    -- global -> player: the answer, shaped by plan.lua
+    -- global -> player: plan response (from plan.lua)
     PLAN = 'TravelAgentsPlan',
-    -- player -> global: "take me there". Names the stop and the operator, not
-    -- a price -- the global script quotes the journey again before charging
-    -- for it.
+    -- player -> global: book request (names stop and operator, not price)
     BOOK = 'TravelAgentsBook',
-    -- global -> player: what happened. Sent whether or not the journey was
-    -- made, because a refusal the player never hears about reads as a bug.
+    -- global -> player: booking result (sent even if refused)
     BOOKED = 'TravelAgentsBooked',
-    -- global -> player: "a journey just ended, here is what it was".
-    --
-    -- Nothing in this mod listens for it. It is sent because a journey
-    -- bought here never opens the vanilla ticket window, so a mod watching
-    -- for travel the ordinary way sees nothing at all -- and going quiet on
-    -- arrival was a deliberate choice that left that gap.
-    --
-    -- The payload is fact, not vocabulary: `class` is the operator's class
-    -- id straight from the content files, not this mod's own mode id, so a
-    -- listener needs to know nothing about how TravelAgents files vehicles.
-    -- `place` is the stop's name, which is better than the arrival cell's.
+    -- Sent out for any as a hook for any mods that listen to travel completion.
     ARRIVED = 'TravelAgentsArrived',
-    -- global -> player: "you have arrived, put yourself back together".
-    -- Separate from BOOKED because it has to be handled in the player's own
-    -- context: writing a dynamic stat on the player from a global script is
-    -- refused at runtime.
+    -- global -> player: restore stats (player context only; global cannot write stats)
     RESTORE = 'TravelAgentsRestore',
 }

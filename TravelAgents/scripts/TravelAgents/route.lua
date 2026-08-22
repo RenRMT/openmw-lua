@@ -11,7 +11,7 @@ local function stateKey(nodeKey, mode)
     return nodeKey .. '|' .. mode
 end
 
---- What it costs to take this leg, having arrived on `arrivedBy`
+--- Leg cost, accounting for transfer and mode change penalties.
 local function legCost(edge, arrivedBy, opts)
     local cost = edge.distance
     if arrivedBy ~= nil then
@@ -46,8 +46,7 @@ local function rebuild(states, finalKey)
     return legs
 end
 
---- Add up a journey: how far, how long, what it asks of the traveller, and
--- what it costs once the convenience of buying it in one go is priced in.
+--- Summarize journey: distance, time, what traveller pays (with surcharges).
 local function summarise(legs, opts)
     local summary = {
         legs = legs,
@@ -61,18 +60,15 @@ local function summarise(legs, opts)
         vehicleLegs = 0,
         modeChanges = 0,
         -- Whether the traveller spent the journey aboard something that
-        -- took time. Vanilla treats such a trip as a rest -- health,
-        -- magicka and fatigue all come back -- while a guild guide is a
-        -- wait and returns fatigue alone.
+        -- took time. Treated as a rest -- health, magicka and fatigue all
+        -- restore -- while a guild guide is a wait, and returns fatigue alone.
         rests = false,
     }
     local lastVehicle = nil
     for index, leg in ipairs(legs) do
         summary.distance = summary.distance + leg.distance
         -- A teleport covers its distance in no time at all, so its length
-        -- prices the ticket and not the clock. Charging hours for a guild
-        -- guide would make the mod strictly worse than the service it
-        -- replaces: vanilla puts you in Balmora at the hour you left.
+        -- prices the ticket and not the clock.
         if not modesData.instant[leg.mode] then
             summary.hours = summary.hours + leg.distance * config.HOURS_PER_UNIT
             if leg.mode ~= 'walk' then
@@ -117,23 +113,17 @@ function M.reachable(graph_, fromKey, opts)
 
     -- states[stateKey] = { node, mode, cost, legCount, from, edge }
     local states = {}
-    -- When each state was first offered. The tie-break, so two routes of
-    -- equal cost always resolve the same way -- otherwise the list a player
-    -- is shown could differ between two openings of the same window.
+    -- Sequence number for tie-breaking so cost-equal routes resolve consistently.
     local seen = {}
     local offers = 0
 
     -- Pending states as a binary min-heap, cheapest at the root. Lazy: a
     -- state that gets cheaper is pushed again rather than moved, and the
     -- stale copy is skipped when it surfaces already settled.
-    --
-    -- This was a linear scan over a growing array, which is fine at
-    -- vanilla's 33 stops and is not at a mainland's. Measured on a
-    -- 540-stop network: 1.49M scan steps to settle 1,619 states, against
-    -- roughly 18k comparisons here.
     local heap, heapSize = {}, 0
 
     local function cheaper(a, b)
+        -- Cost first, then sequence for tie-breaking.
         if a.cost ~= b.cost then
             return a.cost < b.cost
         end
@@ -208,8 +198,7 @@ function M.reachable(graph_, fromKey, opts)
         if entry == nil then
             break
         end
-        -- The first copy of a state to surface is its cheapest, so any
-        -- later one is the stale push of a cost since improved on.
+        -- First state surface is cheapest (later ones are stale pushes).
         if not settled[entry.key] then
             settled[entry.key] = true
             local state = states[entry.key]
@@ -224,10 +213,7 @@ function M.reachable(graph_, fromKey, opts)
         end
     end
 
-    -- One entry per stop: the cheapest way to be standing there, whichever
-    -- vehicle brought you. The winner is settled before anything is walked
-    -- back into legs, so a stop reachable five ways is summarised once and
-    -- not once per way that beat the one before it.
+    -- One entry per stop: cheapest way there. Settled before walking back legs.
     local winner = {}
     for key, state in pairs(states) do
         local held = winner[state.node]
@@ -268,10 +254,7 @@ end
 -- Buying one
 --------------------------------------------------------------------------
 --
--- Everything about a purchase that can be decided without the engine. It
--- lives beside the search because it is the same journey asked a second
--- question: the router finds the cheapest way there, and this says what it
--- costs and whether it can be had.
+-- Everything about a purchase that can be decided without the engine.
 
 local function refuse(reason, quote)
     quote = quote or {}
@@ -280,16 +263,12 @@ local function refuse(reason, quote)
     return quote
 end
 
---- What a journey costs, and whether it can be bought.
---
--- @param graph_ the built graph
--- @param fromKey the operator's stop.
--- @param toKey the stop the player picked
--- @param opts optional { gold = <what the player holds> } plus anything
---   route.find takes
--- @return a quote. `fare` and `hours` are filled in whenever a route exists,
---   including when it is refused, so the refusal can say what the journey
---   would have cost. `reason` is 'route' or 'gold'.
+--- Quote a journey's cost and feasibility.
+-- @param graph_ built graph
+-- @param fromKey operator stop
+-- @param toKey chosen stop
+-- @param opts { gold = <held> } + route.find options
+-- @return quote with fare/hours even when refused (reason: 'route' or 'gold')
 function M.quote(graph_, fromKey, toKey, opts)
     opts = opts or {}
     if type(fromKey) ~= 'string' or type(toKey) ~= 'string' or fromKey == toKey then
@@ -313,9 +292,7 @@ function M.quote(graph_, fromKey, toKey, opts)
         surcharge = journey.surcharge,
         surchargePercent = journey.surchargePercent,
         hours = journey.hours,
-        -- Whether arriving counts as a rest. Carried on the quote rather
-        -- than worked out again at the far end, because the far end is a
-        -- player script and cannot see the legs.
+        -- Whether arriving counts as rest (worked out here, not player-side).
         rests = journey.rests,
         distance = journey.distance,
         walked = journey.walked,

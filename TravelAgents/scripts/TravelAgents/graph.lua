@@ -16,9 +16,7 @@ local function isBlank(text)
     return text == nil or text == ''
 end
 
---- A set of modes as the sorted list every caller wants back.
--- Sorted because a mode list is compared, concatenated and shown, and a
--- pairs() order would make all three unstable.
+--- Sorted list of modes (needed for stable comparing, concatenating, showing).
 local function sorted(set)
     local list = {}
     for key in pairs(set) do
@@ -28,7 +26,7 @@ local function sorted(set)
     return list
 end
 
---- Horizontal distance. Merging ignores height on purpose.
+--- Horizontal distance (height is ignored when merging).
 local function planarDistance(a, b)
     local dx, dy = a.x - b.x, a.y - b.y
     return math.sqrt(dx * dx + dy * dy)
@@ -39,9 +37,8 @@ local function distance(a, b)
     return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
 
---- The key a point belongs to, or nil when only proximity can decide.
--- Interiors key on the cell, named exteriors key on the name
--- Everything else is left to the second pass.
+--- The key a point belongs to, or nil if only proximity can decide.
+-- Interiors key on cell, named exteriors on name.
 local function directKey(point)
     if point.isInterior then
         return 'cell:' .. (lower(point.cellId) or lower(point.cellName) or '?')
@@ -52,8 +49,7 @@ local function directKey(point)
     return nil
 end
 
---- What to call a stop in a cell the game never named.
--- A shipped name wins. After that it is the region and the grid.
+--- Name for an unnamed stop: shipped name, then region and grid.
 local function fallbackName(point)
     local where = ''
     if point.gridX and point.gridY then
@@ -109,16 +105,8 @@ local function newNode(key, point)
 end
 
 --- The mode an operator's legs are labelled with.
--- An id override beats the class, because four vanilla operators are authored
--- with a class that describes the person rather than the vehicle.
---
--- A class nobody has declared becomes a mode of its own rather than joining
--- a shared "unknown" bucket. Otherwise every modded vehicle in a load order
--- collapses into one heap: a guar caravan, a river strider and a carriage
--- would be indistinguishable, and a journey by any of them would read as
--- "Unknown". Deriving the mode from the class means a landmass mod that
--- invents a vehicle is named after it without anyone authoring an entry.
--- `unknown` is left for an operator with no class at all.
+-- An id override beats the class. A class nobody has declared becomes a
+-- mode of its own.
 local function modeFor(operator, modes)
     local override = modes.overrides[lower(operator.id) or '']
     if override then
@@ -135,9 +123,7 @@ local function modeFor(operator, modes)
     return modes.unknown.id
 end
 
--- "guar caravaner" -> "Guar caravaner". The label of a mode nobody declared
--- is the class the game gave it, which reads as a label once it is not all
--- lowercase -- and reads better than "Unknown".
+-- undeclared mode label: class titlecased (reads better than "Unknown")
 local function titleCase(text)
     return (text:gsub('^%l', string.upper))
 end
@@ -186,8 +172,7 @@ function M.build(operators, opts)
         return node
     end
 
-    -- Pass one: everything the game named. Deferred points are collected with
-    -- their owner so the second pass can key them without walking twice.
+    -- Pass one: named things. Deferred are collected for pass two.
     local deferred = {}
     local function classify(point)
         if not point or not point.position then
@@ -207,8 +192,7 @@ function M.build(operators, opts)
         if modes.exclude[lower(operator.id) or ''] then
             graph.stats.excluded = graph.stats.excluded + 1
         elseif not operator.place then
-            -- Cut content: a record with destinations that no cell places.
-            -- Nothing can depart from a stop nobody stands at.
+            -- Cut: a record with destinations but no placement.
             graph.stats.unplaced = graph.stats.unplaced + 1
         else
             usable[#usable + 1] = operator
@@ -220,9 +204,8 @@ function M.build(operators, opts)
         end
     end
 
-    -- Pass two, and it has to be a second pass: run inline, a point 396 units
-    -- outside Tel Aruhn is keyed before Tel Aruhn's node exists and becomes a
-    -- stop of its own.
+    -- Pass two (must be separate: inline, a point outside a city could key
+    -- before that city's node exists).
     for _, point in ipairs(deferred) do
         local key = resolveKey(graph, point, mergeRadius)
         addNode(key, point)
@@ -232,16 +215,7 @@ function M.build(operators, opts)
     for _, operator in ipairs(usable) do
         local fromKey = operator.place._key
         local mode = modeFor(operator, modes)
-        -- Which stop an operator stands at. The planner opens from the
-        -- caravaner you are talking to, so it needs to get from that actor to
-        -- their place in the network without measuring anything.
-        --
-        -- One record standing in two cells is the case this cannot answer:
-        -- `stopOf` is asked by record id and both instances give the same
-        -- one, so the planner opens from whichever was found last whoever is
-        -- being talked to. Nothing shipped does it. Named rather than
-        -- overwritten in silence, so a load order that does has a thread to
-        -- pull.
+        -- Which stop an operator stands at.
         local id = lower(operator.id) or operator.id
         local standing = graph.operators[id]
         if standing and standing.key ~= fromKey then
@@ -251,10 +225,7 @@ function M.build(operators, opts)
             key = fromKey,
             name = operator.name,
             mode = mode,
-            -- Kept raw alongside the mode it was resolved to. `mode` is this
-            -- mod's own vocabulary; the class is what the content files say,
-            -- and it is the only part of this another mod can read without
-            -- learning ours.
+            -- Raw class alongside resolved mode.
             class = operator.class,
         }
         for _, destination in ipairs(operator.destinations) do
@@ -305,13 +276,9 @@ function M.addEdge(graph, fromKey, toKey, mode, legDistance, operator, operatorN
     return edges[#edges]
 end
 
---- Join stops inside buildings to the streets their doors open onto.
--- A walk leg is an edge. It carries a distance and no fare. Booking moves
--- the player across it like any other leg, so the time it takes is charged
--- like any other leg too.
--- `modesAt` stays the list of vehicles meeting in one place, so the count of
--- real interchanges cannot quietly inflate; `modesWithinWalk` is the wider
--- view.
+--- Join stops inside buildings to the streets outside.
+-- Walk legs are edges with distance but no fare. `modesAt` stays vehicles
+-- at one place; `modesWithinWalk` is the wider view.
 -- @param links from walk.links -- { cellId, point, walked }
 function M.link(graph, links)
     for _, link in ipairs(links) do
@@ -346,7 +313,7 @@ function M.link(graph, links)
     return M.sort(graph)
 end
 
---- Re-measure vehicle legs against where their stops stand in the world.
+--- Re-measure vehicle legs against stop positions in the world.
 function M.remeasure(graph)
     local anchored = 0
     for _, edges in pairs(graph.edges) do
@@ -363,7 +330,7 @@ function M.remeasure(graph)
 end
 
 --- The modes meeting at a stop, sorted. More than one means you can change
--- vehicles there, which is the whole question the mod exists to answer.
+-- vehicles there.
 function M.modesAt(graph, key)
     local node = graph.nodes[key]
     if not node then
@@ -372,9 +339,7 @@ function M.modesAt(graph, key)
     return sorted(node.modes)
 end
 
---- Can you change vehicle here?
--- `modesAt` remains the narrower fact -- what meets on this exact spot -- for
--- anything that needs to tell the two apart.
+-- `modesAt` remains the narrower fact: what meets on this exact spot.
 function M.isTransfer(graph, key)
     return #M.modesWithinWalk(graph, key) > 1
 end
@@ -426,9 +391,7 @@ function M.stopOf(graph, recordId)
     return graph.operators[string.lower(recordId)]
 end
 
---- Which stop lends a walk-connected group its name: the one out of doors,
--- then the one the most vehicles reach, and alphabetical order only to break a
--- real tie.
+--- Which stop names its walk group: exterior first, then most vehicles, alphabetically.
 local function namesTheGroup(graph, candidate, incumbent)
     if incumbent == nil then
         return true
@@ -444,8 +407,7 @@ local function namesTheGroup(graph, candidate, incumbent)
     return graph.nodes[candidate].name:lower() < graph.nodes[incumbent].name:lower()
 end
 
---- The place a stop belongs to: itself, plus everything a walk away, under one
--- name.
+--- A place: stop itself plus everything a walk away, under one name.
 function M.place(graph, key)
     if graph.nodes[key] == nil then
         return nil
@@ -460,7 +422,6 @@ function M.place(graph, key)
     return { key = best, name = graph.nodes[best].name, stops = group }
 end
 
---- The interchanges, counted as places rather than as stops.
 -- `onFoot` says whether the change costs a walk: false at Khuul, where boat
 -- and strider meet on the spot, true at Balmora, where they do not.
 function M.interchanges(graph)

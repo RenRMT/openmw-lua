@@ -1,16 +1,5 @@
--- Arriving in the state vanilla leaves you in.
---
--- Split from adapter.lua because it cannot run where the adapter does. A
--- dynamic stat on the player is only writable from the player's own
--- script -- a global one gets "Allowed only in local scripts for
--- 'openmw.self'" from the setter, which is a runtime error and not a
--- load-time one, so it ships happily and fails on arrival.
---
--- Its own file rather than a few lines inside player.lua, because player.lua
--- requires openmw.self, openmw.ui and openmw.input and so cannot be loaded
--- headless. This can, which is the whole of why it has a test.
---
--- PLAYER context (or the traveller's own local script).
+-- Restore player stats after journey. Split from adapter because only player
+-- scripts can write dynamic stats. Separate file so it can run headless (and test).
 
 local types = require('openmw.types')
 
@@ -26,17 +15,14 @@ local function fill(traveller, name)
     if not ok or stat == nil then
         return false
     end
-    -- A dynamic stat's ceiling is its base plus whatever is fortifying or
-    -- draining it, so this is "full" whatever else is acting on them.
+    -- Dynamic stat ceiling = base + modifiers, so this is full.
     stat.current = stat.base + (stat.modifier or 0)
     return true
 end
 
 --- Restore what the journey earned.
 --
--- Vanilla treats a ride as a rest and a guild guide as a wait: step off a
--- silt strider and health, magicka and fatigue have all come back; step
--- out of a guild hall and only fatigue has.
+-- Vanilla: ride = rest (all stats), guide = wait (fatigue only).
 --
 -- @param traveller the actor who travelled
 -- @param rests true when the journey spent time aboard something

@@ -1,7 +1,5 @@
 -- The engine-facing half: everything that knows about cells, records and
--- GameObjects, so that graph.lua can know about none of it. Reading the world
--- to build the graph, and the two calls that change it when a journey is
--- bought -- moving the traveller and moving the clock.
+-- GameObjects, so that graph.lua can know about none of it.
 local core = require('openmw.core')
 local types = require('openmw.types')
 local util = require('openmw.util')
@@ -36,9 +34,7 @@ local function pointFromCell(cell, position)
 end
 
 --- Where a travel destination actually is.
--- The id is real for exteriors as well as interiors -- an exterior one reads
--- `Esm3ExteriorCell:<x>:<y>` and resolves to the cell whose name is the town,
--- which is where every exterior stop's name comes from.
+-- Exterior ids resolve to the cell whose name is the town.
 local function pointFromDestination(destination)
     local ok, cell = pcall(world.getCellById, destination.cellId)
     if not ok or cell == nil then
@@ -68,7 +64,6 @@ local function operatorFrom(record, object, cell)
 end
 
 --- Teleport doors in one cell, in the shape walk.links takes.
---
 -- Only cells that hold a stop, and the few a door chain passes through, are
 -- ever asked.
 function M.doorsFor(cellId)
@@ -97,11 +92,8 @@ function M.doorsFor(cellId)
 end
 
 --- Put a traveller down at a stop, at the end of a journey they paid for.
---
 -- An exterior is teleported to with an empty cell name. An interior is named
--- by its own cell. No `onGround`. The position is an authored travel
--- destination.
-
+-- by its own cell.
 -- @return false when the arrival cell cannot be resolved, so a caller can
 --   decline to charge for a journey it could not make
 function M.arrive(traveller, arrival)
@@ -122,7 +114,6 @@ function M.arrive(traveller, arrival)
 end
 
 --- What a unit of travel is worth in gold, as the loaded content prices it.
---
 -- @return gold per game unit, or nil when the setting is missing or unusable,
 --   in which case config.FARE_PER_UNIT stands
 function M.travelRate()
@@ -133,11 +124,8 @@ function M.travelRate()
     return 1 / multiplier
 end
 
---- Move the clock forward by the length of a journey.
---
--- Weather and AI move with it; regeneration does not, which is why arriving
--- restores stats separately -- and why that happens in the player script
--- rather than here. See restore.lua.
+--- Move the clock forward by the length of a journey. Regeneration does not
+-- move, so arriving restores stats separately. See restore.lua.
 function M.advanceTime(hours)
     if hours and hours > 0 then
         world.advanceTime(hours)
@@ -145,22 +133,7 @@ function M.advanceTime(hours)
 end
 
 --- Every record id in the load order that offers travel at all.
---
--- Asked of the record lists once, before any cell is touched. The cell walk
--- below then tests each placed object against a plain Lua table rather than
--- indexing the record list and reading a field off the result -- a hash
--- lookup instead of a trip into the engine, run against every NPC and
--- creature standing anywhere in the world.
---
--- Roughly one record in a hundred offers travel, so the set stays small
--- however large the load order gets.
---
--- Keyed on the lowercased id, and looked up the same way. The record store
--- is a C++ map that resolves an id however it is capitalised; a plain Lua
--- table is not, and the ESM capitalises inconsistently -- 'Nevosi Hlan' sits
--- next to 'navam veran' in the same file. Matching exactly would have found
--- some operators and silently lost others.
---
+-- Asked once. Keyed on lowercased id.
 -- @param checkpoint called every so often, to give the frame back
 -- @return the id-to-record map, the record kinds worth walking cells for, and
 --   how many records were read
@@ -194,10 +167,7 @@ local function offersTravel(checkpoint)
                 checkpoint('records', read, total)
             end
         end
-        -- Asking every cell for its creatures when no creature record in the
-        -- load order offers travel is half the walk spent on a question whose
-        -- answer cannot matter. Nothing in Morrowind, Tribunal, Bloodmoon or
-        -- Tamriel Rebuilt travels by creature -- but a mod may, and then the
+        -- If a mod adds travel by creature then the
         -- pass above finds it and this turns itself back on.
         if any then
             kinds[#kinds + 1] = kind
@@ -206,26 +176,10 @@ local function offersTravel(checkpoint)
     return wanted, kinds, read
 end
 
---- The cell walk, as a coroutine that gives the frame back.
---
--- Finding an operator's own position means asking every cell in the load
--- order what is standing in it: a travel destination lives on a record, but
--- the near end of every leg does not. On a load order with a mainland in it
--- that is nine thousand cells and eighteen thousand `getAll` calls, which is
--- somewhere between a stutter and a hang if it happens between two frames.
---
--- So it happens across many. `resume` hands in the real time to run until;
--- the body checks the clock between cells and yields when it is spent, which
--- keeps a slice near the budget however slow the cells in it turn out to be.
---
--- @return a coroutine. Resume with a deadline; it yields until it is done,
---   and returns the operator list.
---- The cell a hint names, or nil if the game has no such cell.
---
--- Grid coordinates for exteriors and a name for interiors, which is what the
--- two engine lookups take -- so nothing here has to know how a cell id is
--- spelled, and a hint written against a different version of a mod fails by
--- returning nothing rather than by resolving to the wrong place.
+-- Finding operator positions requires asking every cell. Sliced across
+-- frames to stay within budget. @return a coroutine yielding until done.
+--- The cell a hint names, or nil if not found.
+-- Grid or name, matching the engine lookups.
 local function cellFromHint(hint)
     local ok, cell
     if hint.x and hint.y then
@@ -239,12 +193,8 @@ local function cellFromHint(hint)
     return nil
 end
 
---- A cell, in the shape the hint tables use.
---
--- Grid for an exterior and a name for an interior, matching cellFromHint's
--- two lookups, so a hint the walk learns is spelled exactly like one the
--- shipped table ships.
-local function hintFor(cell)
+--- A cell shape for hint tables: grid for exterior, name for interior.
+function M.hintFor(cell)
     if cell == nil then
         return nil
     end
@@ -260,33 +210,12 @@ local function hintFor(cell)
     return nil
 end
 
---- Look for the operators the shipped table places, in the cells it names.
---
--- Everything the table accounts for is found by opening one cell each --
--- about 130 rather than the whole load order. Anything it does not account
--- for is handed back, and the caller walks every cell looking for those.
---
--- An operator counts as accounted for only when every cell the table names
--- for them resolves *and* they are standing in it. A hint that points at a
--- cell this game does not have, or at a cell they have since been moved out
--- of, sends them to the full walk -- which is what keeps a stale table a
--- cost in speed rather than in missing boats.
---
--- With one exception, and it is the only one. An empty hint list means the
--- record offers travel and the reference load order places it in no cell at
--- all, so nothing is looked for and nothing is handed back. Were those sent
--- to the full walk instead, every load would tour ten thousand cells after
--- four NPCs who stand nowhere, which is the whole cost this table exists to
--- avoid. The price is that a mod which *does* place one of them is not
--- noticed: M.standNowhere names them, main.lua says so once when the graph
--- is ready, and the full-search setting finds them.
---
--- @param wanted id -> record, every record that offers travel
--- @param into the operator list to add to
--- @param learned id -> hint list, what an earlier walk found. Consulted
---   before the shipped table, because it was measured on this load order and
---   the shipped table was measured on somebody else's.
--- @return the ids still unaccounted for, and how many cells were opened
+--- Look for the operators the shipped table places.
+-- Opens one cell per known operator; stale entries force full walk.
+-- @param wanted id->record map
+-- @param into operator list to add to
+-- @param learned id->hint list from earlier walk
+-- @return unaccounted ids, cells opened
 local function collectHinted(wanted, into, learned)
     local unaccounted = {}
     local opened = 0
@@ -329,6 +258,32 @@ local function collectHinted(wanted, into, learned)
     return unaccounted, opened
 end
 
+--- Does anything already place this operator in this cell?
+-- Learned (measured on this load order) takes precedence over shipped.
+--
+-- @param id lowercased record id
+-- @param hint from M.hintFor
+-- @param learned id -> hint list, what earlier observation found
+function M.knowsPlacement(id, hint, learned)
+    if id == nil or hint == nil then
+        return true
+    end
+    local hints = (learned and learned[id]) or knownCells[id]
+    if hints == nil then
+        return false
+    end
+    for _, known in ipairs(hints) do
+        if hint.name ~= nil then
+            if known.name == hint.name then
+                return true
+            end
+        elseif known.x == hint.x and known.y == hint.y then
+            return true
+        end
+    end
+    return false
+end
+
 --- The records the shipped table says are placed in no cell at all.
 --
 -- Skipped by the hinted pass by design, and so the one way the table can
@@ -345,6 +300,93 @@ function M.standNowhere()
     return ids
 end
 
+--- Look for records the tables could not place.
+-- Expensive but can be deferred to run behind the graph.
+--
+-- @param missing id -> record, only what is still to be found
+-- @param kinds the record kinds worth opening cells for
+-- @param operators the list to append to
+-- @param report filled in with what the walk cost
+-- @param checkpoint called between cells, to give the frame back
+local function walkFor(missing, kinds, operators, report, checkpoint)
+    local searching = 0
+    for _ in pairs(missing) do
+        searching = searching + 1
+    end
+
+    -- Where the walk finds the operators. Only those corrected.
+    local discovered = {}
+
+    -- Exteriors first. 131 of 155 operators from shipped table
+    -- stand outisde.
+    local cells = world.cells
+    local cellCount = #cells
+    local outside, inside = {}, {}
+    for index = 1, cellCount do
+        local cell = cells[index]
+        if cell.isExterior then
+            outside[#outside + 1] = cell
+        else
+            inside[#inside + 1] = cell
+        end
+    end
+
+    -- Stopping early is the whole of the saving, so what is left to find
+    -- has to be counted rather than inferred from the operator list: one
+    -- record may be placed in several cells, and #operators would then
+    -- reach `searching` while somebody was still missing.
+    local outstanding = searching
+    local seen = {}
+    local walked = 0
+    local function sweep(list)
+        for index = 1, #list do
+            if outstanding == 0 then
+                return true
+            end
+            local cell = list[index]
+            for _, kind in ipairs(kinds) do
+                local ok, objects = pcall(cell.getAll, cell, kind.objectType)
+                if ok and objects then
+                    for _, object in ipairs(objects) do
+                        local id = object.recordId
+                        local key = type(id) == 'string' and string.lower(id) or nil
+                        local record = key and missing[key]
+                        if record then
+                            local operator = operatorFrom(record, object, cell)
+                            if operator then
+                                operators[#operators + 1] = operator
+                            end
+                        -- Sighting is what ends the search, not learning.
+                            if not seen[key] then
+                                seen[key] = true
+                                outstanding = outstanding - 1
+                            end
+                        -- The first cell a record turns up in is the
+                        -- one it is remembered by.
+                            local hint = M.hintFor(cell)
+                            if hint and discovered[key] == nil then
+                                discovered[key] = { hint }
+                            end
+                        end
+                    end
+                end
+            end
+            walked = walked + 1
+            checkpoint('cells', walked, cellCount)
+        end
+        return outstanding == 0
+    end
+
+    if not sweep(outside) then
+        sweep(inside)
+    end
+    report.walked = walked
+    report.cells = cellCount
+    report.found = searching - outstanding
+    report.learned = discovered
+    return operators
+end
+
 -- @param opts optional:
 --   ignoreHints = true  search every cell even for operators the table places
 --   learned = <table>   id -> hint list an earlier walk found, tried before
@@ -355,6 +397,7 @@ end
 --     and do arithmetic.
 function M.operatorScan(opts)
     local ignoreHints = opts and opts.ignoreHints
+    local deferWalk = (opts and opts.deferWalk) and not ignoreHints
     local learned = (opts and opts.learned) or {}
     local report = (opts and opts.report) or {}
     report.ignoredHints = ignoreHints and true or false
@@ -380,9 +423,7 @@ function M.operatorScan(opts)
         end
         checkpoint('records', read, read)
 
-        -- The shipped table first: one cell per operator rather than all of
-        -- them. On a load order it covers this is the whole scan, and the
-        -- walk below never runs.
+        -- On a load order covered by shipped table, this is the whole scan.
         local missing, opened = wanted, 0
         if not ignoreHints then
             missing, opened = collectHinted(wanted, operators, learned)
@@ -391,17 +432,12 @@ function M.operatorScan(opts)
         checkpoint('hinted', opened)
 
         -- Anything the table did not account for has to be looked for the
-        -- long way. Only those: a single unknown operator should cost one
-        -- walk, not re-find everybody.
+        -- long way.
         local searching = 0
         for _ in pairs(missing) do
             searching = searching + 1
         end
         report.unaccounted = searching
-        -- Named, not just counted. One stale entry sends the scan round every
-        -- cell, so which entry it is is the whole of what has to be fixed.
-        -- Not when the table was ignored -- then every record is "missing" by
-        -- construction and the list is the load order.
         if not ignoreHints then
             report.unaccountedIds = {}
             for id in pairs(missing) do
@@ -415,43 +451,31 @@ function M.operatorScan(opts)
             return operators
         end
 
-        -- Where the walk finds the operators it had to go looking for. Only
-        -- those: everything the tables already place was never searched for,
-        -- so this stays a list of corrections rather than a second copy of
-        -- data/operators.lua.
-        local discovered = {}
-
-        local cells = world.cells
-        local cellCount = #cells
-        for index = 1, cellCount do
-            local cell = cells[index]
-            for _, kind in ipairs(kinds) do
-                local ok, objects = pcall(cell.getAll, cell, kind.objectType)
-                if ok and objects then
-                    for _, object in ipairs(objects) do
-                        local id = object.recordId
-                        local key = type(id) == 'string' and string.lower(id) or nil
-                        local record = key and missing[key]
-                        if record then
-                            local operator = operatorFrom(record, object, cell)
-                            if operator then
-                                operators[#operators + 1] = operator
-                            end
-                            local hint = hintFor(cell)
-                            if hint then
-                                discovered[key] = discovered[key] or {}
-                                discovered[key][#discovered[key] + 1] = hint
-                            end
-                        end
-                    end
-                end
-            end
-            -- Between cells, never inside one: a half-scanned cell would have
-            -- to be resumed mid-list, and the list is the engine's.
-            checkpoint('cells', index, cellCount)
+        if deferWalk then
+            report.owed = { missing = missing, kinds = kinds }
+            report.operators = #operators
+            return operators
         end
-        report.walked = cellCount
-        report.learned = discovered
+
+        walkFor(missing, kinds, operators, report, checkpoint)
+        report.operators = #operators
+        return operators
+    end)
+end
+
+--- The deferred walk half, as its own coroutine.
+-- @param owed `report.owed` from deferred scan
+-- @return coroutine yielding found operators only
+function M.walkScan(owed, opts)
+    local report = (opts and opts.report) or {}
+    return coroutine.create(function(deadline)
+        local function checkpoint(phase, done, total)
+            if deadline and core.getRealTime() >= deadline then
+                deadline = coroutine.yield(phase, done, total)
+            end
+        end
+        local operators = {}
+        walkFor(owed.missing, owed.kinds, operators, report, checkpoint)
         report.operators = #operators
         return operators
     end)
