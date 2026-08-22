@@ -3,8 +3,8 @@
 local ui = require('openmw.ui')
 local util = require('openmw.util')
 
-local config = require('scripts.MapUI.core.config')
-local draw = require('scripts.MapUI.core.draw')
+local config = require('scripts.PixelMap.core.config')
+local draw = require('scripts.PixelMap.core.draw')
 
 local v2 = util.vector2
 

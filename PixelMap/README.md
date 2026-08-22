@@ -1,4 +1,4 @@
-# Map UI — a world map drawn in Lua (OpenMW)
+# Pixel Map — a world map drawn in Lua (OpenMW)
 
 A pixel-style map drawn from the terrain itself, so
 it works with whatever landmasses your load order adds.
@@ -12,11 +12,11 @@ you have walked it or not.
 Point `openmw.cfg` at the mod directory and enable its script list:
 
 ```
-data="<path to>/openmw-lua/MapUI"
-content=MapUI.omwscripts
+data="<path to>/openmw-lua/PixelMap"
+content=PixelMap.omwscripts
 ```
 
-Bind a key under **Options → Scripts → Map UI**.
+Bind a key under **Options → Scripts → Pixel Map**.
 
 ## Controls
 
@@ -32,6 +32,10 @@ Bind a key under **Options → Scripts → Map UI**.
 | Drag an edge or corner | Resize the window |
 
 The window opens at about three quarters of your screen.
+
+## Screenshots
+![Pixel map example 1](Docs/PixelMap1.jpg)
+![Pixel map example 2](Docs/PixelMap2.jpg)
 
 ## Settings
 
@@ -50,7 +54,7 @@ Two ship with the mod, each with a toggle above the map:
 
 Your own position is always marked and has no toggle.
 
-Other mods can add layers of their own See [API.md](API.md).
+Other mods can add layers of their own; see [API.md](API.md).
 
 ## Known limits
 
@@ -59,4 +63,4 @@ Other mods can add layers of their own See [API.md](API.md).
 - Layer toggles and window size are not remembered between sessions.
 - Panning redraws the map, so it follows the cursor in steps rather than
   smoothly. If it stutters on a large landmass, raise
-  `DRAG_REDRAW_PIXELS` in `scripts/MapUI/core/config.lua`.
+  `DRAG_REDRAW_PIXELS` in `scripts/PixelMap/core/config.lua`.

@@ -1,4 +1,4 @@
--- MapUI: keybinding, settings, and public interface. Single script for layer registry isolation.
+-- PixelMap: keybinding, settings, and public interface. Single script for layer registry isolation.
 local async = require('openmw.async')
 local input = require('openmw.input')
 local self = require('openmw.self')
@@ -6,20 +6,20 @@ local storage = require('openmw.storage')
 
 local I = require('openmw.interfaces')
 
-local config = require('scripts.MapUI.core.config')
-local draw = require('scripts.MapUI.core.draw')
-local layers = require('scripts.MapUI.core.layers')
-local terrain = require('scripts.MapUI.core.terrain')
-local view = require('scripts.MapUI.core.view')
-local window = require('scripts.MapUI.window')
+local config = require('scripts.PixelMap.core.config')
+local draw = require('scripts.PixelMap.core.draw')
+local layers = require('scripts.PixelMap.core.layers')
+local terrain = require('scripts.PixelMap.core.terrain')
+local view = require('scripts.PixelMap.core.view')
+local window = require('scripts.PixelMap.window')
 
-local TRIGGER = 'MapUIOpen'
+local TRIGGER = 'PixelMapOpen'
 
 -- Two binding slots: key and controller button each get their own id.
-local BINDING = 'MapUIOpenBinding'
-local CONTROLLER_BINDING = 'MapUIOpenControllerBinding'
+local BINDING = 'PixelMapOpenBinding'
+local CONTROLLER_BINDING = 'PixelMapOpenControllerBinding'
 
-local GROUP = 'SettingsPlayerMapUI'
+local GROUP = 'SettingsPlayerPixelMap'
 
 --------------------------------------------------------------------------
 -- Settings
@@ -96,8 +96,8 @@ settings:subscribe(async:callback(applySettings))
 -- Two, and only two. The player's own marker is drawn by the window
 -- rather than registered, because a toggle that hides where you are is
 -- not worth a button; everything else belongs to whichever mod wants it.
-layers.register(require('scripts.MapUI.layers.terrain'))
-layers.register(require('scripts.MapUI.layers.grid'))
+layers.register(require('scripts.PixelMap.layers.terrain'))
+layers.register(require('scripts.PixelMap.layers.grid'))
 
 --------------------------------------------------------------------------
 -- Opening and closing
@@ -121,10 +121,10 @@ end
 
 input.registerTriggerHandler(TRIGGER, async:callback(toggle))
 
-    -- MapUIReady fires after every script loads (and reloadlua), giving mods a second chance to register.
+    -- PixelMapReady fires after every script loads (and reloadlua), giving mods a second chance to register.
 local function ready()
     applySettings()
-    self:sendEvent('MapUIReady', { version = 1 })
+    self:sendEvent('PixelMapReady', { version = 1 })
 end
 
     -- Destroy map if something else takes the screen; torn down directly (don't reset their mode).
@@ -139,9 +139,9 @@ end
 --------------------------------------------------------------------------
 
 return {
-    interfaceName = 'MapUI',
+    interfaceName = 'PixelMap',
     ---
-    -- @module MapUI
+    -- @module PixelMap
     -- @context player
     -- @usage local I = require('openmw.interfaces')
     interface = {

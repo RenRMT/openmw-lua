@@ -2,7 +2,7 @@
 
 local core = require('openmw.core')
 
-local config = require('scripts.MapUI.core.config')
+local config = require('scripts.PixelMap.core.config')
 
 local enabled = config.PROFILE == true
 
@@ -55,7 +55,7 @@ local function flush(header)
     for label, value in pairs(counters) do
         parts[#parts + 1] = string.format('%s %d', label, value)
     end
-    print('MapUI ' .. header .. ': ' .. table.concat(parts, '  '))
+    print('PixelMap ' .. header .. ': ' .. table.concat(parts, '  '))
 end
 
 return {

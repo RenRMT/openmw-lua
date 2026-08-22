@@ -14,10 +14,10 @@ end
 
 local function register(layer)
     if type(layer) ~= 'table' or type(layer.key) ~= 'string' then
-        error('MapUI.registerLayer requires a table with a string key')
+        error('PixelMap.registerLayer requires a table with a string key')
     end
     if type(layer.draw) ~= 'function' then
-        error('MapUI layer "' .. layer.key .. '" has no draw function')
+        error('PixelMap layer "' .. layer.key .. '" has no draw function')
     end
 
     local entry = {

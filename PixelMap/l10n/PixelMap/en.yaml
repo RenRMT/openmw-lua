@@ -1,13 +1,13 @@
-# Map UI -- English strings.
+# Pixel Map -- English strings.
 #
-# Keys match the `name` fields in scripts/MapUI/player.lua and the
-# l10n() calls in scripts/MapUI/window.lua. A setting named `foo` takes
+# Keys match the `name` fields in scripts/PixelMap/player.lua and the
+# l10n() calls in scripts/PixelMap/window.lua. A setting named `foo` takes
 # its help text from `fooDescription`, so the two always travel together.
 #
 # `relief` and `flat` are setting values and l10n keys at once: the
 # select renderer localises whatever value it is showing.
 
-settingsPage: "Map UI"
+settingsPage: "Pixel Map"
 settingsPageDescription: "A world map drawn in Lua."
 
 settingsGroup: "Map"

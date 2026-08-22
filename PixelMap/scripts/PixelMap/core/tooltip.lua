@@ -5,7 +5,7 @@ local util = require('openmw.util')
 
 local I = require('openmw.interfaces')
 
-local config = require('scripts.MapUI.core.config')
+local config = require('scripts.PixelMap.core.config')
 
 local element = nil
 -- What is hovered and last cursor position.

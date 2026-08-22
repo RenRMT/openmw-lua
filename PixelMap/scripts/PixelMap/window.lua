@@ -8,13 +8,13 @@ local util = require('openmw.util')
 
 local I = require('openmw.interfaces')
 
-local config = require('scripts.MapUI.core.config')
-local draw = require('scripts.MapUI.core.draw')
-local frame = require('scripts.MapUI.core.frame')
-local layers = require('scripts.MapUI.core.layers')
-local profile = require('scripts.MapUI.core.profile')
-local tooltip = require('scripts.MapUI.core.tooltip')
-local view = require('scripts.MapUI.core.view')
+local config = require('scripts.PixelMap.core.config')
+local draw = require('scripts.PixelMap.core.draw')
+local frame = require('scripts.PixelMap.core.frame')
+local layers = require('scripts.PixelMap.core.layers')
+local profile = require('scripts.PixelMap.core.profile')
+local tooltip = require('scripts.PixelMap.core.tooltip')
+local view = require('scripts.PixelMap.core.view')
 
 local l10n = core.l10n(config.L10N_CONTEXT, 'en')
 
@@ -315,7 +315,7 @@ local function drawLayer(layer)
     if not ok then
         -- A broken third-party layer takes itself off the map, not the
         -- map off the screen.
-        print('MapUI: layer "' .. layer.key .. '" failed to draw: ' .. tostring(drawn))
+        print('PixelMap: layer "' .. layer.key .. '" failed to draw: ' .. tostring(drawn))
         layer.enabled = false
         drawn = {}
     end

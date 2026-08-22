@@ -1,10 +1,10 @@
-# Map UI -- a Lua-drawn world map.
+# Pixel Map -- a Lua-drawn world map.
 #
 # Proof of concept. One player script: the map is drawn from data the
 # player context can already reach, and the whole mod is a window plus a
 # registry of the layers drawn into it.
 
-# Owns the keybinding, the window, and the MapUI interface that other
+# Owns the keybinding, the window, and the PixelMap interface that other
 # mods register layers through. Player context because openmw.ui and
 # openmw.input are unreachable anywhere else.
-PLAYER: scripts/MapUI/player.lua
+PLAYER: scripts/PixelMap/player.lua

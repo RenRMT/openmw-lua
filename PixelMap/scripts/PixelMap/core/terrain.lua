@@ -4,8 +4,8 @@
 local core = require('openmw.core')
 local util = require('openmw.util')
 
-local config = require('scripts.MapUI.core.config')
-local profile = require('scripts.MapUI.core.profile')
+local config = require('scripts.PixelMap.core.config')
+local profile = require('scripts.PixelMap.core.profile')
 
 local M = {}
 
@@ -20,19 +20,27 @@ local function lerpColor(a, b, t)
         a.b + (b.b - a.b) * t)
 end
 
+-- Sample an evenly spaced ramp of colour stops at t in [0,1].
+local function rampAt(ramp, t)
+    local n = #ramp
+    if n == 0 then
+        return config.COLOR_VOID
+    end
+    local at = math.max(0, math.min(1, t)) * (n - 1)
+    local i = math.floor(at)
+    if i >= n - 1 then
+        return ramp[n]
+    end
+    return lerpColor(ramp[i + 1], ramp[i + 2], at - i)
+end
+
 -- Built once; allocates only once per build, not once per sample.
 local relief = {}
 for band = 0, WATER_BANDS - 1 do
-    relief[band] = lerpColor(config.COLOR_DEEP, config.COLOR_SHALLOW,
-        band / math.max(1, WATER_BANDS - 1))
+    relief[band] = rampAt(config.TERRAIN_WATER_RAMP, band / math.max(1, WATER_BANDS - 1))
 end
 for i = 0, LAND_BANDS - 1 do
-    local t = i / math.max(1, LAND_BANDS - 1)
-    if t < 0.5 then
-        relief[WATER_BANDS + i] = lerpColor(config.COLOR_LOW, config.COLOR_MID, t * 2)
-    else
-        relief[WATER_BANDS + i] = lerpColor(config.COLOR_MID, config.COLOR_HIGH, (t - 0.5) * 2)
-    end
+    relief[WATER_BANDS + i] = rampAt(config.TERRAIN_LAND_RAMP, i / math.max(1, LAND_BANDS - 1))
 end
 
 local flat = {}
@@ -41,6 +49,24 @@ for band = 0, config.TERRAIN_COLOR_BANDS - 1 do
 end
 
 local PALETTES = { relief = relief, flat = flat }
+
+-- Runs merge on the drawn colour, not the band: a colour repeated across two
+-- bands (a shared ramp stop at the shoreline) must not split a run.
+local function mergeKeysFor(palette)
+    local keys, byColor, count = {}, {}, 0
+    for band = 0, config.TERRAIN_COLOR_BANDS - 1 do
+        local c = palette[band]
+        local id = string.format('%.4f,%.4f,%.4f', c.r, c.g, c.b)
+        if byColor[id] == nil then
+            byColor[id] = count
+            count = count + 1
+        end
+        keys[band] = byColor[id]
+    end
+    return keys
+end
+
+local MERGE_KEYS = { relief = mergeKeysFor(relief), flat = mergeKeysFor(flat) }
 
 local style = PALETTES[config.TERRAIN_STYLE] and config.TERRAIN_STYLE or 'relief'
 
@@ -60,15 +86,11 @@ function M.colorFor(band)
     return PALETTES[style][band]
 end
 
--- Merge key: band under 'relief' (distinct colour); land/water side under 'flat' (same colour = same quad).
 function M.mergeKey(band)
     if band == nil then
         return nil
     end
-    if style == 'flat' then
-        return (band >= WATER_BANDS) and 1 or 0
-    end
-    return band
+    return MERGE_KEYS[style][band]
 end
 
 -- Waterline is band boundary (two ranges banded separately, not blended across span).

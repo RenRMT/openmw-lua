@@ -2,7 +2,7 @@
 
 local util = require('openmw.util')
 
-local config = require('scripts.MapUI.core.config')
+local config = require('scripts.PixelMap.core.config')
 
 local view = {
     --- World x,y drawn at the centre of the canvas.

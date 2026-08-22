@@ -4,9 +4,9 @@ local async = require('openmw.async')
 local ui = require('openmw.ui')
 local util = require('openmw.util')
 
-local config = require('scripts.MapUI.core.config')
-local tooltip = require('scripts.MapUI.core.tooltip')
-local view = require('scripts.MapUI.core.view')
+local config = require('scripts.PixelMap.core.config')
+local tooltip = require('scripts.PixelMap.core.tooltip')
+local view = require('scripts.PixelMap.core.view')
 
 local whiteTexture = ui.texture { path = 'white' }
 

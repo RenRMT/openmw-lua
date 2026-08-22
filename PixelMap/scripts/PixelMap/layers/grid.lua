@@ -1,7 +1,7 @@
 -- Cell boundaries layer; requires no land data.
 
-local config = require('scripts.MapUI.core.config')
-local draw = require('scripts.MapUI.core.draw')
+local config = require('scripts.PixelMap.core.config')
+local draw = require('scripts.PixelMap.core.draw')
 
 local function drawGrid(view)
     local spacing = config.CELL_SIZE * view.zoom

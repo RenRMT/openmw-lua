@@ -1,8 +1,8 @@
 -- Terrain fills; merges runs by drawn colour to reduce quad count.
 
-local draw = require('scripts.MapUI.core.draw')
-local profile = require('scripts.MapUI.core.profile')
-local terrain = require('scripts.MapUI.core.terrain')
+local draw = require('scripts.PixelMap.core.draw')
+local profile = require('scripts.PixelMap.core.profile')
+local terrain = require('scripts.PixelMap.core.terrain')
 
 local function drawTerrain(view)
     local ctx = terrain.context(view)

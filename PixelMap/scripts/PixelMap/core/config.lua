@@ -1,10 +1,10 @@
--- All MapUI tunables. Numbers are world units unless a name says otherwise.
+-- All PixelMap tunables. Numbers are world units unless a name says otherwise.
 
 local util = require('openmw.util')
 
 return {
-    L10N_CONTEXT = 'MapUI',
-    SETTINGS_PAGE = 'MapUI',
+    L10N_CONTEXT = 'PixelMap',
+    SETTINGS_PAGE = 'PixelMap',
 
     -- Time redraws; off by default (prints per frame). Pair with `lua profiler = true` in settings.cfg.
     PROFILE = false,
@@ -43,8 +43,9 @@ return {
 
     -- Default style ('relief' by height, 'flat' for land/sea; flat merges more). Player chooses on settings.
     TERRAIN_STYLE = 'relief',
-    COLOR_FLAT_LAND = util.color.rgb(0.40, 0.44, 0.32),
-    COLOR_FLAT_OCEAN = util.color.rgb(0.11, 0.19, 0.34),
+    -- Ocean 2 and Terrain 2: the middle of each relief ramp.
+    COLOR_FLAT_LAND = util.color.rgb(0.701961, 0.650980, 0.509804),   -- #b3a682
+    COLOR_FLAT_OCEAN = util.color.rgb(0.447059, 0.572549, 0.670588),  -- #7292ab
 
     -- Colour bands: sea is one band over most area (major savings); more bands = smoother ramp, more widgets.
     TERRAIN_COLOR_BANDS = 24,
@@ -58,12 +59,22 @@ return {
     WATER_LEVEL = 0,
     TERRAIN_FLOOR = -2500,
     TERRAIN_PEAK = 6500,
-    COLOR_DEEP = util.color.rgb(0.05, 0.10, 0.24),
-    COLOR_SHALLOW = util.color.rgb(0.20, 0.42, 0.60),
-    COLOR_LOW = util.color.rgb(0.32, 0.42, 0.24),
-    COLOR_MID = util.color.rgb(0.52, 0.44, 0.28),
-    COLOR_HIGH = util.color.rgb(0.82, 0.80, 0.76),
-    COLOR_VOID = util.color.rgb(0.06, 0.06, 0.07),
+    -- Relief ramps: evenly spaced colour stops interpolated across the bands.
+    -- Any number of stops; repeat one to hold a colour over more of the range.
+    TERRAIN_WATER_RAMP = {
+        util.color.rgb(0.290196, 0.392157, 0.470588),  -- #4a6478
+        util.color.rgb(0.447059, 0.572549, 0.670588),  -- #7292ab
+        util.color.rgb(0.635294, 0.729412, 0.788235),  -- #a2bac9
+    },
+    TERRAIN_LAND_RAMP = {
+        util.color.rgb(0.584314, 0.592157, 0.431373),  -- #95976e
+        util.color.rgb(0.701961, 0.650980, 0.509804),  -- #b3a682
+        util.color.rgb(0.796078, 0.674510, 0.556863),  -- #cbac8e
+        util.color.rgb(0.862745, 0.749020, 0.639216),  -- #dcbfa3
+        util.color.rgb(0.917647, 0.850980, 0.772549),  -- #ead9c5
+        util.color.rgb(0.972549, 0.945098, 0.901961),  -- #f8f1e6
+    },
+    COLOR_VOID = util.color.rgb(0.290196, 0.392157, 0.470588),  -- #4a6478, Ocean 1
 
     -- Grid dropped when cell narrower than this.
     GRID_MIN_SPACING = 24,

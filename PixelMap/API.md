@@ -1,10 +1,10 @@
-# Map UI — drawing your own layer
+# Pixel Map — drawing your own layer
 
-Map UI is a map window with a stack of layers in it. The two that ship
+Pixel Map is a map window with a stack of layers in it. The two that ship
 with it — terrain and cell grid — register through exactly the call your
 mod uses, so anything they can do, yours can.
 
-Everything here is player context. `I.MapUI` is only reachable from a
+Everything here is player context. `I.PixelMap` is only reachable from a
 player script.
 
 ## Registering
@@ -13,27 +13,27 @@ player script.
 local I = require('openmw.interfaces')
 
 local function register()
-    I.MapUI.registerLayer {
+    I.PixelMap.registerLayer {
         key = 'MyMod_territory',
         name = 'Territory',
         draw = function(view)
-            return { I.MapUI.cell(gridX, gridY, myColor, 0.5) }
+            return { I.PixelMap.cell(gridX, gridY, myColor, 0.5) }
         end,
     }
 end
 ```
 
-**Load order is not yours to control**, so `I.MapUI` may not exist when
-your script loads. Handle `MapUIReady` as well as calling directly:
+**Load order is not yours to control**, so `I.PixelMap` may not exist when
+your script loads. Handle `PixelMapReady` as well as calling directly:
 
 ```lua
 return {
     engineHandlers = {
-        onInit = function() if I.MapUI then register() end end,
-        onLoad = function() if I.MapUI then register() end end,
+        onInit = function() if I.PixelMap then register() end end,
+        onLoad = function() if I.PixelMap then register() end end,
     },
     eventHandlers = {
-        MapUIReady = register,
+        PixelMapReady = register,
     },
 }
 ```
@@ -65,14 +65,14 @@ Three helpers save you the arithmetic:
 
 ```lua
 -- A solid rectangle, in canvas pixels.
-I.MapUI.quad(x, y, w, h, color, alpha)
+I.PixelMap.quad(x, y, w, h, color, alpha)
 
 -- One exterior cell, by grid coordinates. The unit for territory,
 -- ownership, danger, anything painted per cell.
-I.MapUI.cell(gridX, gridY, color, alpha)
+I.PixelMap.cell(gridX, gridY, color, alpha)
 
 -- A marker centred on a world position.
-I.MapUI.marker {
+I.PixelMap.marker {
     position = obj.position,        -- Vector3 or Vector2, world
     size     = 40,                  -- screen pixels
     color    = util.color.rgb(1, 0, 0),
@@ -126,11 +126,11 @@ you place one yourself.
 
 | | |
 | --- | --- |
-| `I.MapUI.unregisterLayer(key)` | Removes it. Returns `false` if it was not there. |
-| `I.MapUI.setLayerEnabled(key, on)` | What the toggle button does. |
-| `I.MapUI.setLayerAlpha(key, alpha)` | Fade a layer. |
-| `I.MapUI.open()` / `close()` | Open and close the window. |
-| `I.MapUI.redraw()` | Redraw now. A no-op while the window is shut, so call it blindly when your data changes. |
-| `I.MapUI.isOpen()` | |
-| `I.MapUI.view` | The table above. |
-| `I.MapUI.version` | Currently 1. |
+| `I.PixelMap.unregisterLayer(key)` | Removes it. Returns `false` if it was not there. |
+| `I.PixelMap.setLayerEnabled(key, on)` | What the toggle button does. |
+| `I.PixelMap.setLayerAlpha(key, alpha)` | Fade a layer. |
+| `I.PixelMap.open()` / `close()` | Open and close the window. |
+| `I.PixelMap.redraw()` | Redraw now. A no-op while the window is shut, so call it blindly when your data changes. |
+| `I.PixelMap.isOpen()` | |
+| `I.PixelMap.view` | The table above. |
+| `I.PixelMap.version` | Currently 1. |
