@@ -93,4 +93,9 @@ return {
     TOOLTIP_MARGIN = 8,
     COLOR_PLAYER = util.color.rgb(0.93, 0.82, 0.38),
     COLOR_MARKER_OUTLINE = util.color.rgb(0.05, 0.05, 0.05),
+
+    -- Default edge for a bordered cell. White because a per-cell overlay
+    -- is read as a shape before it is read as a colour, and a light edge
+    -- separates two adjacent owners of similar hue.
+    COLOR_CELL_BORDER = util.color.rgb(1, 1, 1),
 }

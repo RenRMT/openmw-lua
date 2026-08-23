@@ -166,8 +166,13 @@ return {
         quad = draw.quad,
 
         --- A quad covering one exterior cell, by its grid coordinates:
-        -- gridX, gridY, color, alpha. The unit for a territory or
-        -- ownership overlay.
+        -- gridX, gridY, color, alpha, tooltip. The unit for a territory
+        -- or ownership overlay.
+        --
+        -- `tooltip` is optional text shown while the cursor is anywhere
+        -- over the cell; it needs `interactive = true` on the layer, and
+        -- turns the quad into a widget, so leave it off the fills that
+        -- do not need to answer.
         cell = draw.cell,
 
         --- A marker centred on a world position, sized in screen pixels

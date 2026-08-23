@@ -80,12 +80,70 @@ local function marker(opts)
 end
 
 -- Quad for one exterior cell; unit for territory/ownership overlays.
-local function cell(gridX, gridY, color, alpha)
+--
+-- Two call forms, because the positional one was here first:
+--   cell(gridX, gridY, color, alpha, tooltip)
+--   cell { gridX=, gridY=, color=, alpha=, tooltip=, border=, borderColor= }
+--
+-- With a tooltip or a border it becomes a widget wrapping the quad, since
+-- events go to widgets rather than bare images and a border needs a
+-- second quad behind the fill. The hover area is then the cell itself,
+-- which is the point: an ownership overlay wants the whole square to
+-- answer, not a fixed-size marker in the middle of it. Hover needs
+-- `interactive = true` on the layer, as markers do.
+local function cell(gridX, gridY, color, alpha, tooltipText)
+    local border, borderColor = nil, nil
+    if type(gridX) == 'table' then
+        local opts = gridX
+        gridX, gridY = opts.gridX, opts.gridY
+        color, alpha, tooltipText = opts.color, opts.alpha, opts.tooltip
+        border, borderColor = opts.border, opts.borderColor
+    end
+
     -- North-west corner: cell's low x, high y.
     local p = view.worldToCanvas(gridX * config.CELL_SIZE,
                                  (gridY + 1) * config.CELL_SIZE)
     local side = config.CELL_SIZE * view.zoom + 1
-    return quad(p.x, p.y, side, side, color, alpha)
+
+    if not tooltipText and not border then
+        return quad(p.x, p.y, side, side, color, alpha)
+    end
+
+    local inner = {}
+    if border and border > 0 then
+        -- Border first, fill inset over it: one quad behind another is
+        -- cheaper than four edge strips and cannot leave a seam at the
+        -- corners. Clamped so a cell zoomed down to a few pixels stays a
+        -- coloured dot rather than becoming solid border.
+        local width = math.min(border, math.floor(side / 3))
+        if width > 0 then
+            inner[#inner + 1] = quad(0, 0, side, side,
+                borderColor or config.COLOR_CELL_BORDER, alpha)
+            inner[#inner + 1] = quad(width, width,
+                side - width * 2, side - width * 2, color, alpha)
+        end
+    end
+    if #inner == 0 then
+        inner[1] = quad(0, 0, side, side, color, alpha)
+    end
+
+    local events = nil
+    if tooltipText then
+        events = {
+            focusGain = async:callback(function() tooltip.hover(tooltipText) end),
+            focusLoss = async:callback(function() tooltip.unhover(tooltipText) end),
+        }
+    end
+
+    return {
+        type = ui.TYPE.Widget,
+        props = {
+            position = util.vector2(p.x, p.y),
+            size = util.vector2(side, side),
+        },
+        content = ui.content(inner),
+        events = events,
+    }
 end
 
 return {
