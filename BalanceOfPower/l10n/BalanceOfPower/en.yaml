@@ -120,3 +120,8 @@ flipTaken: "{place} is now held by {faction}."
 flipReleased: "{place} is no longer held by anyone."
 surrounded: "{place} is surrounded."
 relieved: "{place} is no longer surrounded."
+
+# --- map overlay ---------------------------------------------------------
+mapLayerName: "Settlement"
+mapTooltipHeld: "{settlement} — {faction}"
+mapTooltipUnowned: "{settlement} — unclaimed"

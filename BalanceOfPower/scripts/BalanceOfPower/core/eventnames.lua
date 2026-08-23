@@ -98,4 +98,24 @@ M.TRIBUTE_PAID = 'BoP_TributePaid'
 -- request named a cell that resolved to one.
 M.SNAPSHOT = 'BoP_Snapshot'
 
+-- Ask where every settlement is and who holds it: no payload.
+--
+-- Kept apart from REQUEST_SNAPSHOT rather than folded into it because
+-- the two have opposite shapes. A snapshot is small and wanted often --
+-- the tribute window asks every time it opens. This is one row per
+-- settlement cell and wanted rarely, by whatever is drawing a map, and
+-- putting it in the snapshot would make every caller pay for it.
+M.REQUEST_MAP = 'BoP_RequestMap'
+
+-- The answer: { day, cells }.
+--
+-- One row per owned settlement cell: { gridX, gridY, settlement, owner,
+-- ownerName }. Cells rather than settlements because ownership is
+-- resolved per cell -- a city under attack can be held in pieces, and a
+-- payload keyed by settlement could not say so.
+--
+-- `owner` is nil for a settlement cell nobody holds, which is ordinary:
+-- a derelict tower is ground with a name and no claimant.
+M.MAP = 'BoP_Map'
+
 return M

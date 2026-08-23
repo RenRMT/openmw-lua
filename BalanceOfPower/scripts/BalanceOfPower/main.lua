@@ -5,24 +5,89 @@
 -- the other core modules, so each later phase adds a call inside
 -- driver.runDay() rather than growing this file.
 --
--- On its own this mod will register nothing and report an empty
--- world. It requires content packs.
+-- Its territory comes from the game rather than from an authored list:
+-- core/survey.lua reads the world's named exterior cells at load and
+-- registers whoever has armed men standing in them. A content pack is
+-- for tuning the records cannot express, not for listing places.
 
 local core = require('openmw.core')
 local interfaces = require('openmw.interfaces')
 local types = require('openmw.types')
 
 local api = require('scripts.BalanceOfPower.core.api')
+local cells = require('scripts.BalanceOfPower.core.cells')
 local driver = require('scripts.BalanceOfPower.core.driver')
 local events = require('scripts.BalanceOfPower.core.events')
 local gold = require('scripts.BalanceOfPower.core.gold')
 local holdings = require('scripts.BalanceOfPower.core.holdings')
+local config = require('scripts.BalanceOfPower.core.config')
 local log = require('scripts.BalanceOfPower.core.log')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local settings = require('scripts.BalanceOfPower.core.settings')
 local state = require('scripts.BalanceOfPower.core.state')
+local survey = require('scripts.BalanceOfPower.core.survey')
 local tribute = require('scripts.BalanceOfPower.core.tribute')
+
+--------------------------------------------------------------------------
+-- The world, surveyed
+--------------------------------------------------------------------------
+--
+-- At file scope rather than in onInit, because registration has to be
+-- complete before the framework seeds state -- and world.cells is fully
+-- populated this early, which is the one thing that makes reading the
+-- world here legal at all.
+--
+-- Frontier generation runs in a second pass: it works outward from the
+-- settlements already in the registry, so every landmass has to be
+-- registered before any of them fills in its wilderness.
+
+local surveyed = survey.plan()
+local landmassIds = {}
+local tuningEmitted = false
+
+--- The tuning entries, emitted once by the first landmass to register.
+--
+-- Factions themselves come from the game's records; this carries only
+-- what the records have no field for. Emitted once rather than per
+-- landmass because which landmass "owns" a faction is not a question the
+-- survey can answer -- the Sixth House holds ground on one and threatens
+-- every other.
+local function tuningFor(landmassId)
+    if tuningEmitted then
+        return {}
+    end
+    tuningEmitted = true
+
+    local out = {}
+    for factionId, tuning in pairs(config.FACTION_TUNING) do
+        local faction = { id = factionId, landmass = landmassId }
+        for key, value in pairs(tuning) do
+            faction[key] = value
+        end
+        out[#out + 1] = faction
+    end
+    return out
+end
+
+for landmassId, landmass in pairs(surveyed) do
+    api.registerLandmass({
+        id = landmassId,
+        displayName = landmass.displayName,
+        factions = tuningFor(landmassId),
+        territories = landmass.territories,
+    })
+    landmassIds[#landmassIds + 1] = landmassId
+end
+
+for _, landmassId in ipairs(landmassIds) do
+    api.generateFrontier({ landmass = landmassId })
+end
+
+if #landmassIds == 0 then
+    log.warn('the survey found no settlements -- nothing to simulate. This means '
+        .. 'no named exterior cell in the load order had a factioned NPC standing in it.')
+end
 
 local function onInit()
     state.reset()
@@ -116,6 +181,40 @@ local function onRequestSnapshot(data)
     })
 end
 
+--- Where every settlement stands, for whatever is drawing a map.
+--
+-- Walks settlements rather than the whole territory table so the frontier
+-- -- which is most of the map and changes hands constantly -- stays out
+-- of the payload. A caller wanting that too should ask for it separately
+-- rather than have this grow into a full world dump.
+local function onRequestMap()
+    local rows = {}
+
+    for _, settlementId in ipairs(registry.settlementIds) do
+        local settlement = registry.settlements[settlementId]
+        for _, territoryId in ipairs(settlement.territoryIds) do
+            local territory = registry.territories[territoryId]
+            local gridX, gridY = cells.parse(territory.cells[1])
+            if gridX then
+                local owner = state.getOwner(territoryId)
+                local faction = owner and registry.factions[owner] or nil
+                rows[#rows + 1] = {
+                    gridX = gridX,
+                    gridY = gridY,
+                    settlement = settlement.displayName,
+                    owner = owner,
+                    ownerName = faction and faction.displayName or nil,
+                }
+            end
+        end
+    end
+
+    events.emit(events.MAP, {
+        day = state.get().lastResolvedDay,
+        cells = rows,
+    })
+end
+
 --- Take a member's gold and turn it into their faction's standing.
 --
 -- Everything the window checked is checked again here. The window runs
@@ -201,6 +300,7 @@ return {
     eventHandlers = {
         [events.AWARD_POWER] = onAwardPower,
         [events.REQUEST_SNAPSHOT] = onRequestSnapshot,
+        [events.REQUEST_MAP] = onRequestMap,
         [events.PAY_TRIBUTE] = onPayTribute,
     },
 }

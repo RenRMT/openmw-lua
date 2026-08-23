@@ -564,4 +564,120 @@ M.WINDOW_HEIGHT = 480
 -- stops fitting on the screen.
 M.WINDOW_MAX_STANDINGS = 16
 
+--------------------------------------------------------------------------
+-- The survey
+--------------------------------------------------------------------------
+
+-- Classes that count as armed presence. This is the measurement: power is
+-- who can hold ground rather than who holds title, so a house's guards
+-- outrank its councillors and a town with a Legion fort in it reads
+-- Imperial. `warrior` is deliberately broad -- it catches the Ashlander
+-- and Nord fighters that carry no guard class.
+M.SURVEY_GUARD_CLASSES = {
+    ['guard'] = true,
+    ['ordinator'] = true,
+    ['buoyant armiger'] = true,
+    ['warrior'] = true,
+}
+
+-- Faction ids that answer to another. Morrowind splits the Empire across
+-- five records that hold ground as one power; collapsing them onto the
+-- Legion's own id rather than an invented `empire` keeps the reaction row
+-- coming from a real record. Ids absent from a load order are inert, so
+-- this costs nothing in a game that has never heard of the Legion.
+M.FACTION_ALIASES = {
+    ['imperial cult'] = 'imperial legion',
+    ['imperial knights'] = 'imperial legion',
+    ['census and excise'] = 'imperial legion',
+    ['blades'] = 'imperial legion',
+}
+
+-- Tier by footprint, largest first. Footprint is the same quantity the
+-- framework projects power over, so a city is a city because it covers a
+-- city's worth of ground. Population deliberately does not feed in: tier
+-- already scales power, and folding the garrison in as well would count
+-- the same guards twice.
+M.SURVEY_TIER_BY_CELLS = {
+    { cells = 12, tier = 'metropolis' },
+    { cells = 6, tier = 'large city' },
+    { cells = 4, tier = 'small city' },
+    { cells = 3, tier = 'town' },
+    { cells = 2, tier = 'village' },
+    { cells = 1, tier = 'outpost' },
+}
+
+-- Per-faction tuning the game's records have no field for, keyed by
+-- record id. Everything else about a faction is read from the records, so
+-- entries belong here only where the game cannot say it.
+--
+-- Unknown ids are ignored, which is what lets the framework carry
+-- Morrowind's one exception without becoming a Morrowind content pack:
+-- in a load order without it, this table is inert.
+M.FACTION_TUNING = {
+    -- The invader holding Red Mountain. `type` takes it out of the
+    -- politics entirely: it grows, it fights everyone, and nothing it
+    -- does moves anybody's standing along the reaction table. Escalation
+    -- then comes free from projection rather than from a stage table.
+    --
+    -- It has no capacity to revert toward, so a setback dealt by content
+    -- is permanent -- the ramp resumes from lower down.
+    ['sixth house'] = {
+        type = 'invader',
+        -- ~3 weeks to double its standing.
+        growthPerDay = 1.5,
+    },
+}
+
+--------------------------------------------------------------------------
+-- Map overlay
+--------------------------------------------------------------------------
+
+-- The PixelMap layer's key and its place in the stack. Above the
+-- built-ins (10 terrain, 20 grid) so ownership reads over the landscape
+-- rather than under it.
+M.MAP_LAYER_KEY = 'BalanceOfPower_territory'
+M.MAP_LAYER_ORDER = 30
+
+-- Settlement fills are opaque: this layer answers "who holds what" at a
+-- glance, and a translucent fill over relief shading makes two similar
+-- faction colours impossible to tell apart.
+M.MAP_FILL_ALPHA = 1.0
+
+-- White edge on each settlement square, in canvas pixels. A per-cell
+-- overlay is read as a shape before it is read as a colour, so the border
+-- is what separates two adjacent owners of similar hue. Clamped against
+-- the cell size when zoomed out, so a distant city stays a coloured dot
+-- rather than a white one.
+M.MAP_CELL_BORDER = 2
+
+-- Ground with a name and no claimant -- a derelict tower, an
+-- unaffiliated Velothi holding. Grey rather than absent, so the map
+-- distinguishes "nobody holds this" from "not a settlement".
+M.MAP_COLOR_UNOWNED = { 0.45, 0.45, 0.48 }
+
+-- Faction colours, keyed by the id in the game's own records. Vanilla
+-- Morrowind's holders are named here; anything else falls back to a
+-- colour derived from the id, so a landmass mod's factions are still
+-- told apart without this table having to know them.
+--
+-- Chosen to stay distinguishable side by side on the map rather than to
+-- match any heraldry: the Houses are the three that most often border
+-- one another, so they take the three widely separated hues.
+M.MAP_COLORS = {
+    ['hlaalu'] = { 0.85, 0.65, 0.20 },
+    ['redoran'] = { 0.75, 0.25, 0.20 },
+    ['telvanni'] = { 0.55, 0.30, 0.70 },
+    ['temple'] = { 0.30, 0.65, 0.85 },
+    ['imperial legion'] = { 0.85, 0.85, 0.80 },
+    ['east empire company'] = { 0.55, 0.45, 0.30 },
+    ['ashlanders'] = { 0.80, 0.55, 0.40 },
+    ['skaal'] = { 0.60, 0.80, 0.75 },
+    ['sixth house'] = { 0.40, 0.15, 0.15 },
+    ['camonna tong'] = { 0.35, 0.45, 0.25 },
+    ['fighters guild'] = { 0.70, 0.55, 0.25 },
+    ['mages guild'] = { 0.35, 0.40, 0.75 },
+    ['thieves guild'] = { 0.30, 0.30, 0.35 },
+    ['morag tong'] = { 0.25, 0.35, 0.30 },
+}
+
 return M
