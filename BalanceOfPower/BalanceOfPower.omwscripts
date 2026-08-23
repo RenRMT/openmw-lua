@@ -20,3 +20,8 @@ PLAYER: scripts/BalanceOfPower/player.lua
 # because they share nothing: one is a keybind and a screen, the other
 # fires on events and draws no widget.
 PLAYER: scripts/BalanceOfPower/window.lua
+
+# The territory overlay drawn on Pixel Map. Its own script because it is
+# the only part of the mod with an optional dependency: with Pixel Map
+# absent this registers nothing and everything else carries on.
+PLAYER: scripts/BalanceOfPower/map.lua

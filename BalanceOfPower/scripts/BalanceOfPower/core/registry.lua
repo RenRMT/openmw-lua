@@ -319,6 +319,34 @@ function M.ensureFactions()
     return added
 end
 
+--- Register faction ids that hold ground but the reaction filter dropped.
+--
+-- participatingRecordIds() keeps out records nobody has an opinion about,
+-- which is right for the dead ids content files carry around and wrong
+-- for a real faction that simply has no politics. Bloodmoon's Skaal have
+-- a village, a garrison and an empty reaction row; without this they own
+-- Skaal Village at load and lose it on the first resolve, because a
+-- faction that is not registered cannot hold anything.
+--
+-- Holding ground is participation. Only ids the game actually has a
+-- record for are admitted, so this cannot conjure a faction from a typo.
+-- @param ids list of faction ids named by settlements
+-- @return number newly registered
+function M.ensureFactionsHolding(ids)
+    readRecords()
+    local added = 0
+    for _, factionId in ipairs(ids) do
+        if not M.factions[factionId] and recordRows[factionId] then
+            M.factions[factionId] = newFaction(factionId, factionId, nil)
+            added = added + 1
+        end
+    end
+    if added > 0 then
+        log.info('registered %d factions that hold ground but have no reactions', added)
+    end
+    return added
+end
+
 -- Scalars a pack may set. The first pack to set one keeps it, because
 -- which pack won would otherwise depend on load order.
 local TUNABLE = { 'growthPerDay', 'hostile', 'recordId', 'landmass', 'type', 'volatility' }
@@ -602,6 +630,17 @@ function M.registerLandmass(def)
     for _, frontierDef in ipairs(def.frontier or {}) do
         territories[#territories + 1] = prepareFrontier(frontierDef, context, id, stagedTerritories)
     end
+
+    -- Settlements are prepared, so the ids they claim are known: admit any
+    -- that the reaction filter dropped but the game has a record for.
+    -- After validation and before the seats below bind to them.
+    local holders = {}
+    for _, settlement in ipairs(settlements) do
+        if settlement.faction then
+            holders[#holders + 1] = settlement.faction
+        end
+    end
+    M.ensureFactionsHolding(holders)
 
     -- Phase two: commit. Nothing below can fail.
     local landmass = {
