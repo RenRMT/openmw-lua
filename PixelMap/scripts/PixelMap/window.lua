@@ -263,26 +263,45 @@ local function catcher()
     return {
         type = ui.TYPE.Image,
         props = draw.invisible { relativeSize = util.vector2(1, 1) },
-        -- mouseClick is the only one of these a child widget ever
-        -- receives. The drag is handled on the root.
+        -- The drag is handled on the root, so this only needs the click.
+        -- A child widget does receive mouseMove and focusGain/focusLoss
+        -- as well, provided nothing above it has taken the mouse.
         events = { mouseClick = onCanvasClick },
     }
 end
 
+--- The player's own marker, in an element of its own so a pan can move it
+-- without rebuilding the canvas.
+--
+-- The element is sized to the marker rather than to the canvas. A
+-- full-canvas widget on top of the stack is a sheet over the whole map,
+-- and a widget that needs mouse focus takes every click and hover with
+-- it -- including the ones meant for the layers and the pan-catcher
+-- underneath. Sized to the marker it covers a few dozen pixels, and only
+-- the pixels it actually draws on.
 local function drawPlayer()
     if not playerElement then
         return
     end
-    local content = {}
-    if view.cell then
-        content[1] = draw.marker {
-            position = self.position,
-            size = config.PLAYER_MARKER_SIZE,
-            outline = config.PLAYER_MARKER_OUTLINE,
-            color = config.COLOR_PLAYER,
-        }
+
+    local marker = view.cell and draw.marker {
+        position = self.position,
+        size = config.PLAYER_MARKER_SIZE,
+        outline = config.PLAYER_MARKER_OUTLINE,
+        color = config.COLOR_PLAYER,
+    } or nil
+
+    if marker then
+        -- Take the marker's own geometry onto the wrapper, and its
+        -- visuals inside at the origin.
+        playerElement.layout.props.position = marker.props.position
+        playerElement.layout.props.size = marker.props.size
+        playerElement.layout.content = marker.content
+    else
+        playerElement.layout.props.position = util.vector2(0, 0)
+        playerElement.layout.props.size = util.vector2(0, 0)
+        playerElement.layout.content = ui.content {}
     end
-    playerElement.layout.content = ui.content(content)
     playerElement:update()
 end
 
@@ -391,13 +410,27 @@ local function buildCanvasContent()
         content[#content + 1] = element
     end
 
-    if not playerElement then
-        playerElement = ui.create {
-            type = ui.TYPE.Widget,
-            props = { relativeSize = util.vector2(1, 1) },
-            content = ui.content {},
-        }
+    -- Rebuilt every time rather than cached like the layer elements, and
+    -- appended last, so the player is above whatever is registered on the
+    -- map. A cached one is created the first time the canvas is built,
+    -- which puts every layer registering after that -- anything wired up
+    -- on PixelMapReady -- newer than the marker, and a mod's opaque
+    -- ownership fills then paint over the one thing that must stay
+    -- visible.
+    if playerElement then
+        playerElement:destroy()
     end
+    playerElement = ui.create {
+        type = ui.TYPE.Widget,
+        -- Geometry is written by drawPlayer, which sizes this to the
+        -- marker. Starts at zero rather than filling the canvas: see
+        -- there for why a full-size one is a problem.
+        props = {
+            position = util.vector2(0, 0),
+            size = util.vector2(0, 0),
+        },
+        content = ui.content {},
+    }
     content[#content + 1] = playerElement
 
     canvasStructure = structureOf()

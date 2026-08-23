@@ -69,7 +69,11 @@ I.PixelMap.quad(x, y, w, h, color, alpha)
 
 -- One exterior cell, by grid coordinates. The unit for territory,
 -- ownership, danger, anything painted per cell.
-I.PixelMap.cell(gridX, gridY, color, alpha)
+--
+-- `tooltip` is optional, and makes the whole cell the hover area rather
+-- than a fixed-size marker in the middle of it. It needs
+-- `interactive = true` on the layer.
+I.PixelMap.cell(gridX, gridY, color, alpha, tooltip)
 
 -- A marker centred on a world position.
 I.PixelMap.marker {
@@ -117,10 +121,14 @@ what `onClick` and `tooltip` are built on. The trade is that a drag begun
 on one of your widgets does not pan the map, so use it for the layers
 that need input and leave the rest alone.
 
-Those are the only mouse events available to a child widget. `mousePress`
-is never delivered at all, and `mouseMove`/`mouseRelease` reach only the
-window itself — which is why `tooltip` takes a string rather than letting
-you place one yourself.
+`mouseMove` reaches an interactive layer's widgets too. `mousePress` is
+never delivered at all, and `mouseRelease` reaches only the window
+itself. `tooltip` still takes a string rather than letting you place one
+yourself: the tooltip is drawn on the Popup layer from the cursor
+position the window tracks, so it is never clipped by the canvas.
+
+Nothing in an ordinary layer sees any of these — the sheet described
+above is in the way, and that is what `interactive` opts out of.
 
 ## The rest of the interface
 
