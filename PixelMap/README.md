@@ -27,7 +27,8 @@ Bind a key under **Options → Scripts → Pixel Map**.
 | Mouse wheel | Zoom |
 | `+` / `−` | Zoom |
 | Centre on me | Jump back to your own position |
-| `[x] Name` | Show or hide a layer |
+| Tick a layer's box | Show or hide that layer |
+| Wheel over the layer row | Scroll the layers, when there are more than fit |
 | Drag the top of the window | Move the window |
 | Drag an edge or corner | Resize the window |
 
@@ -46,7 +47,8 @@ is clearer under another mod's overlay and quicker to draw.
 
 ## Layers
 
-Two ship with the mod, each with a toggle above the map:
+Two ship with the mod, each with a checkbox above the map. The row scrolls
+sideways when enough mods have added layers to outrun the window:
 
 - **Terrain** — the map itself.
 - **Cell grid** — cell boundaries, once you are zoomed in far enough for

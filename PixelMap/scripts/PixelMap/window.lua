@@ -15,6 +15,8 @@ local layers = require('scripts.PixelMap.core.layers')
 local profile = require('scripts.PixelMap.core.profile')
 local tooltip = require('scripts.PixelMap.core.tooltip')
 local view = require('scripts.PixelMap.core.view')
+local scroll = require('scripts.PixelMap.ui.scroll')
+local widgets = require('scripts.PixelMap.ui.widgets')
 
 local l10n = core.l10n(config.L10N_CONTEXT, 'en')
 
@@ -29,20 +31,34 @@ local canvasContainer = nil
 -- the toggle row, and a map that can hide where you are is not a feature.
 local playerElement = nil
 local statusText = nil
-local toggleTexts = {}
+local toggleBoxes = {}
+-- The layer toggles scroll sideways when there are more of them than fit.
+-- The slot is held so a resize can refill it at the new width.
+local toggleSlot = nil
+local toggleStrip = nil
+local toggleBar = nil
+local toggleOffset = 0
+local toggleContent = 0
+local toggleView = 0
 -- What the canvas content was assembled for. When the set of layers or
 -- their draw order changes the container has to be reassembled; when only
 -- their contents change, it does not.
 local canvasStructure = nil
 
--- The gesture in progress: either a frame drag or a map pan.
+-- The gesture in progress: a frame drag, a map pan, or the toggle scrollbar.
 local drag = nil
+-- Cursor relative to the window, kept from the last move so the wheel can tell
+-- whether it was aimed at the toggle row or at the map.
+local cursorOffset = nil
 -- Set when a press/release pair has handled the gesture, so the
 -- mouseClick that follows does not recentre on top of it.
 local dragHandled = false
 
 local refresh
 local hide
+local scrollToggles
+local rebuildToggles
+local toggleThumb
 
 --------------------------------------------------------------------------
 -- Small widgets
@@ -55,18 +71,12 @@ local function text(content, template)
     }
 end
 
-local function button(label, onClick)
-    return {
-        template = I.MWUI.templates.box,
-        content = ui.content {
-            {
-                template = I.MWUI.templates.textNormal,
-                props = { text = ' ' .. label .. ' ' },
-                events = { mouseClick = async:callback(onClick) },
-            },
-        },
-    }
-end
+-- Hover recolouring mutates a layout in place and shows only on the next update.
+widgets.setRefresh(function()
+    if windowElement then
+        windowElement:update()
+    end
+end)
 
 local function flex(horizontal, content)
     return {
@@ -104,6 +114,9 @@ local function applyWindowRect(position, size, redrawLayers)
     if canvasContainer then
         canvasContainer.props.size = canvasSize
     end
+    -- The toggle row spans the canvas, so its viewport and scrollbar are built
+    -- for a width that the resize has just invalidated.
+    rebuildToggles(canvasSize.x)
 
     if redrawLayers then
         refresh()
@@ -117,12 +130,34 @@ end
 -- Drag begins on first mouseMove with button held (mousePress never arrives).
 -- Kind determined by cursor position within window; resolves from anchor (idempotent).
 
+-- The toggle row's band, measured down from the top of the window. It starts
+-- where the frame's title band ends, off the same constant, so the two agree
+-- about where one stops and the other begins even though neither measures the
+-- rendered text. Answers false when nothing overflows: there is no bar to hit.
+local function overToggles(offset)
+    if not (toggleBar and offset) then
+        return false
+    end
+    local top = config.FRAME_GRAB + config.FRAME_TITLE_HEIGHT
+    return offset.y >= top and offset.y <= top + config.TOGGLE_HEIGHT + config.SCROLL_THICKNESS
+end
+
+-- The toggle scrollbar claims its band; everything else is the frame's to read.
+local function classifyGesture(offset, size)
+    if overToggles(offset) then
+        return 'toggles'
+    end
+    return frame.classify(offset, size)
+end
+
 local function beginDrag(kind, event)
     if not windowElement then
         return
     end
     dragHandled = false
-    if kind == 'map' then
+    if kind == 'toggles' then
+        drag = { toggles = true, origin = event.position, offset = toggleOffset }
+    elseif kind == 'map' then
         drag = {
             map = true,
             origin = event.position,
@@ -152,6 +187,17 @@ local function continueDrag(event)
     -- Where the gesture had genuinely reached, for a drag that ends
     -- without a release telling us where it ended.
     drag.last = event.position
+
+    if drag.toggles then
+        local track = toggleView - 2 * config.SCROLL_ARROW
+        local scale = scroll.dragScale(toggleContent, toggleView, track)
+        toggleOffset = scroll.clamp(drag.offset + dx * scale, toggleContent, toggleView)
+        toggleStrip.props.position = util.vector2(-toggleOffset, 0)
+        widgets.thumbAt(toggleBar, toggleThumb(), config.SCROLL_ARROW,
+                        config.SCROLL_THICKNESS, true)
+        windowElement:update()
+        return
+    end
 
     if drag.map then
         -- Anchored on the centre the drag began at, so this cannot drift.
@@ -184,6 +230,13 @@ local function endDrag(event)
     local dy = event.position.y - drag.origin.y
     local travelled = math.abs(dx) + math.abs(dy)
 
+    if drag.toggles then
+        -- Nothing on the map moved, so there is nothing to redraw.
+        dragHandled = travelled >= config.DRAG_TAP_PIXELS
+        drag = nil
+        return
+    end
+
     if drag.map then
         view.centerOn(drag.center.x - dx / view.zoom, drag.center.y + dy / view.zoom)
         -- Below the tap threshold this was a click, and the click handler
@@ -208,6 +261,7 @@ local onRootMove = async:callback(function(event)
     -- The only place a cursor position is available. A hovered marker
     -- cannot place its own tooltip without it.
     tooltip.cursor(event.position)
+    cursorOffset = event.offset or cursorOffset
 
     if event.button ~= 1 then
         -- Button up; end here at last drag point if release never arrived.
@@ -220,7 +274,7 @@ local onRootMove = async:callback(function(event)
         if not windowElement or not event.offset then
             return
         end
-        beginDrag(frame.classify(event.offset, windowElement.layout.props.size), event)
+        beginDrag(classifyGesture(event.offset, windowElement.layout.props.size), event)
     end
     continueDrag(event)
 end)
@@ -247,6 +301,11 @@ end)
 -- itself whether the wheel was meant for it.
 local function wheel(vertical)
     if not windowElement or drag or vertical == 0 then
+        return
+    end
+    -- Over the toggle row the wheel scrolls it; anywhere else it zooms the map.
+    if overToggles(cursorOffset) then
+        scrollToggles(vertical > 0 and -config.SCROLL_STEP or config.SCROLL_STEP)
         return
     end
     view.zoomBy(vertical > 0 and config.ZOOM_STEP or 1 / config.ZOOM_STEP)
@@ -440,27 +499,119 @@ end
 
 local toggleLayer
 
-local function buildToggleRow()
-    toggleTexts = {}
+-- Rough width of one toggle, for deciding whether the row overflows. The engine
+-- reports no measured size back to Lua, so the strip's extent has to be
+-- estimated; over-estimating only shows a scrollbar a little early.
+local function toggleWidth(layer)
+    return config.TOGGLE_BOX + 5 + #layer.name * 8 + config.TOGGLE_GAP
+end
+
+toggleThumb = function()
+    local track = toggleView - 2 * config.SCROLL_ARROW
+    return scroll.thumb(toggleContent, toggleView, track, toggleOffset, config.TOGGLE_GAP)
+end
+
+local function buildToggleStrip()
+    toggleBoxes = {}
     local row = {}
+    toggleContent = 0
     for _, layer in ipairs(layers.list()) do
         local key = layer.key
-        local label = {
-            template = I.MWUI.templates.textNormal,
-            props = { text = ' [x] ' .. layer.name .. ' ' },
-            events = { mouseClick = async:callback(function() toggleLayer(key) end) },
+        local box = widgets.checkbox {
+            checked = layer.enabled,
+            label = layer.name,
+            size = config.TOGGLE_BOX,
+            onClick = function() toggleLayer(key) end,
         }
-        toggleTexts[key] = label
-        row[#row + 1] = {
-            template = I.MWUI.templates.box,
-            content = ui.content { label },
-        }
-        row[#row + 1] = { template = I.MWUI.templates.interval }
+        toggleBoxes[key] = box
+        row[#row + 1] = box
+        row[#row + 1] = { props = { size = util.vector2(config.TOGGLE_GAP, 0) } }
+        toggleContent = toggleContent + toggleWidth(layer)
     end
-    if #row == 0 then
-        return text(l10n('noLayers'))
+    return row
+end
+
+-- Viewport clipping an inner flex, plus a scrollbar that appears only when the
+-- toggles outrun the window. The bar carries no drag handler: a child widget
+-- gets neither mousePress nor mouseMove, so the root gesture handler drives it.
+--
+-- Returned as the contents of `toggleSlot`, which the window keeps a reference
+-- to so a resize can refill it at the new width rather than rebuild the window.
+local function toggleRowContent(width)
+    toggleView = width
+    local strip = buildToggleStrip()
+    if #strip == 0 then
+        return { text(l10n('noLayers')) }
     end
-    return flex(true, row)
+
+    toggleOffset = scroll.clamp(toggleOffset, toggleContent, toggleView)
+    toggleStrip = {
+        type = ui.TYPE.Flex,
+        props = { horizontal = true, arrange = ui.ALIGNMENT.Center,
+                  position = util.vector2(-toggleOffset, 0) },
+        content = ui.content(strip),
+    }
+
+    local viewport = {
+        type = ui.TYPE.Widget,
+        props = { size = util.vector2(width, config.TOGGLE_HEIGHT) },
+        content = ui.content { toggleStrip },
+    }
+
+    -- A hidden widget still occupies its place in a flex, so the bar is left out
+    -- entirely rather than hidden when everything fits.
+    local thumb = toggleThumb()
+    if not thumb.visible then
+        toggleBar = nil
+        toggleOffset = 0
+        toggleStrip.props.position = util.vector2(0, 0)
+        return { viewport }
+    end
+
+    toggleBar = widgets.scrollbar {
+        horizontal = true,
+        thickness = config.SCROLL_THICKNESS,
+        length = width,
+        arrow = config.SCROLL_ARROW,
+        thumb = thumb,
+        onStepBack = function() scrollToggles(-config.SCROLL_STEP) end,
+        onStepOn = function() scrollToggles(config.SCROLL_STEP) end,
+    }
+
+    return { viewport, toggleBar }
+end
+
+local function buildToggleRow(width)
+    toggleSlot = {
+        type = ui.TYPE.Flex,
+        props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
+        content = ui.content(toggleRowContent(width)),
+    }
+    return toggleSlot
+end
+
+-- Refill the slot at a new width. Called on resize, and when a layer registers
+-- or unregisters and the row's contents are no longer what was built.
+--
+-- `force` is for the latter: a resize fires every frame the cursor moves and the
+-- width usually has not changed, so by default an unchanged width does nothing.
+rebuildToggles = function(width, force)
+    if not toggleSlot or (not force and width == toggleView) then
+        return
+    end
+    toggleSlot.content = ui.content(toggleRowContent(width))
+end
+
+-- Shift the toggle strip and move its thumb, without rebuilding either.
+scrollToggles = function(delta)
+    if not (windowElement and toggleStrip and toggleBar) then
+        return
+    end
+    toggleOffset = scroll.clamp(toggleOffset + delta, toggleContent, toggleView)
+    toggleStrip.props.position = util.vector2(-toggleOffset, 0)
+    widgets.thumbAt(toggleBar, toggleThumb(), config.SCROLL_ARROW,
+                    config.SCROLL_THICKNESS, true)
+    windowElement:update()
 end
 
 local function statusFor()
@@ -482,10 +633,10 @@ local function updateChrome()
     if statusText then
         statusText.props.text = statusFor()
     end
-    for key, label in pairs(toggleTexts) do
+    for key, box in pairs(toggleBoxes) do
         local layer = layers.get(key)
         if layer then
-            label.props.text = (layer.enabled and ' [x] ' or ' [ ] ') .. layer.name .. ' '
+            widgets.setChecked(box, layer.enabled)
         end
     end
     windowElement:update()
@@ -499,7 +650,7 @@ toggleLayer = function(key)
     else
         clearLayer(key)
     end
-
+    updateChrome()
 end
 
 local function centerOnPlayer()
@@ -513,6 +664,9 @@ local function redrawLayers()
     -- canvas yet, and one removed still has one.
     if windowElement and canvasContainer and structureOf() ~= canvasStructure then
         canvasContainer.content = buildCanvasContent()
+        -- A layer that has just appeared or gone needs its toggle added or
+        -- removed, which the width alone would not tell us.
+        rebuildToggles(view.canvasSize.x, true)
     end
     for _, layer in ipairs(layers.list()) do
         if layer.enabled then
@@ -532,7 +686,7 @@ refresh = function()
     redrawLayers()
 
     local started = profile.now()
-
+    updateChrome()
     profile.add('chrome', started)
     profile.flush('redraw')
 end
@@ -554,24 +708,24 @@ local function body()
                 -- Top band drags window; invisible child strip doesn't work (can't receive drag).
                 text(l10n('windowTitle'), I.MWUI.templates.textHeader),
                 { template = I.MWUI.templates.horizontalLine },
-                buildToggleRow(),
+                buildToggleRow(view.canvasSize.x),
                 { template = I.MWUI.templates.interval },
                 canvasContainer,
                 { template = I.MWUI.templates.interval },
                 flex(true, {
-                    button(l10n('zoomOut'), function()
+                    widgets.button(l10n('zoomOut'), function()
                         view.zoomBy(1 / config.ZOOM_STEP)
                         refresh()
                     end),
                     { template = I.MWUI.templates.interval },
-                    button(l10n('zoomIn'), function()
+                    widgets.button(l10n('zoomIn'), function()
                         view.zoomBy(config.ZOOM_STEP)
                         refresh()
                     end),
                     { template = I.MWUI.templates.interval },
-                    button(l10n('recenter'), centerOnPlayer),
+                    widgets.button(l10n('recenter'), centerOnPlayer),
                     { template = I.MWUI.templates.interval },
-                    button(l10n('close'), function() hide() end),
+                    widgets.button(l10n('close'), function() hide() end),
                     { template = I.MWUI.templates.interval },
                     statusText,
                 }),
@@ -627,6 +781,7 @@ local function destroy()
     tooltip.hide()
     drag = nil
     dragHandled = false
+    cursorOffset = nil
 
     for key, element in pairs(layerElements) do
         element:destroy()
@@ -639,7 +794,11 @@ local function destroy()
     canvasContainer = nil
     canvasStructure = nil
     statusText = nil
-    toggleTexts = {}
+    toggleBoxes = {}
+    toggleSlot = nil
+    toggleStrip = nil
+    toggleBar = nil
+    toggleOffset = 0
 
     if windowElement then
         windowElement:destroy()
