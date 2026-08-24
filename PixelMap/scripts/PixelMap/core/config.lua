@@ -43,9 +43,6 @@ return {
 
     -- Default style ('relief' by height, 'flat' for land/sea; flat merges more). Player chooses on settings.
     TERRAIN_STYLE = 'relief',
-    -- Ocean 2 and Terrain 2: the middle of each relief ramp.
-    COLOR_FLAT_LAND = util.color.rgb(0.701961, 0.650980, 0.509804),   -- #b3a682
-    COLOR_FLAT_OCEAN = util.color.rgb(0.447059, 0.572549, 0.670588),  -- #7292ab
 
     -- Colour bands: sea is one band over most area (major savings); more bands = smoother ramp, more widgets.
     TERRAIN_COLOR_BANDS = 24,
@@ -59,22 +56,65 @@ return {
     WATER_LEVEL = 0,
     TERRAIN_FLOOR = -2500,
     TERRAIN_PEAK = 6500,
+
+    -- Colour themes. Player chooses on settings; keys are l10n keys too.
+    TERRAIN_THEME = 'muted',
+    -- Flat style and the off-map void take fixed stops out of whichever theme
+    -- is live, so a new theme never needs its own flat colours.
+    FLAT_WATER_STOP = 2,
+    FLAT_LAND_STOP = 2,
+    VOID_WATER_STOP = 1,
     -- Relief ramps: evenly spaced colour stops interpolated across the bands.
     -- Any number of stops; repeat one to hold a colour over more of the range.
-    TERRAIN_WATER_RAMP = {
-        util.color.rgb(0.290196, 0.392157, 0.470588),  -- #4a6478
-        util.color.rgb(0.447059, 0.572549, 0.670588),  -- #7292ab
-        util.color.rgb(0.635294, 0.729412, 0.788235),  -- #a2bac9
+    TERRAIN_THEMES = {
+        muted = {
+            water = {
+                util.color.rgb(0.290196, 0.392157, 0.470588),  -- #4a6478
+                util.color.rgb(0.447059, 0.572549, 0.670588),  -- #7292ab
+                util.color.rgb(0.635294, 0.729412, 0.788235),  -- #a2bac9
+            },
+            land = {
+                util.color.rgb(0.584314, 0.592157, 0.431373),  -- #95976e
+                util.color.rgb(0.701961, 0.650980, 0.509804),  -- #b3a682
+                util.color.rgb(0.796078, 0.674510, 0.556863),  -- #cbac8e
+                util.color.rgb(0.862745, 0.749020, 0.639216),  -- #dcbfa3
+                util.color.rgb(0.917647, 0.850980, 0.772549),  -- #ead9c5
+                util.color.rgb(0.972549, 0.945098, 0.901961),  -- #f8f1e6
+            },
+        },
+        classic = {
+            water = {
+                util.color.rgb(0.078431, 0.121569, 0.113725),  -- #141f1d
+                util.color.rgb(0.105882, 0.160784, 0.149020),  -- #1b2926
+                util.color.rgb(0.145098, 0.207843, 0.184314),  -- #25352f
+            },
+            land = {
+                util.color.rgb(0.250980, 0.188235, 0.121569),  -- #40301f
+                util.color.rgb(0.203922, 0.145098, 0.101961),  -- #34251a
+                util.color.rgb(0.168627, 0.121569, 0.086275),  -- #2b1f16
+                util.color.rgb(0.141176, 0.101961, 0.070588),  -- #241a12
+                util.color.rgb(0.105882, 0.078431, 0.062745),  -- #1b1410
+                util.color.rgb(0.054902, 0.043137, 0.031373),  -- #0e0b08
+            },
+        },
+        vivid = {
+            water = {
+                util.color.rgb(0.050980, 0.129412, 0.286275),  -- #0d2149
+                util.color.rgb(0.121569, 0.372549, 0.658824),  -- #1f5fa8
+                util.color.rgb(0.290196, 0.564706, 0.850980),  -- #4a90d9
+            },
+            land = {
+                util.color.rgb(0.305882, 0.372549, 0.243137),  -- #4e5f3e
+                util.color.rgb(0.372549, 0.435294, 0.270588),  -- #5f6f45
+                util.color.rgb(0.490196, 0.478431, 0.321569),  -- #7d7a52
+                util.color.rgb(0.611765, 0.572549, 0.439216),  -- #9c9270
+                util.color.rgb(0.776471, 0.752941, 0.690196),  -- #c6c0b0
+                util.color.rgb(0.909804, 0.901961, 0.866667),  -- #e8e6dd
+            },
+        },
     },
-    TERRAIN_LAND_RAMP = {
-        util.color.rgb(0.584314, 0.592157, 0.431373),  -- #95976e
-        util.color.rgb(0.701961, 0.650980, 0.509804),  -- #b3a682
-        util.color.rgb(0.796078, 0.674510, 0.556863),  -- #cbac8e
-        util.color.rgb(0.862745, 0.749020, 0.639216),  -- #dcbfa3
-        util.color.rgb(0.917647, 0.850980, 0.772549),  -- #ead9c5
-        util.color.rgb(0.972549, 0.945098, 0.901961),  -- #f8f1e6
-    },
-    COLOR_VOID = util.color.rgb(0.290196, 0.392157, 0.470588),  -- #4a6478, Ocean 1
+    -- Order of the theme select; keeps the list stable (TERRAIN_THEMES is a hash).
+    TERRAIN_THEME_ORDER = { 'muted', 'classic', 'vivid' },
 
     -- Grid dropped when cell narrower than this.
     GRID_MIN_SPACING = 24,

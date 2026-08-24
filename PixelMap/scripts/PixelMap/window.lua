@@ -13,6 +13,7 @@ local draw = require('scripts.PixelMap.core.draw')
 local frame = require('scripts.PixelMap.core.frame')
 local layers = require('scripts.PixelMap.core.layers')
 local profile = require('scripts.PixelMap.core.profile')
+local terrain = require('scripts.PixelMap.core.terrain')
 local tooltip = require('scripts.PixelMap.core.tooltip')
 local view = require('scripts.PixelMap.core.view')
 
@@ -379,7 +380,7 @@ local function buildCanvasContent()
             type = ui.TYPE.Image,
             props = {
                 resource = draw.whiteTexture,
-                color = config.COLOR_VOID,
+                color = terrain.voidColor(),
                 relativeSize = util.vector2(1, 1),
             },
         },

@@ -20,11 +20,13 @@ local function lerpColor(a, b, t)
         a.b + (b.b - a.b) * t)
 end
 
+local BLACK = util.color.rgb(0, 0, 0)
+
 -- Sample an evenly spaced ramp of colour stops at t in [0,1].
 local function rampAt(ramp, t)
     local n = #ramp
     if n == 0 then
-        return config.COLOR_VOID
+        return BLACK
     end
     local at = math.max(0, math.min(1, t)) * (n - 1)
     local i = math.floor(at)
@@ -34,21 +36,14 @@ local function rampAt(ramp, t)
     return lerpColor(ramp[i + 1], ramp[i + 2], at - i)
 end
 
--- Built once; allocates only once per build, not once per sample.
-local relief = {}
-for band = 0, WATER_BANDS - 1 do
-    relief[band] = rampAt(config.TERRAIN_WATER_RAMP, band / math.max(1, WATER_BANDS - 1))
+-- Fixed stop by index, clamped so a short ramp still answers.
+local function stopAt(ramp, index)
+    local n = #ramp
+    if n == 0 then
+        return BLACK
+    end
+    return ramp[math.max(1, math.min(n, index))]
 end
-for i = 0, LAND_BANDS - 1 do
-    relief[WATER_BANDS + i] = rampAt(config.TERRAIN_LAND_RAMP, i / math.max(1, LAND_BANDS - 1))
-end
-
-local flat = {}
-for band = 0, config.TERRAIN_COLOR_BANDS - 1 do
-    flat[band] = (band >= WATER_BANDS) and config.COLOR_FLAT_LAND or config.COLOR_FLAT_OCEAN
-end
-
-local PALETTES = { relief = relief, flat = flat }
 
 -- Runs merge on the drawn colour, not the band: a colour repeated across two
 -- bands (a shared ramp stop at the shoreline) must not split a run.
@@ -66,9 +61,53 @@ local function mergeKeysFor(palette)
     return keys
 end
 
-local MERGE_KEYS = { relief = mergeKeysFor(relief), flat = mergeKeysFor(flat) }
+-- Built once per theme; allocates only once per build, not once per sample.
+local function buildTheme(def)
+    local relief, flat = {}, {}
+    for band = 0, WATER_BANDS - 1 do
+        relief[band] = rampAt(def.water, band / math.max(1, WATER_BANDS - 1))
+    end
+    for i = 0, LAND_BANDS - 1 do
+        relief[WATER_BANDS + i] = rampAt(def.land, i / math.max(1, LAND_BANDS - 1))
+    end
 
-local style = PALETTES[config.TERRAIN_STYLE] and config.TERRAIN_STYLE or 'relief'
+    local flatLand = stopAt(def.land, config.FLAT_LAND_STOP)
+    local flatOcean = stopAt(def.water, config.FLAT_WATER_STOP)
+    for band = 0, config.TERRAIN_COLOR_BANDS - 1 do
+        flat[band] = (band >= WATER_BANDS) and flatLand or flatOcean
+    end
+
+    return {
+        palettes = { relief = relief, flat = flat },
+        mergeKeys = { relief = mergeKeysFor(relief), flat = mergeKeysFor(flat) },
+        void = stopAt(def.water, config.VOID_WATER_STOP),
+    }
+end
+
+local THEMES = {}
+for name, def in pairs(config.TERRAIN_THEMES) do
+    THEMES[name] = buildTheme(def)
+end
+
+local theme = THEMES[config.TERRAIN_THEME] and config.TERRAIN_THEME or next(THEMES)
+local style = THEMES[theme].palettes[config.TERRAIN_STYLE] and config.TERRAIN_STYLE or 'relief'
+
+function M.theme()
+    return theme
+end
+
+-- Switch themes (cache holds bands, not colours).
+function M.setTheme(newTheme)
+    if THEMES[newTheme] then
+        theme = newTheme
+    end
+    return theme
+end
+
+-- Off-map backdrop: the deepest water of the live theme.
+function M.voidColor()
+    return THEMES[theme].void
+end
 
 function M.style()
     return style
@@ -76,21 +115,21 @@ end
 
 -- Switch styles (cache holds bands, not colours).
 function M.setStyle(newStyle)
-    if PALETTES[newStyle] then
+    if THEMES[theme].palettes[newStyle] then
         style = newStyle
     end
     return style
 end
 
 function M.colorFor(band)
-    return PALETTES[style][band]
+    return THEMES[theme].palettes[style][band]
 end
 
 function M.mergeKey(band)
     if band == nil then
         return nil
     end
-    return MERGE_KEYS[style][band]
+    return THEMES[theme].mergeKeys[style][band]
 end
 
 -- Waterline is band boundary (two ranges banded separately, not blended across span).

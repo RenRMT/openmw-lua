@@ -48,6 +48,14 @@ if I.Settings then
         permanentStorage = true,
         settings = {
             {
+                key = 'terrainTheme',
+                name = 'terrainTheme',
+                description = 'terrainThemeDescription',
+                default = config.TERRAIN_THEME,
+                renderer = 'select',
+                argument = { l10n = config.L10N_CONTEXT, items = config.TERRAIN_THEME_ORDER },
+            },
+            {
                 key = 'terrainStyle',
                 name = 'terrainStyle',
                 description = 'terrainStyleDescription',
@@ -81,6 +89,7 @@ end
 local settings = storage.playerSection(GROUP)
 
 local function applySettings()
+    terrain.setTheme(settings:get('terrainTheme') or config.TERRAIN_THEME)
     terrain.setStyle(settings:get('terrainStyle') or config.TERRAIN_STYLE)
     -- A no-op while the map is shut, so this is safe to call from a
     -- subscription that fires whenever the player touches the page.
