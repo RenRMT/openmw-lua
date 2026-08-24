@@ -39,10 +39,15 @@ The window opens at about three quarters of your screen.
 
 ## Settings
 
+**Colour theme** — *Muted*, the default, is a soft physical-atlas
+palette. *Classic MW* is the dark, parchment-brown look of the vanilla
+world map. *Vivid* is a bright, high-contrast atlas palette.
+
 **Terrain colouring** — *Relief* shades the map by height, like a
-physical map: deep sea through shallows, then green low ground, brown
-hills, pale peaks. *Flat* uses one colour for land and one for sea, which
-is clearer under another mod's overlay and quicker to draw.
+physical map: deep sea through shallows, then low ground, hills, peaks.
+*Flat* uses one colour for land and one for sea, which is clearer under
+another mod's overlay and quicker to draw. Both are drawn from whichever
+theme is selected.
 
 ## Layers
 

@@ -4,8 +4,8 @@
 # l10n() calls in scripts/PixelMap/window.lua. A setting named `foo` takes
 # its help text from `fooDescription`, so the two always travel together.
 #
-# `relief` and `flat` are setting values and l10n keys at once: the
-# select renderer localises whatever value it is showing.
+# `relief`, `flat` and the theme names are setting values and l10n keys at
+# once: the select renderer localises whatever value it is showing.
 
 settingsPage: "Pixel Map"
 settingsPageDescription: "A world map drawn in Lua."
@@ -22,6 +22,15 @@ terrainStyleDescription: |-
   overlay and quicker to draw.
 relief: "Relief"
 flat: "Flat"
+
+terrainTheme: "Colour theme"
+terrainThemeDescription: |-
+  Which palette the map draws with. Muted is the default; Classic MW is
+  dark and parchment-brown like the vanilla world map; Vivid is a bright
+  atlas palette.
+muted: "Muted"
+classic: "Classic MW"
+vivid: "Vivid"
 
 openKey: "Open map"
 openKeyDescription: "Opens and closes the map window."
