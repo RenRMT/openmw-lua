@@ -136,10 +136,32 @@ local function ready()
     self:sendEvent('PixelMapReady', { version = 1 })
 end
 
-    -- Destroy map if something else takes the screen; torn down directly (don't reset their mode).
+-- The single teardown path: whatever closed the map -- the key, the Close
+-- button, Escape, another screen taking over -- only drops the mode, and the
+-- destroy happens here.
 local function onUiModeChanged(data)
-    if window.isOpen() and data and data.newMode ~= 'Interface' then
-        window.destroy()
+    if not window.isOpen() then
+        return
+    end
+    if data and data.newMode == 'Interface' then
+        return                      -- still our own mode: nothing to do
+    end
+    -- Torn down directly, without resetting the mode of whatever took over.
+    window.destroy()
+
+    -- open() hid the HUD and any pinned windows with setMode('Interface',
+    -- {windows = {}}). The engine only restores those on mode ENTER, never
+    -- when the stack empties on the way out -- so dropping straight back to
+    -- gameplay would leave a pinned map hidden until the player opened their
+    -- inventory to get it back. Re-assert Interface once, which restores
+    -- everything we hid, then drop it.
+    if not (data and data.newMode) then
+        I.UI.setMode('Interface')
+        -- setMode(), not removeMode('Interface'): by the time this event
+        -- fires the built-in mode stack is already empty, so removeMode finds
+        -- nothing to remove and no-ops, leaving the re-asserted Interface
+        -- stuck open on screen.
+        I.UI.setMode()
     end
 end
 

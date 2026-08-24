@@ -1,41 +1,53 @@
 -- Window frame: eight invisible grab strips for resize/move. Hand-rolled: ui.TYPE.Window cannot resize.
+-- The arithmetic lives in ui/resize.lua; this owns the strips and the screen.
 
 local ui = require('openmw.ui')
 local util = require('openmw.util')
 
 local config = require('scripts.PixelMap.core.config')
 local draw = require('scripts.PixelMap.core.draw')
+local resize = require('scripts.PixelMap.ui.resize')
+local widgets = require('scripts.PixelMap.ui.widgets')
 
 local v2 = util.vector2
 
-local GRABS = {
-    { key = 'move', pointer = 'arrow' },
-    { key = 'left', pointer = 'hresize', x = -1 },
-    { key = 'right', pointer = 'hresize', x = 1 },
-    { key = 'top', pointer = 'vresize', y = -1 },
-    { key = 'bottom', pointer = 'vresize', y = 1 },
-    { key = 'topLeft', pointer = 'dresize', x = -1, y = -1 },
-    { key = 'topRight', pointer = 'dresize2', x = 1, y = -1 },
-    { key = 'bottomLeft', pointer = 'dresize2', x = -1, y = 1 },
-    { key = 'bottomRight', pointer = 'dresize', x = 1, y = 1 },
+local POINTERS = {
+    move = 'arrow',
+    left = 'hresize',
+    right = 'hresize',
+    top = 'vresize',
+    bottom = 'vresize',
+    topLeft = 'dresize',
+    topRight = 'dresize2',
+    bottomLeft = 'dresize2',
+    bottomRight = 'dresize',
 }
 
-local byKey = {}
-for _, grab in ipairs(GRABS) do
-    byKey[grab.key] = grab
-end
-
 -- Build strips using relativeSize: `relativeSize * parent + size` spans full width without knowing width.
-local function grabs()
+--
+-- `handlers` (optional) gives each strip its own drag: onStart(key),
+-- onMove(key, delta), onEnd(key). Without it the strips are cursor hints only
+-- and whatever owns the root is left to read the gesture.
+local function grabs(handlers)
     local g = config.FRAME_GRAB
     local out = {}
 
     local function strip(key, props)
-        props.pointer = byKey[key].pointer
-        out[#out + 1] = {
+        props.pointer = POINTERS[key]
+        props.propagateEvents = false
+        local node = {
+            name = 'grab_' .. key,
             type = ui.TYPE.Image,
             props = draw.invisible(props),
         }
+        if handlers then
+            widgets.draggable(node, {
+                onStart = function() handlers.onStart(key) end,
+                onMove = function(delta) handlers.onMove(key, delta) end,
+                onEnd = function() handlers.onEnd(key) end,
+            })
+        end
+        out[#out + 1] = node
     end
 
     -- Edges first, then corners on top.
@@ -54,61 +66,6 @@ local function grabs()
     return out
 end
 
--- What a drag means: edges/corners, title bar (move), rest (pan).
--- Includes button rows to allow dragging; minor wrong vs unmovable window.
-local function classify(offset, size)
-    local g = config.FRAME_GRAB
-    local left = offset.x < g
-    local right = offset.x > size.x - g
-    local top = offset.y < g
-    local bottom = offset.y > size.y - g
-
-    if top and left then return 'topLeft' end
-    if top and right then return 'topRight' end
-    if bottom and left then return 'bottomLeft' end
-    if bottom and right then return 'bottomRight' end
-    if left then return 'left' end
-    if right then return 'right' end
-    if top then return 'top' end
-    if bottom then return 'bottom' end
-    if offset.y < g + config.FRAME_TITLE_HEIGHT then return 'move' end
-    return 'map'
-end
-
--- Apply drag to window rect, idempotent from anchor (arrival twice is harmless).
-local function resolve(key, startPos, startSize, delta, screen)
-    local grab = byKey[key]
-    if not grab then
-        return startPos, startSize
-    end
-
-    if key == 'move' then
-        return v2(
-            util.clamp(startPos.x + delta.x, 0, math.max(0, screen.x - startSize.x)),
-            util.clamp(startPos.y + delta.y, 0, math.max(0, screen.y - startSize.y))), startSize
-    end
-
-    local x, y = startPos.x, startPos.y
-    local w, h = startSize.x, startSize.y
-
-    if grab.x == -1 then
-        -- Left edge: move corner, shrink width equally; right edge stays put.
-        local dx = util.clamp(delta.x, -startPos.x, startSize.x - config.WINDOW_MIN_WIDTH)
-        x, w = startPos.x + dx, startSize.x - dx
-    elseif grab.x == 1 then
-        w = util.clamp(startSize.x + delta.x, config.WINDOW_MIN_WIDTH, screen.x - startPos.x)
-    end
-
-    if grab.y == -1 then
-        local dy = util.clamp(delta.y, -startPos.y, startSize.y - config.WINDOW_MIN_HEIGHT)
-        y, h = startPos.y + dy, startSize.y - dy
-    elseif grab.y == 1 then
-        h = util.clamp(startSize.y + delta.y, config.WINDOW_MIN_HEIGHT, screen.y - startPos.y)
-    end
-
-    return v2(x, y), v2(w, h)
-end
-
 local function screenBounds()
     local index = ui.layers.indexOf('Windows')
     if index then
@@ -117,9 +74,18 @@ local function screenBounds()
     return ui.screenSize()
 end
 
+-- What a drag means: edges/corners, title bar (move), rest (pan).
+-- Includes button rows to allow dragging; minor wrong vs unmovable window.
+local function classify(offset, size)
+    return resize.classify(offset, size, {
+        grab = config.FRAME_GRAB,
+        title = config.FRAME_TITLE_HEIGHT,
+        fallback = 'map',
+    })
+end
+
 return {
     grabs = grabs,
     classify = classify,
-    resolve = resolve,
     screenBounds = screenBounds,
 }

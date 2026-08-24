@@ -17,13 +17,27 @@ return {
     CANVAS_MIN_WIDTH = 480,
     CANVAS_MIN_HEIGHT = 360,
     WINDOW_MARGIN_X = 40,
-    WINDOW_MARGIN_Y = 110,
+    -- Title, toggle row, button row and the gaps between. The toggle scrollbar's
+    -- height is reserved whether or not it is showing, so the canvas does not
+    -- change size as layers come and go.
+    WINDOW_MARGIN_Y = 128,
     WINDOW_MIN_WIDTH = 420,
     WINDOW_MIN_HEIGHT = 320,
 
     -- Invisible grab strips; window is hand-rolled (ui.TYPE.Window cannot be resized).
     FRAME_GRAB = 8,
     FRAME_TITLE_HEIGHT = 24,
+
+    -- Scrollbar geometry. ARROW is thickness + the gap either side of the
+    -- groove, which makes each arrow box square.
+    SCROLL_THICKNESS = 16,
+    SCROLL_ARROW = 19,
+    SCROLL_STEP = 60,
+
+    -- Layer toggles: one row, scrolled sideways when the layers outrun it.
+    TOGGLE_HEIGHT = 24,
+    TOGGLE_BOX = 14,
+    TOGGLE_GAP = 10,
 
     -- Pan redraws sampled by cursor distance; zoom/resize similarly sampled.
     DRAG_REDRAW_PIXELS = 20,
@@ -131,6 +145,9 @@ return {
     TOOLTIP_OFFSET_X = 18,
     TOOLTIP_OFFSET_Y = 18,
     TOOLTIP_MARGIN = 8,
+    -- How long a rebuilding click refuses to show a tooltip again, swallowing
+    -- the trailing mouseMove that would otherwise strand one over the new page.
+    TOOLTIP_DISMISS_SECONDS = 0.1,
     COLOR_PLAYER = util.color.rgb(0.93, 0.82, 0.38),
     COLOR_MARKER_OUTLINE = util.color.rgb(0.05, 0.05, 0.05),
 
