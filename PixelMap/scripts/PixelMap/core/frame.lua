@@ -7,6 +7,7 @@ local util = require('openmw.util')
 local config = require('scripts.PixelMap.core.config')
 local draw = require('scripts.PixelMap.core.draw')
 local resize = require('scripts.PixelMap.ui.resize')
+local widgets = require('scripts.PixelMap.ui.widgets')
 
 local v2 = util.vector2
 
@@ -23,16 +24,30 @@ local POINTERS = {
 }
 
 -- Build strips using relativeSize: `relativeSize * parent + size` spans full width without knowing width.
-local function grabs()
+--
+-- `handlers` (optional) gives each strip its own drag: onStart(key),
+-- onMove(key, delta), onEnd(key). Without it the strips are cursor hints only
+-- and whatever owns the root is left to read the gesture.
+local function grabs(handlers)
     local g = config.FRAME_GRAB
     local out = {}
 
     local function strip(key, props)
         props.pointer = POINTERS[key]
-        out[#out + 1] = {
+        props.propagateEvents = false
+        local node = {
+            name = 'grab_' .. key,
             type = ui.TYPE.Image,
             props = draw.invisible(props),
         }
+        if handlers then
+            widgets.draggable(node, {
+                onStart = function() handlers.onStart(key) end,
+                onMove = function(delta) handlers.onMove(key, delta) end,
+                onEnd = function() handlers.onEnd(key) end,
+            })
+        end
+        out[#out + 1] = node
     end
 
     -- Edges first, then corners on top.
@@ -69,23 +84,8 @@ local function classify(offset, size)
     })
 end
 
--- Apply drag to window rect, idempotent from anchor (arrival twice is harmless).
-local function resolve(key, startPos, startSize, delta, screen)
-    local rect = resize.apply(key,
-        { x = startPos.x, y = startPos.y, w = startSize.x, h = startSize.y },
-        delta,
-        {
-            minW = config.WINDOW_MIN_WIDTH,
-            minH = config.WINDOW_MIN_HEIGHT,
-            screenW = screen.x,
-            screenH = screen.y,
-        })
-    return v2(rect.x, rect.y), v2(rect.w, rect.h)
-end
-
 return {
     grabs = grabs,
     classify = classify,
-    resolve = resolve,
     screenBounds = screenBounds,
 }

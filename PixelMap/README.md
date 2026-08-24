@@ -28,11 +28,12 @@ Bind a key under **Options → Scripts → Pixel Map**.
 | `+` / `−` | Zoom |
 | Centre on me | Jump back to your own position |
 | Tick a layer's box | Show or hide that layer |
-| Wheel over the layer row | Scroll the layers, when there are more than fit |
-| Drag the top of the window | Move the window |
+| Drag the layer row's scrollbar | Reach the layers that do not fit |
+| Drag the title bar | Move the window |
 | Drag an edge or corner | Resize the window |
 
-The window opens at about three quarters of your screen.
+The window opens at about three quarters of your screen the first time, and
+after that wherever and however big you last left it.
 
 ## Screenshots
 ![Pixel map example 1](Docs/PixelMap1.jpg)

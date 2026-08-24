@@ -105,6 +105,9 @@ return {
     TOOLTIP_OFFSET_X = 18,
     TOOLTIP_OFFSET_Y = 18,
     TOOLTIP_MARGIN = 8,
+    -- How long a rebuilding click refuses to show a tooltip again, swallowing
+    -- the trailing mouseMove that would otherwise strand one over the new page.
+    TOOLTIP_DISMISS_SECONDS = 0.1,
     COLOR_PLAYER = util.color.rgb(0.93, 0.82, 0.38),
     COLOR_MARKER_OUTLINE = util.color.rgb(0.05, 0.05, 0.05),
 

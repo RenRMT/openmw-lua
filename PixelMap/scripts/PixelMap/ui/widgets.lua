@@ -74,6 +74,101 @@ function M.setRefresh(fn)
 end
 
 --------------------------------------------------------------------------
+-- Dragging
+--------------------------------------------------------------------------
+
+--- Give a widget its own drag gesture.
+--
+-- The anchor is the cursor position recorded at press, so `onMove` receives the
+-- total delta since the drag began rather than the step since the last event.
+-- That makes the handler idempotent: the same movement arriving twice lands in
+-- the same place, which matters because an ancestor can deliver it again.
+--
+-- handlers: { onStart(layout), onMove(delta, layout), onEnd(delta, layout) }
+function M.draggable(node, handlers)
+    node.userData = node.userData or {}
+    node.userData.dragging = false
+    node.userData.from = nil
+    node.events = node.events or {}
+
+    node.events.mousePress = async:callback(function(event, layout)
+        layout.userData.dragging = true
+        layout.userData.from = event.position
+        if handlers.onStart then
+            handlers.onStart(layout)
+        end
+    end)
+
+    node.events.mouseMove = async:callback(function(event, layout)
+        if not (layout.userData.dragging and layout.userData.from) then
+            return
+        end
+        handlers.onMove(event.position - layout.userData.from, layout)
+    end)
+
+    node.events.mouseRelease = async:callback(function(event, layout)
+        if not layout.userData.dragging then
+            return
+        end
+        layout.userData.dragging = false
+        if handlers.onEnd then
+            handlers.onEnd(event.position - (layout.userData.from or event.position), layout)
+        end
+        layout.userData.from = nil
+    end)
+
+    return node
+end
+
+--------------------------------------------------------------------------
+-- Title bar
+--------------------------------------------------------------------------
+
+--- A caption in the engine's own textured head block, draggable to move the
+-- window. The blocks grow to fill whatever the title does not, so the text sits
+-- on the dark centre where it stays readable.
+-- opts: { height, textSize, name, onStart(), onMove(delta), onDone() }
+function M.titleBar(caption, opts)
+    opts = opts or {}
+    local height = opts.height or 20
+
+    local function block()
+        return {
+            type = ui.TYPE.Image,
+            external = { grow = 1 },
+            props = {
+                resource = ui.texture { path = 'textures/menu_head_block_middle.dds' },
+                tileH = true,
+                tileV = true,
+                size = v2(0, height),
+            },
+        }
+    end
+
+    local node = {
+        name = opts.name,
+        type = ui.TYPE.Flex,
+        props = { horizontal = true, relativeSize = v2(1, 0), size = v2(0, height),
+                  autoSize = false, arrange = ui.ALIGNMENT.Center },
+        content = ui.content {
+            block(),
+            { props = { size = v2(12, 0) } },
+            {
+                template = I.MWUI.templates.textHeader,
+                props = { text = caption, textSize = opts.textSize or 16 },
+            },
+            { props = { size = v2(12, 0) } },
+            block(),
+        },
+    }
+
+    if opts.onMove then
+        M.draggable(node, { onStart = opts.onStart, onMove = opts.onMove, onEnd = opts.onDone })
+    end
+    return node
+end
+
+--------------------------------------------------------------------------
 -- Borders
 --------------------------------------------------------------------------
 
@@ -332,12 +427,12 @@ local SCROLL = {
 M.SCROLL_GAP = 3
 
 --- A scrollbar: two boxed arrows with a bordered groove between them, mirroring
--- MW_VScroll. Visual only -- it carries no drag handler, because a child widget
--- receives neither mousePress nor mouseMove in 0.51. The window classifies the
--- drag from the cursor position on its own root handler and calls thumbAt().
+-- MW_VScroll. The thumb owns its own drag; `onDrag` receives the distance it has
+-- been pulled along the bar, which the caller scales into content pixels with
+-- scroll.dragScale.
 --
 -- opts: { thickness, length, arrow, thumb = scroll.thumb result, horizontal,
---         name, onStepBack, onStepOn }
+--         name, onStepBack, onStepOn, onDragStart(), onDrag(distance), onDragEnd() }
 function M.scrollbar(opts)
     local horizontal = opts.horizontal
     local thickness, length = opts.thickness, opts.length
@@ -388,8 +483,20 @@ function M.scrollbar(opts)
             position = across(arrow + opts.thumb.offset, 2),
             size = across(opts.thumb.length, thickness - 5),
             pointer = horizontal and 'hresize' or 'vresize',
+            -- A drag on the thumb is not a drag on whatever the bar sits over.
+            propagateEvents = false,
         },
     }
+
+    if opts.onDrag then
+        M.draggable(thumb, {
+            onStart = opts.onDragStart,
+            onMove = function(delta)
+                opts.onDrag(horizontal and delta.x or delta.y)
+            end,
+            onEnd = opts.onDragEnd,
+        })
+    end
 
     return {
         name = opts.name,
