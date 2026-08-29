@@ -186,37 +186,6 @@ local function displayNameOf(factionId)
     return faction and faction.displayName or nil
 end
 
---- The cell nearest the middle of a settlement's footprint.
---
--- The mean of the footprint is not itself a cell -- a settlement wrapped
--- around a bay has its centre of mass in the water -- so this takes the
--- member cell closest to that mean. Whatever draws one mark per
--- settlement needs a cell to put it in, and picking it here rather than
--- in the map keeps every consumer agreeing on which one it is.
---
--- Deliberately not settlement.centroid, which looks like the same number
--- and is not: that is the projection origin the simulation measures reach
--- from, and a pack is free to author it away from the geometric middle --
--- a city radiating from its palace rather than from its outskirts. Using
--- it here would move the map's mark whenever a pack tuned its politics.
-local function middleCell(grid)
-    local sumX, sumY = 0, 0
-    for _, entry in ipairs(grid) do
-        sumX, sumY = sumX + entry.gridX, sumY + entry.gridY
-    end
-    local meanX, meanY = sumX / #grid, sumY / #grid
-
-    local best, bestDistance = grid[1], nil
-    for _, entry in ipairs(grid) do
-        local dx, dy = entry.gridX - meanX, entry.gridY - meanY
-        local distance = dx * dx + dy * dy
-        if not bestDistance or distance < bestDistance then
-            best, bestDistance = entry, distance
-        end
-    end
-    return best
-end
-
 --- Where every settlement stands, for whatever is drawing a map.
 --
 -- Walks settlements rather than the whole territory table so the frontier
@@ -229,12 +198,24 @@ local function onRequestMap()
 
     for _, settlementId in ipairs(registry.settlementIds) do
         local settlement = registry.settlements[settlementId]
-        local mine = {}
+
+        -- Which cell carries the settlement's mark: the member nearest the
+        -- middle of its footprint. The middle itself is not a cell -- a
+        -- settlement wrapped around a bay has its centre of mass in the
+        -- water -- so a member has to be chosen, and choosing it here keeps
+        -- every consumer agreeing on which one it is.
+        --
+        -- The centroid the registry derived is that middle, and each of a
+        -- settlement's territories already carries its own cell centre, so
+        -- this picks a winner rather than deriving the mean a second time.
+        local centre = settlement.centroid
+        local middle, nearest = nil, nil
+
         for _, territoryId in ipairs(settlement.territoryIds) do
+            local territory = registry.territories[territoryId]
             -- A settlement territory is one cell, so its grid array is the
             -- one pair.
-            local grid = registry.territories[territoryId].grid
-            local gridX, gridY = grid[1], grid[2]
+            local gridX, gridY = territory.grid[1], territory.grid[2]
             if gridX then
                 local owner = state.getOwner(territoryId)
                 local row = {
@@ -246,22 +227,27 @@ local function onRequestMap()
                     ownerName = displayNameOf(owner),
                 }
                 rows[#rows + 1] = row
-                mine[#mine + 1] = row
+
+                local dx = territory.centroid.x - centre.x
+                local dy = territory.centroid.y - centre.y
+                local distance = dx * dx + dy * dy
+                if not nearest or distance < nearest then
+                    middle, nearest = row, distance
+                end
             end
         end
 
         -- A settlement whose every cell is interior has no footprint to
         -- put a mark in, and is left out rather than placed at nowhere.
-        if #mine > 0 then
-            local centre = middleCell(mine)
+        if middle then
             places[#places + 1] = {
                 id = settlementId,
                 name = settlement.displayName,
                 tier = settlement.tier,
-                gridX = centre.gridX,
-                gridY = centre.gridY,
-                owner = centre.owner,
-                ownerName = centre.ownerName,
+                gridX = middle.gridX,
+                gridY = middle.gridY,
+                owner = middle.owner,
+                ownerName = middle.ownerName,
             }
         end
     end
