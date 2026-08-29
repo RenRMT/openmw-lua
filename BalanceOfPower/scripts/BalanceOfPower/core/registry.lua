@@ -570,6 +570,26 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
     return settlement, territories
 end
 
+-- Grid coordinates for every exterior cell a territory holds, flat:
+-- x1, y1, x2, y2, ... Worked out here because a territory's cells never
+-- change after registration, and the alternative is re-parsing every cell
+-- name out of its "#x,y" string each time something asks for the map --
+-- which for a frontier block is thousands of strings per request.
+--
+-- Flat rather than a table per cell for the same reason the territory event
+-- is: this is the shape it ends up being sent in.
+local function indexGrid(territory)
+    local grid = {}
+    for _, cellName in ipairs(territory.cells) do
+        local gridX, gridY = cells.parse(cellName)
+        if gridX then
+            grid[#grid + 1] = gridX
+            grid[#grid + 1] = gridY
+        end
+    end
+    territory.grid = grid
+end
+
 local function indexCells(territory)
     for _, cellName in ipairs(territory.cells) do
         local owner = M.cellIndex[cellName]
@@ -696,6 +716,7 @@ function M.registerLandmass(def)
             M.frontierIds[#M.frontierIds + 1] = territory.id
         end
         landmass.territoryIds[#landmass.territoryIds + 1] = territory.id
+        indexGrid(territory)
         indexCells(territory)
     end
 
@@ -740,6 +761,7 @@ function M.registerFrontier(landmassId, definitions)
         M.territories[territory.id] = territory
         M.frontierIds[#M.frontierIds + 1] = territory.id
         landmass.territoryIds[#landmass.territoryIds + 1] = territory.id
+        indexGrid(territory)
         indexCells(territory)
     end
 

@@ -15,7 +15,6 @@ local interfaces = require('openmw.interfaces')
 local types = require('openmw.types')
 
 local api = require('scripts.BalanceOfPower.core.api')
-local cells = require('scripts.BalanceOfPower.core.cells')
 local driver = require('scripts.BalanceOfPower.core.driver')
 local events = require('scripts.BalanceOfPower.core.events')
 local gold = require('scripts.BalanceOfPower.core.gold')
@@ -194,6 +193,12 @@ end
 -- member cell closest to that mean. Whatever draws one mark per
 -- settlement needs a cell to put it in, and picking it here rather than
 -- in the map keeps every consumer agreeing on which one it is.
+--
+-- Deliberately not settlement.centroid, which looks like the same number
+-- and is not: that is the projection origin the simulation measures reach
+-- from, and a pack is free to author it away from the geometric middle --
+-- a city radiating from its palace rather than from its outskirts. Using
+-- it here would move the map's mark whenever a pack tuned its politics.
 local function middleCell(grid)
     local sumX, sumY = 0, 0
     for _, entry in ipairs(grid) do
@@ -226,8 +231,10 @@ local function onRequestMap()
         local settlement = registry.settlements[settlementId]
         local mine = {}
         for _, territoryId in ipairs(settlement.territoryIds) do
-            local territory = registry.territories[territoryId]
-            local gridX, gridY = cells.parse(territory.cells[1])
+            -- A settlement territory is one cell, so its grid array is the
+            -- one pair.
+            local grid = registry.territories[territoryId].grid
+            local gridX, gridY = grid[1], grid[2]
             if gridX then
                 local owner = state.getOwner(territoryId)
                 local row = {
@@ -291,13 +298,12 @@ local function onRequestTerritory()
             byFaction[owner] = bucket
             order[#order + 1] = bucket
         end
-        for _, cellName in ipairs(registry.territories[territoryId].cells) do
-            local gridX, gridY = cells.parse(cellName)
-            if gridX then
-                local flat = bucket.cells
-                flat[#flat + 1] = gridX
-                flat[#flat + 1] = gridY
-            end
+        -- Already flat, and already parsed: the registry works these out
+        -- when the territory is registered. This is a copy, not a walk
+        -- over cell names.
+        local flat = bucket.cells
+        for _, value in ipairs(registry.territories[territoryId].grid) do
+            flat[#flat + 1] = value
         end
     end
 
