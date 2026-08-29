@@ -41,6 +41,7 @@ local function drawTerrain(view)
     end
 
     profile.count('fill', #out)
+    profile.count('queries', terrain.queryCount())
     return out
 end
 

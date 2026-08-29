@@ -10,25 +10,34 @@ local function drawGrid(view)
         return {}
     end
 
-    local minX, minY, maxX, maxY = view.bounds()
+    local fromX, fromY, toX, toY = view.cellBounds()
+    if not fromX then
+        return {}
+    end
+
     local out = {}
 
     -- Per-axis budget: prevents wide canvas from drawing only one axis.
     local drawn = 0
-    local cellX = math.floor(minX / config.CELL_SIZE)
-    while cellX * config.CELL_SIZE <= maxX and drawn < config.GRID_MAX_LINES do
-        local p = view.worldToCanvas(cellX * config.CELL_SIZE, 0)
-        out[#out + 1] = draw.quad(p.x, 0, 1, view.canvasSize.y, config.COLOR_GRID, 0.5)
-        cellX = cellX + 1
+    for cellX = fromX, toX do
+        if drawn >= config.GRID_MAX_LINES then
+            break
+        end
+        -- The line is the cell's own western edge, which cellRect places.
+        local x = view.cellRect(cellX, 0)
+        out[#out + 1] = draw.quad(x, 0, 1, view.canvasSize.y, config.COLOR_GRID, 0.5)
         drawn = drawn + 1
     end
 
     drawn = 0
-    local cellY = math.floor(minY / config.CELL_SIZE)
-    while cellY * config.CELL_SIZE <= maxY and drawn < config.GRID_MAX_LINES do
-        local p = view.worldToCanvas(0, cellY * config.CELL_SIZE)
-        out[#out + 1] = draw.quad(0, p.y, view.canvasSize.x, 1, config.COLOR_GRID, 0.5)
-        cellY = cellY + 1
+    for cellY = fromY, toY do
+        if drawn >= config.GRID_MAX_LINES then
+            break
+        end
+        -- cellRect's y is the cell's northern edge, so the line drawn for
+        -- cell N is the boundary between N and N+1.
+        local _, y = view.cellRect(0, cellY)
+        out[#out + 1] = draw.quad(0, y, view.canvasSize.x, 1, config.COLOR_GRID, 0.5)
         drawn = drawn + 1
     end
 

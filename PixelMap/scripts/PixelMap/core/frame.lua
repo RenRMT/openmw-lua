@@ -50,6 +50,11 @@ local function grabs(handlers)
         out[#out + 1] = node
     end
 
+    -- The empty band the body reserves at the top. First, so the edge and
+    -- corner strips win wherever they overlap it.
+    strip('move', { position = v2(g, g), relativeSize = v2(1, 0),
+                    size = v2(-2 * g, config.FRAME_MOVE_HEIGHT) })
+
     -- Edges first, then corners on top.
     strip('top', { position = v2(g, 0), relativeSize = v2(1, 0), size = v2(-2 * g, g) })
     strip('bottom', { position = v2(g, -g), relativePosition = v2(0, 1),
@@ -74,12 +79,11 @@ local function screenBounds()
     return ui.screenSize()
 end
 
--- What a drag means: edges/corners, title bar (move), rest (pan).
--- Includes button rows to allow dragging; minor wrong vs unmovable window.
+-- What a drag means: edges/corners, the top move band, rest (pan).
 local function classify(offset, size)
     return resize.classify(offset, size, {
         grab = config.FRAME_GRAB,
-        title = config.FRAME_TITLE_HEIGHT,
+        move = config.FRAME_MOVE_HEIGHT,
         fallback = 'map',
     })
 end

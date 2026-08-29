@@ -1,10 +1,9 @@
 -- Native-looking widgets assembled from the engine's own art. MWUI ships text,
--- boxes and lines but no button, no checkbox and no scrollbar, so these rebuild
--- the MyGUI skins out of the textures those skins are themselves made of.
+-- boxes and lines but no button and no checkbox, so these rebuild the MyGUI
+-- skins out of the textures those skins are themselves made of.
 --
 -- Textures are Morrowind.bsa's, present in any install: menu_button_frame_*
--- (MW_Button), menu_thin_border_* (the same pieces MWUI's own box uses) and
--- omw_menu_scroll_* (shipped by OpenMW).
+-- (MW_Button) and menu_thin_border_* (the same pieces MWUI's own box uses).
 
 local async = require('openmw.async')
 local core = require('openmw.core')
@@ -21,7 +20,7 @@ local whiteTexture = ui.texture { path = 'white' }
 
 --- Look up a named child. A ui.content map raises on an unknown name rather
 -- than answering nil, so a miss has to be caught rather than tested for.
-function M.named(content, name)
+local function named(content, name)
     if not content then
         return nil
     end
@@ -57,8 +56,6 @@ local function colors()
     end
     return cached
 end
-
-M.colors = colors
 
 --------------------------------------------------------------------------
 -- Refresh hook
@@ -117,54 +114,6 @@ function M.draggable(node, handlers)
         layout.userData.from = nil
     end)
 
-    return node
-end
-
---------------------------------------------------------------------------
--- Title bar
---------------------------------------------------------------------------
-
---- A caption in the engine's own textured head block, draggable to move the
--- window. The blocks grow to fill whatever the title does not, so the text sits
--- on the dark centre where it stays readable.
--- opts: { height, textSize, name, onStart(), onMove(delta), onDone() }
-function M.titleBar(caption, opts)
-    opts = opts or {}
-    local height = opts.height or 20
-
-    local function block()
-        return {
-            type = ui.TYPE.Image,
-            external = { grow = 1 },
-            props = {
-                resource = ui.texture { path = 'textures/menu_head_block_middle.dds' },
-                tileH = true,
-                tileV = true,
-                size = v2(0, height),
-            },
-        }
-    end
-
-    local node = {
-        name = opts.name,
-        type = ui.TYPE.Flex,
-        props = { horizontal = true, relativeSize = v2(1, 0), size = v2(0, height),
-                  autoSize = false, arrange = ui.ALIGNMENT.Center },
-        content = ui.content {
-            block(),
-            { props = { size = v2(12, 0) } },
-            {
-                template = I.MWUI.templates.textHeader,
-                props = { text = caption, textSize = opts.textSize or 16 },
-            },
-            { props = { size = v2(12, 0) } },
-            block(),
-        },
-    }
-
-    if opts.onMove then
-        M.draggable(node, { onStart = opts.onStart, onMove = opts.onMove, onEnd = opts.onDone })
-    end
     return node
 end
 
@@ -228,11 +177,9 @@ local function borderPieces(thickness)
     return pieces
 end
 
-M.borderPieces = borderPieces
-
 --- Wrap children in a thin border, ready for any fixed-size widget's content.
 -- The border goes on last so it draws over the children rather than under them.
-function M.framed(children, thickness)
+local function framed(children, thickness)
     local out = {}
     for _, child in ipairs(children or {}) do
         out[#out + 1] = child
@@ -278,8 +225,6 @@ local buttonFrame = {
         { external = { slot = true }, props = { position = v2(B, B), relativeSize = v2(1, 1) } },
     },
 }
-
-M.buttonFrame = buttonFrame
 
 --- A button in the engine's own frame, sized to its label.
 --
@@ -373,7 +318,7 @@ function M.checkbox(opts)
             name = 'box',
             type = ui.TYPE.Widget,
             props = { size = v2(size, size) },
-            content = M.framed(mark and { mark } or {}),
+            content = framed(mark and { mark } or {}),
         },
     }
 
@@ -398,133 +343,29 @@ function M.checkbox(opts)
 end
 
 --- Tick or untick an existing checkbox in place.
+--- Retick a checkbox in place.
+--
+-- Rebuilding the box means rebuilding its border -- eight images -- and the
+-- window calls this for every toggle on every redraw, which a pan fires
+-- several times a second. The state it is being set to is almost always the
+-- state it is already in, so the early return is what keeps a drag from
+-- churning through widgets nobody asked to change.
 function M.setChecked(node, checked)
     local spec = node and node.userData and node.userData.checkbox
     if not spec then
         return
     end
-    local box = M.named(node.content, 'box')
+    checked = checked and true or false
+    if spec.checked == checked then
+        return
+    end
+    spec.checked = checked
+    local box = named(node.content, 'box')
     if not box then
         return
     end
     local mark = checkMark({ checked = checked, image = spec.image, mark = spec.mark }, spec.size)
-    box.content = M.framed(mark and { mark } or {})
-end
-
---------------------------------------------------------------------------
--- Scrollbar
---------------------------------------------------------------------------
-
-local SCROLL = {
-    up = 'textures/omw_menu_scroll_up.dds',
-    down = 'textures/omw_menu_scroll_down.dds',
-    left = 'textures/omw_menu_scroll_left.dds',
-    right = 'textures/omw_menu_scroll_right.dds',
-    thumbV = 'textures/omw_menu_scroll_center_v.dds',
-    thumbH = 'textures/omw_menu_scroll_center_h.dds',
-}
-
-M.SCROLL_GAP = 3
-
---- A scrollbar: two boxed arrows with a bordered groove between them, mirroring
--- MW_VScroll. The thumb owns its own drag; `onDrag` receives the distance it has
--- been pulled along the bar, which the caller scales into content pixels with
--- scroll.dragScale.
---
--- opts: { thickness, length, arrow, thumb = scroll.thumb result, horizontal,
---         name, onStepBack, onStepOn, onDragStart(), onDrag(distance), onDragEnd() }
-function M.scrollbar(opts)
-    local horizontal = opts.horizontal
-    local thickness, length = opts.thickness, opts.length
-    local arrow = opts.arrow
-    local boxLength = arrow - M.SCROLL_GAP
-    local glyph = thickness - 6
-    local inset = math.floor((thickness - glyph) / 2)
-    local along = math.floor((boxLength - glyph) / 2)
-
-    local function across(a, b)
-        return horizontal and v2(a, b) or v2(b, a)
-    end
-
-    local function arrowBox(at, texture, onClick)
-        local content = borderPieces()
-        content[#content + 1] = {
-            type = ui.TYPE.Image,
-            props = {
-                resource = ui.texture { path = texture },
-                size = v2(glyph, glyph),
-                position = across(along, inset),
-            },
-            events = onClick and { mouseClick = async:callback(onClick) } or nil,
-        }
-        return {
-            type = ui.TYPE.Widget,
-            props = { position = across(at, 0), size = across(boxLength, thickness) },
-            content = ui.content(content),
-        }
-    end
-
-    -- The groove spans the thumb's travel; the thumb is a sibling drawn over it.
-    local groove = {
-        type = ui.TYPE.Widget,
-        props = { position = across(arrow, 0), size = across(length - 2 * arrow, thickness) },
-        content = ui.content(borderPieces()),
-    }
-
-    local thumb = {
-        name = 'thumb',
-        type = ui.TYPE.Image,
-        props = {
-            resource = ui.texture { path = horizontal and SCROLL.thumbH or SCROLL.thumbV },
-            tileH = true,
-            tileV = true,
-            -- Flush against the groove's near border, one pixel clear of the far
-            -- one, which is how the engine's own scrollbar sits.
-            position = across(arrow + opts.thumb.offset, 2),
-            size = across(opts.thumb.length, thickness - 5),
-            pointer = horizontal and 'hresize' or 'vresize',
-            -- A drag on the thumb is not a drag on whatever the bar sits over.
-            propagateEvents = false,
-        },
-    }
-
-    if opts.onDrag then
-        M.draggable(thumb, {
-            onStart = opts.onDragStart,
-            onMove = function(delta)
-                opts.onDrag(horizontal and delta.x or delta.y)
-            end,
-            onEnd = opts.onDragEnd,
-        })
-    end
-
-    return {
-        name = opts.name,
-        type = ui.TYPE.Widget,
-        props = { size = across(length, thickness), visible = opts.thumb.visible },
-        content = ui.content {
-            groove,
-            arrowBox(0, horizontal and SCROLL.left or SCROLL.up, opts.onStepBack),
-            arrowBox(length - boxLength, horizontal and SCROLL.right or SCROLL.down, opts.onStepOn),
-            thumb,
-        },
-    }
-end
-
---- Move an already-built scrollbar's thumb, so scrolling does not rebuild it.
-function M.thumbAt(bar, thumb, arrow, thickness, horizontal)
-    if not bar then
-        return
-    end
-    bar.props.visible = thumb.visible
-    local node = M.named(bar.content, 'thumb')
-    if not node then
-        return
-    end
-    local along = arrow + thumb.offset
-    node.props.position = horizontal and v2(along, 2) or v2(2, along)
-    node.props.size = horizontal and v2(thumb.length, thickness - 5)
-        or v2(thickness - 5, thumb.length)
+    box.content = framed(mark and { mark } or {})
 end
 
 return M

@@ -129,6 +129,5 @@ return {
     hover = hover,
     unhover = unhover,
     cursor = cursor,
-    hide = hide,
     dismiss = dismiss,
 }

@@ -17,24 +17,19 @@ return {
     CANVAS_MIN_WIDTH = 480,
     CANVAS_MIN_HEIGHT = 360,
     WINDOW_MARGIN_X = 40,
-    -- Title, toggle row, button row and the gaps between. The toggle scrollbar's
-    -- height is reserved whether or not it is showing, so the canvas does not
-    -- change size as layers come and go.
-    WINDOW_MARGIN_Y = 128,
+    -- Move band, one toggle row, button row and the gaps between. Each extra
+    -- row the toggles wrap onto costs the canvas another TOGGLE_HEIGHT.
+    WINDOW_MARGIN_Y = 98,
     WINDOW_MIN_WIDTH = 420,
     WINDOW_MIN_HEIGHT = 320,
 
     -- Invisible grab strips; window is hand-rolled (ui.TYPE.Window cannot be resized).
     FRAME_GRAB = 8,
-    FRAME_TITLE_HEIGHT = 24,
+    -- Empty band at the top of the window that drags it. Nothing is drawn there:
+    -- a caption tells you nothing a map does not already show.
+    FRAME_MOVE_HEIGHT = 12,
 
-    -- Scrollbar geometry. ARROW is thickness + the gap either side of the
-    -- groove, which makes each arrow box square.
-    SCROLL_THICKNESS = 16,
-    SCROLL_ARROW = 19,
-    SCROLL_STEP = 60,
-
-    -- Layer toggles: one row, scrolled sideways when the layers outrun it.
+    -- Layer toggles: wrapped onto as many rows as the width needs.
     TOGGLE_HEIGHT = 24,
     TOGGLE_BOX = 14,
     TOGGLE_GAP = 10,
@@ -133,6 +128,16 @@ return {
     -- Grid dropped when cell narrower than this.
     GRID_MIN_SPACING = 24,
     GRID_MAX_LINES = 200,
+
+    -- Ceilings for the per-cell helpers a third-party layer draws through.
+    -- A layer zoomed out over a large landmass can span two hundred thousand
+    -- cells, so the budget is what keeps a wash from becoming that many
+    -- widgets. Runs of one colour merge first, so the cap is rarely reached.
+    CELLS_MAX_QUADS = 4000,
+    OUTLINE_WIDTH = 2,
+    -- Layers over this many layouts are reported once per redraw. Not a limit:
+    -- a layer is allowed to be expensive, but it should be visible that it is.
+    LAYER_WIDGET_WARN = 6000,
     COLOR_GRID = util.color.rgb(0.35, 0.35, 0.38),
 
     -- Marker default: large for joystick cursor targeting.

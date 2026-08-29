@@ -39,7 +39,6 @@ openControllerDescription: |-
   A second slot for the same action, so a controller can reach the map
   without giving up the key.
 
-windowTitle: "Map"
 noLayers: "No layers registered."
 interior: "Interior -- no exterior map to show."
 status: "Cell {cellX}, {cellY} -- {cellPixels}px per cell"

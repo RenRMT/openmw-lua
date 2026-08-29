@@ -28,8 +28,7 @@ Bind a key under **Options → Scripts → Pixel Map**.
 | `+` / `−` | Zoom |
 | Centre on me | Jump back to your own position |
 | Tick a layer's box | Show or hide that layer |
-| Drag the layer row's scrollbar | Reach the layers that do not fit |
-| Drag the title bar | Move the window |
+| Drag the strip above the layer row | Move the window |
 | Drag an edge or corner | Resize the window |
 
 The window opens at about three quarters of your screen the first time, and
@@ -53,8 +52,8 @@ theme is selected.
 
 ## Layers
 
-Two ship with the mod, each with a checkbox above the map. The row scrolls
-sideways when enough mods have added layers to outrun the window:
+Two ship with the mod, each with a checkbox above the map. The row wraps
+onto further lines when enough mods have added layers to outrun the window:
 
 - **Terrain** — the map itself.
 - **Cell grid** — cell boundaries, once you are zoomed in far enough for
@@ -62,7 +61,11 @@ sideways when enough mods have added layers to outrun the window:
 
 Your own position is always marked and has no toggle.
 
-Other mods can add layers of their own; see [API.md](API.md).
+Other mods can add layers of their own through the `PixelMap` interface,
+declared in `scripts/PixelMap/api.lua`. Its per-cell helpers — a colour
+per cell, and the outline round a region — are what a territory or
+ownership overlay is built from, and they do the culling and merging that
+keeps a map that size quick.
 
 ## Known limits
 
