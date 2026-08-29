@@ -1,27 +1,27 @@
--- The registry: authored, immutable-after-load data from every content
--- pack, normalized into one shape (design doc 3.8).
+-- The registry: the world the framework simulates, normalized into one
+-- shape and immutable after load (design doc 3.8).
 --
--- The rule this file exists to protect: data packs depend on the
--- framework, never the reverse. Nothing here knows what a landmass is
--- called or which factions exist -- it only knows the *shape* of a
--- landmass definition. The day this file needs an `if id == "cyrodiil"`
--- branch, the abstraction has failed.
+-- Nothing external fills this. There are no content packs: core/survey.lua
+-- reads the settlements out of whatever the player actually loaded, and
+-- core/frontier.lua derives the wilderness grid around them. Both hand
+-- their results here, and both are this framework's own code.
 --
--- Two properties are deliberate:
+-- That is why there is no input validation. Checking that a definition's
+-- `cells` is a list of strings would be checking survey.lua against
+-- itself, and a type error in our own code should surface as the Lua error
+-- it is rather than as a politely worded message about a field.
 --
--- * Validation is loud and fatal. These functions are called from a data
---   pack's own script, so an error() here kills that pack's script and
---   leaves the framework running -- exactly the blast radius you want.
---   The author gets a message naming their field, and a third-party pack
---   with a typo can't half-register and produce a world that's subtly
---   wrong ten hours into a save.
+-- What *is* checked is the other thing: collisions and dangling
+-- references, which are real and come from the load order rather than from
+-- us. Two landmass mods can name the same exterior cell, a faction record
+-- can go missing, a settlement can point at a frontier block that was
+-- never generated. None of those is a reason to refuse to load -- they are
+-- warned about and worked around, because the alternative is a framework
+-- that dies on somebody's modlist.
 --
--- * Registration is two-phase. Everything is validated and normalized
---   into a staging table first, and committed only once the whole
---   definition has passed. A pack with a bad last frontier cell
---   registers nothing at all, rather than leaving the simulation running
---   on half a landmass that no retry can complete (the retry would trip
---   over the factions the failed attempt had already inserted).
+-- Nothing here knows what a landmass is called or which factions exist. It
+-- only knows the shape of the data. The day this file needs an
+-- `if id == "cyrodiil"` branch, the abstraction has failed.
 
 local core = require('openmw.core')
 
@@ -48,8 +48,8 @@ M.frontierIds = {}       -- registration-ordered list of frontier territory ids
 M.cellIndex = {}         -- cell name (interior name or "#x,y") -> territoryId
 
 -- One exterior cell's middle, in world units. CELL_SIZE is the engine's
--- grid, not a tunable, so computing this here rather than making every
--- pack pass it is safe -- see the constant's comment.
+-- grid, not a tunable, so computing it here is safe -- see the constant's
+-- comment.
 local function cellCentre(gridX, gridY)
     local size = config.CELL_SIZE
     return { x = gridX * size + size / 2, y = gridY * size + size / 2, z = 0 }
@@ -62,89 +62,14 @@ end
 M.generation = 0
 
 --------------------------------------------------------------------------
--- Validation helpers
+-- Helpers
 --------------------------------------------------------------------------
 
--- Level 0: report the message as-is, without prefixing this file's line
--- number. The useful location is the data pack's, not ours.
-local function fail(context, message)
-    error(string.format('BalanceOfPower: %s: %s', context, message), 0)
-end
-
-local function checkTable(value, context, what)
-    if type(value) ~= 'table' then
-        fail(context, what .. ' must be a table, got ' .. type(value))
-    end
-    return value
-end
-
-local function checkString(value, context, what)
-    if type(value) ~= 'string' or value == '' then
-        fail(context, what .. ' must be a non-empty string')
-    end
-    return value
-end
-
-local function checkNumber(value, context, what, default)
-    if value == nil then
-        return default
-    end
-    if type(value) ~= 'number' then
-        fail(context, what .. ' must be a number, got ' .. type(value))
-    end
-    return value
-end
-
--- The kinds of faction the framework knows how to treat differently.
--- A typo here would otherwise register a faction as an ordinary one and
--- silently drop every behaviour the pack was asking for.
-local FACTION_TYPES = {
-    [config.FACTION_TYPE_INVADER] = true,
-}
-
-local function checkFactionType(value, context)
-    if type(value) ~= 'string' or not FACTION_TYPES[value] then
-        fail(context, string.format('type must be one of: %s -- got %s',
-            config.FACTION_TYPE_INVADER, tostring(value)))
-    end
-    return value
-end
-
-local function checkPositive(value, context, what, default)
-    local number = checkNumber(value, context, what, default)
-    if number == nil then
-        fail(context, what .. ' is required')
-    end
-    if number <= 0 then
-        fail(context, what .. ' must be greater than zero')
-    end
-    return number
-end
-
-local function checkCoords(value, context, what)
-    checkTable(value, context, what)
-    if type(value.x) ~= 'number' or type(value.y) ~= 'number' then
-        fail(context, what .. ' needs numeric x and y fields')
-    end
-    -- z is accepted and carried, but the simulation is horizontal:
-    -- distance math ignores it, so a tower and its courtyard aren't
-    -- treated as far apart.
-    return { x = value.x, y = value.y, z = checkNumber(value.z, context, what .. '.z', 0) }
-end
-
--- Copies a list of ids, rejecting anything that isn't a string. Returns
--- a new table so a pack can't mutate registered data by holding on to
--- the table it passed in.
-local function copyStrings(value, context, what)
-    if value == nil then
-        return {}
-    end
-    checkTable(value, context, what)
+-- A fresh copy of a list, so nothing registered here shares a table with
+-- whatever built it and can be mutated from under the simulation later.
+local function copyList(value)
     local out = {}
-    for i, entry in ipairs(value) do
-        if type(entry) ~= 'string' then
-            fail(context, string.format('%s[%d] must be a string, got %s', what, i, type(entry)))
-        end
+    for i, entry in ipairs(value or {}) do
         out[i] = entry
     end
     return out
@@ -154,12 +79,14 @@ end
 -- Settlements
 --------------------------------------------------------------------------
 
---- The tier ladder as a lookup, with a readable error when a pack misses.
+--- The tier ladder as a lookup. The survey picks tiers off the same ladder,
+-- so a miss means those two have fallen out of step with each other -- worth
+-- stopping for rather than quietly defaulting.
 local function tierDefaultsFor(tier, ctx)
     local defaults = config.SETTLEMENT_TIERS[tier]
     if not defaults then
-        fail(ctx, string.format('unknown tier "%s" -- expected one of: %s',
-            tostring(tier), table.concat(config.SETTLEMENT_TIER_ORDER, ', ')))
+        error(string.format('BalanceOfPower: %s: unknown tier "%s" -- expected one of: %s',
+            ctx, tostring(tier), table.concat(config.SETTLEMENT_TIER_ORDER, ', ')), 0)
     end
     return defaults
 end
@@ -169,9 +96,9 @@ end
 --------------------------------------------------------------------------
 
 -- Read once per session. Keys are lowercased throughout: the ESM stores
--- record ids as authored ("Sixth House") while packs register whatever
--- they like, and a reaction row is a plain table whose key case the
--- engine does not normalize.
+-- record ids as authored ("Sixth House") while ids are registered
+-- lowercase, and a reaction row is a plain table whose key case the engine
+-- does not normalize.
 local recordRows = nil   -- lowered id -> { lowered id -> reaction }
 local recordNames = nil  -- lowered id -> record display name
 
@@ -187,7 +114,7 @@ local function readRecords()
         return core.factions.records
     end)
     if not ok or not records then
-        log.warn('no faction records available -- factions must be declared by a content pack')
+        log.warn('no faction records available -- there is nobody to simulate')
         return
     end
 
@@ -246,24 +173,6 @@ end
 --------------------------------------------------------------------------
 -- Factions
 --------------------------------------------------------------------------
-
--- Fields the game's records own. Authoring one is fatal rather than
--- ignored: a pack whose carefully written value quietly did nothing is
--- the failure these rules exist to prevent.
-local RECORD_OWNED = {
-    reactions = 'read from the game\'s faction records',
-    displayName = 'read from the faction record\'s name',
-    territorial = 'derived -- a faction with seats is territorial',
-    basePower = 'derived from the faction\'s seats -- see core/holdings.lua',
-}
-
-local function rejectRecordOwned(def, ctx)
-    for field, why in pairs(RECORD_OWNED) do
-        if def[field] ~= nil then
-            fail(ctx, string.format('%s is %s, and cannot be authored here', field, why))
-        end
-    end
-end
 
 local function newFaction(id, recordId, landmass)
     return {
@@ -345,8 +254,9 @@ local function ensureFactionsHolding(ids)
     return added
 end
 
--- Scalars a pack may set. The first pack to set one keeps it, because
--- which pack won would otherwise depend on load order.
+-- Scalars FACTION_TUNING may set. The first setter keeps it: tuning is
+-- emitted once, but a faction can be reached again by a second worldspace,
+-- and which one won would otherwise depend on load order.
 local TUNABLE = { 'growthPerDay', 'recordId', 'landmass', 'type', 'volatility' }
 
 local function applyTuning(faction, tuning, ctx)
@@ -354,7 +264,7 @@ local function applyTuning(faction, tuning, ctx)
         local value = tuning[field]
         if value ~= nil then
             if faction[field .. 'Authored'] then
-                log.warn('%s: ignoring %s -- an earlier pack already set it', ctx, field)
+                log.warn('%s: ignoring %s -- it is already set', ctx, field)
             else
                 faction[field] = value
                 faction[field .. 'Authored'] = true
@@ -363,42 +273,24 @@ local function applyTuning(faction, tuning, ctx)
     end
 end
 
---- Validate a faction entry into a staged operation.
+--- Normalize a faction entry into a staged operation.
 --
--- A pack does not define a faction so much as tune one: the records
--- supply the roster of who exists, and an entry here adds the numbers
--- the game has no field for. A faction with no record behind it is still
--- registered, which is how a pack models something the game does not.
-local function prepareFaction(def, context, fallbackLandmass, staged)
-    checkTable(def, context, 'faction')
-    local id = checkString(def.id, context, 'faction.id')
-    local ctx = string.format('%s faction "%s"', context, id)
-
-    if def.extend ~= nil then
-        log.warn('%s: `extend` is obsolete and ignored -- factions come from the game\'s '
-            .. 'records, so no pack owns one', ctx)
-    end
-    if def.patrolRoster ~= nil then
-        log.warn('%s: `patrolRoster` is obsolete and ignored -- the framework no longer '
-            .. 'decides what stands in a cell, so nothing here would read it', ctx)
-    end
-    rejectRecordOwned(def, ctx)
-
-    if staged[id] then
-        fail(ctx, 'this faction appears twice in the same definition')
-    end
-    staged[id] = true
-
+-- Nothing here defines a faction so much as tunes one: the game's records
+-- supply the roster of who exists, and an entry adds the numbers the game
+-- has no field for. That is FACTION_TUNING in config, and nothing else. A
+-- faction with no record behind it is still registered, which is how the
+-- framework models something the game does not.
+local function prepareFaction(def, context, fallbackLandmass)
     return {
-        id = id,
+        id = def.id,
         landmass = def.landmass or fallbackLandmass,
         tuning = {
-            growthPerDay = checkNumber(def.growthPerDay, ctx, 'growthPerDay', nil),
-            volatility = checkNumber(def.volatility, ctx, 'volatility', nil),
-            type = def.type ~= nil and checkFactionType(def.type, ctx) or nil,
-            recordId = def.recordId and checkString(def.recordId, ctx, 'recordId') or nil,
+            growthPerDay = def.growthPerDay,
+            volatility = def.volatility,
+            type = def.type,
+            recordId = def.recordId,
         },
-        ctx = ctx,
+        ctx = string.format('%s faction "%s"', context, def.id),
     }
 end
 
@@ -407,22 +299,18 @@ end
 --------------------------------------------------------------------------
 
 local function prepareFrontier(def, context, landmassId, staged)
-    checkTable(def, context, 'frontier')
-    local id = checkString(def.id, context, 'frontier.id')
-    local ctx = string.format('%s frontier "%s"', context, id)
+    local id = def.id
 
-    local clash = M.territories[id]
+    -- Two landmass mods can occupy the same worldspace coordinates, so a
+    -- generated id can collide with one already registered. Skipped rather
+    -- than fatal: the ground is already claimed by somebody, and refusing to
+    -- load the rest of the world over it helps nobody.
+    local clash = M.territories[id] or staged[id]
     if clash then
-        fail(ctx, string.format('this id is already registered by landmass "%s"', clash.landmass))
-    end
-    if staged[id] then
-        fail(ctx, 'this id appears twice in the same definition')
+        log.warn('frontier "%s" is already registered -- skipping the duplicate', id)
+        return nil
     end
     staged[id] = true
-
-    if def.defaultOwner ~= nil then
-        checkString(def.defaultOwner, ctx, 'defaultOwner')
-    end
 
     return {
         id = id,
@@ -436,12 +324,11 @@ local function prepareFrontier(def, context, landmassId, staged)
         region = type(def.region) == 'string' and def.region or nil,
         -- nil is a legitimate authored value, meaning "unclaimed".
         defaultOwner = def.defaultOwner,
-        cells = copyStrings(def.cells, ctx, 'cells'),
-        centroid = checkCoords(def.centroid, ctx, 'centroid'),
-        cooldownDays = checkNumber(def.cooldownDays, ctx, 'cooldownDays',
-            config.FRONTIER_COOLDOWN_DAYS),
-        adjacentFrontier = copyStrings(def.adjacentFrontier, ctx, 'adjacentFrontier'),
-        adjacentSettlements = copyStrings(def.adjacentSettlements, ctx, 'adjacentSettlements'),
+        cells = copyList(def.cells),
+        centroid = def.centroid,
+        cooldownDays = def.cooldownDays or config.FRONTIER_COOLDOWN_DAYS,
+        adjacentFrontier = copyList(def.adjacentFrontier),
+        adjacentSettlements = copyList(def.adjacentSettlements),
     }
 end
 
@@ -459,28 +346,25 @@ end
 -- first exterior territory, but never become territories themselves: an
 -- interior has no position on the grid to project onto or from.
 local function prepareSettlement(def, context, landmassId, staged, stagedSettlements)
-    checkTable(def, context, 'settlement')
-    local id = checkString(def.id, context, 'settlement.id')
+    local id = def.id
     local ctx = string.format('%s settlement "%s"', context, id)
 
     if M.settlements[id] or stagedSettlements[id] then
-        fail(ctx, 'this settlement id is already registered')
+        log.warn('settlement "%s" is already registered -- skipping the duplicate', id)
+        return nil
     end
     stagedSettlements[id] = true
 
     local tier = def.tier or config.DEFAULT_SETTLEMENT_TIER
     local tierDefaults = tierDefaultsFor(tier, ctx)
 
-    if def.defaultOwner ~= nil then
-        checkString(def.defaultOwner, ctx, 'defaultOwner')
-    end
-    if def.faction ~= nil then
-        checkString(def.faction, ctx, 'faction')
-    end
-
-    local cellNames = copyStrings(def.cells, ctx, 'cells')
+    -- The survey only emits a settlement for a cell it found somebody
+    -- standing in, so an empty footprint means the two have fallen out of
+    -- step. Nothing downstream can do anything with it.
+    local cellNames = copyList(def.cells)
     if #cellNames == 0 then
-        fail(ctx, 'a settlement needs at least one cell')
+        log.warn('settlement "%s" has no cells -- skipping it', id)
+        return nil
     end
 
     local settlement = {
@@ -501,15 +385,13 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
         faction = def.faction,
         -- The projection origin. Derived from the footprint below when a
         -- definition does not give one; see there for what else rides on it.
-        centroid = def.centroid and checkCoords(def.centroid, ctx, 'centroid') or nil,
-        weight = checkNumber(def.weight, ctx, 'weight', tierDefaults.weight),
-        influenceRange = checkPositive(def.influenceRange, ctx, 'influenceRange',
-            tierDefaults.influenceRange),
-        adjacentFrontier = copyStrings(def.adjacentFrontier, ctx, 'adjacentFrontier'),
+        centroid = def.centroid,
+        weight = def.weight or tierDefaults.weight,
+        influenceRange = def.influenceRange or tierDefaults.influenceRange,
+        adjacentFrontier = copyList(def.adjacentFrontier),
     }
 
-    local cooldownDays = checkNumber(def.cooldownDays, ctx, 'cooldownDays',
-        tierDefaults.cooldownDays)
+    local cooldownDays = def.cooldownDays or tierDefaults.cooldownDays
 
     local territories = {}
     local sumX, sumY = 0, 0
@@ -520,35 +402,43 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
         else
             local territoryId = string.format('%s_%d_%d', id, gridX, gridY)
             if M.territories[territoryId] or staged[territoryId] then
-                fail(ctx, string.format('cell %s is already a registered territory', cellName))
+                -- The same cell listed twice, or two mods sharing a name.
+                -- The first claim stands; see indexCells for the same rule
+                -- applied across settlements.
+                log.warn('%s: cell %s is already a territory -- ignoring the repeat',
+                    ctx, cellName)
+            else
+                staged[territoryId] = true
+                settlement.territoryIds[#settlement.territoryIds + 1] = territoryId
+
+                local cellCentroid = cellCentre(gridX, gridY)
+                sumX, sumY = sumX + cellCentroid.x, sumY + cellCentroid.y
+
+                territories[#territories + 1] = {
+                    id = territoryId,
+                    kind = 'settlement',
+                    settlement = id,
+                    -- "Vivec #3,-9" rather than "vivec_3_-9": a city's cells
+                    -- have to stay legible as parts of one place.
+                    displayName = string.format('%s %s', settlement.displayName, cellName),
+                    landmass = settlement.landmass,
+                    region = settlement.region,
+                    defaultOwner = def.defaultOwner,
+                    cells = { cellName },
+                    centroid = cellCentroid,
+                    cooldownDays = cooldownDays,
+                    tier = tier,
+                    adjacentFrontier = {},
+                }
             end
-            staged[territoryId] = true
-            settlement.territoryIds[#settlement.territoryIds + 1] = territoryId
-
-            local cellCentroid = cellCentre(gridX, gridY)
-            sumX, sumY = sumX + cellCentroid.x, sumY + cellCentroid.y
-
-            territories[#territories + 1] = {
-                id = territoryId,
-                kind = 'settlement',
-                settlement = id,
-                -- "Vivec #3,-9" rather than "vivec_3_-9": a city's cells
-                -- have to stay legible as parts of one place.
-                displayName = string.format('%s %s', settlement.displayName, cellName),
-                landmass = settlement.landmass,
-                region = settlement.region,
-                defaultOwner = def.defaultOwner,
-                cells = { cellName },
-                centroid = cellCentroid,
-                cooldownDays = cooldownDays,
-                tier = tier,
-                adjacentFrontier = {},
-            }
         end
     end
 
+    -- Every cell was an interior, or every one of them was already claimed.
+    -- Either way there is no ground here to own.
     if #territories == 0 then
-        fail(ctx, 'a settlement needs at least one exterior cell')
+        log.warn('settlement "%s" has no exterior cell of its own -- skipping it', id)
+        return nil
     end
 
     -- The middle of the footprint, and load-bearing twice over: it is the
@@ -594,9 +484,9 @@ local function indexCells(territory)
     for _, cellName in ipairs(territory.cells) do
         local owner = M.cellIndex[cellName]
         if owner and owner ~= territory.id then
-            -- A warning rather than an error: overlapping claims are a
-            -- content problem between two packs, not a reason to refuse
-            -- to load either of them.
+            -- A warning rather than an error: two landmass mods can name
+            -- the same exterior cell, and that is not a reason to refuse to
+            -- load either of them.
             log.warn('cell "%s" is claimed by both "%s" and "%s" -- keeping "%s"',
                 cellName, owner, territory.id, owner)
         else
@@ -610,7 +500,7 @@ end
 --------------------------------------------------------------------------
 
 --- Recompute which factions hold ground. Called after every registration,
--- because a later pack's settlements can make a power-only faction
+-- because a later worldspace's settlements can make a power-only faction
 -- territorial.
 local function deriveTerritorial()
     for _, faction in pairs(M.factions) do
@@ -618,37 +508,45 @@ local function deriveTerritorial()
     end
 end
 
---- Register a landmass: its factions, its settlements and its
--- frontier grid. Called once per content pack at world init.
+--- Register a landmass: its factions, its settlements and its frontier
+-- grid. Called once per surveyed worldspace at world init.
 function M.registerLandmass(def)
-    checkTable(def, 'registerLandmass', 'definition')
-    local id = checkString(def.id, 'registerLandmass', 'id')
+    local id = def.id
     local context = string.format('landmass "%s"', id)
 
     if M.landmasses[id] then
-        fail(context, 'this landmass is already registered')
+        log.warn('%s is already registered -- ignoring the second one', context)
+        return M.landmasses[id]
     end
 
     -- Before anything binds to a faction id.
     ensureFactions()
 
-    -- Phase one: validate everything, mutating nothing.
+    -- Normalized into staging first and committed below, so a definition
+    -- that turns out to be partly unusable does not leave the simulation
+    -- running on half a landmass. Anything skipped along the way has said
+    -- so in the log by the time we get there.
     local factionOps, settlements, territories = {}, {}, {}
-    local stagedFactions, stagedTerritories, stagedSettlements = {}, {}, {}
+    local stagedTerritories, stagedSettlements = {}, {}
 
     for _, factionDef in ipairs(def.factions or {}) do
-        factionOps[#factionOps + 1] = prepareFaction(factionDef, context, id, stagedFactions)
+        factionOps[#factionOps + 1] = prepareFaction(factionDef, context, id)
     end
     for _, settlementDef in ipairs(def.territories or {}) do
         local settlement, cellTerritories =
             prepareSettlement(settlementDef, context, id, stagedTerritories, stagedSettlements)
-        settlements[#settlements + 1] = settlement
-        for _, territory in ipairs(cellTerritories) do
-            territories[#territories + 1] = territory
+        if settlement then
+            settlements[#settlements + 1] = settlement
+            for _, territory in ipairs(cellTerritories) do
+                territories[#territories + 1] = territory
+            end
         end
     end
     for _, frontierDef in ipairs(def.frontier or {}) do
-        territories[#territories + 1] = prepareFrontier(frontierDef, context, id, stagedTerritories)
+        local territory = prepareFrontier(frontierDef, context, id, stagedTerritories)
+        if territory then
+            territories[#territories + 1] = territory
+        end
     end
 
     -- Settlements are prepared, so the ids they claim are known: admit any
@@ -662,7 +560,7 @@ function M.registerLandmass(def)
     end
     ensureFactionsHolding(holders)
 
-    -- Phase two: commit. Nothing below can fail.
+    -- Commit. Nothing below can fail.
     local landmass = {
         id = id,
         displayName = def.displayName or id,
@@ -743,18 +641,24 @@ end
 -- core/frontier.lua), so it can only be built once the landmass's
 -- settlements are in the registry.
 --
--- Same two-phase discipline: validate everything, then commit.
+-- Staged then committed, as registerLandmass is.
 function M.registerFrontier(landmassId, definitions)
     local context = string.format('landmass "%s" frontier', landmassId)
     local landmass = M.landmasses[landmassId]
     if not landmass then
-        fail(context, 'this landmass has not been registered')
+        -- The generator is handed a landmass id it just finished surveying,
+        -- so this means the two have fallen out of step rather than that
+        -- the world is odd.
+        error(string.format('BalanceOfPower: %s: this landmass has not been registered',
+            context), 0)
     end
-    checkTable(definitions, context, 'definitions')
 
     local staged, territories = {}, {}
     for _, def in ipairs(definitions) do
-        territories[#territories + 1] = prepareFrontier(def, context, landmassId, staged)
+        local territory = prepareFrontier(def, context, landmassId, staged)
+        if territory then
+            territories[#territories + 1] = territory
+        end
     end
 
     for _, territory in ipairs(territories) do
@@ -812,7 +716,7 @@ end
 --------------------------------------------------------------------------
 
 -- Adjacency and ownership references can legitimately point at things a
--- later pack registers -- that's the mechanism that lets a mainland
+-- later worldspace registers -- that's the mechanism that lets a mainland
 -- frontier cell sit next to a Vvardenfell one. So references can only be
 -- checked once everything has loaded, which is why this is a separate
 -- call the driver makes on its first tick rather than a check inside

@@ -7,8 +7,9 @@
 --
 -- Its territory comes from the game rather than from an authored list:
 -- core/survey.lua reads the world's named exterior cells at load and
--- registers whoever has armed men standing in them. A content pack is
--- for tuning the records cannot express, not for listing places.
+-- registers whoever has armed men standing in them. FACTION_TUNING in
+-- config is for the handful of numbers the records cannot express; nothing
+-- lists places.
 
 local core = require('openmw.core')
 local interfaces = require('openmw.interfaces')

@@ -75,14 +75,14 @@ end
 -- Comparing day indices instead anchors the tick to the game calendar,
 -- and a jump is caught as however many days it actually was.
 local function poll()
-    -- Cheap and idempotent, so it runs every tick rather than requiring
-    -- the framework to know whether a pack registered late. Engine load
-    -- order between script bodies and onInit/onLoad handlers decides
-    -- whether registration lands before or after the framework's own
-    -- handlers, and this makes that difference not matter.
+    -- Cheap and idempotent, so it runs every tick rather than requiring the
+    -- framework to know whether the survey has finished. Engine load order
+    -- between script bodies and onInit/onLoad handlers decides whether
+    -- registration lands before or after the framework's own handlers, and
+    -- this makes that difference not matter.
     state.fillDefaults(registry)
 
-    -- The only point at which every pack is known to have registered.
+    -- The only point at which the whole world is known to be registered.
     -- Starting power is measured against the whole world's holdings, so
     -- it can only be seeded here.
     if not sealed then

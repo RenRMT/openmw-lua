@@ -1,5 +1,5 @@
 -- Reads the world's settlements out of the game, so the framework has
--- something to simulate without a content pack listing it.
+-- something to simulate without anyone listing it by hand.
 --
 -- A settlement is a named exterior cell, and its holder is whoever has
 -- armed men standing in it. Both come from content the player actually
@@ -254,8 +254,8 @@ function M.plan()
                 faction = faction,
                 -- ...and who holds the ground on day one. The two are the
                 -- same faction here and set separately on purpose: an
-                -- authored pack could only say whose seat a place was and
-                -- had to let projection work out who held it, but a
+                -- authored list could only say whose seat a place was and
+                -- would have to let projection work out who held it, but a
                 -- survey has watched armed men stand in the cell. That is
                 -- an observation, not an inference, so the map is correct
                 -- the moment it loads rather than after the first

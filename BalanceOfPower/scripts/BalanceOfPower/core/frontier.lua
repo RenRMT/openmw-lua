@@ -2,8 +2,8 @@
 --
 -- The wilderness between settlements is far too fine-grained to author
 -- by hand -- Vvardenfell alone is thousands of exterior cells -- so it's
--- derived instead. A content pack declares where the seats of power are.
--- This generator reads the settlements in the registry and works outward
+-- derived instead. The survey finds where the seats of power are; this
+-- generator reads those settlements out of the registry and works outward
 -- from them.
 --
 -- The union of every settlement's influence radius defines the grid, so
@@ -256,8 +256,8 @@ function M.generate(def)
     ----------------------------------------------------------------------
     -- 3. Work out which settlements each block sits next to.
     --
-    -- Settlements are registered before the frontier exists, so a pack has no
-    -- way to name generated cells in its own `adjacentFrontier`. The link
+    -- Settlements are registered before the frontier exists, so nothing can
+    -- name generated cells in a settlement's own `adjacentFrontier`. The link
     -- is made here instead, in both directions -- without it no settlement
     -- would ever be reported as surrounded.
     ----------------------------------------------------------------------

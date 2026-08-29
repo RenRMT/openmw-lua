@@ -1,7 +1,8 @@
--- Every tunable number in the framework lives here.
--- Data packs never edit this file -- per-faction and per-territory
--- overrides are authored in the pack's own definitions, and the values
--- here are only the fallbacks used when a definition leaves a field out.
+-- Every tunable number in the framework lives here, and this is the only
+-- place any of them is written. Nothing outside the framework supplies
+-- definitions -- the world is surveyed, not authored -- so where a comment
+-- below says a value is a fallback, what it falls back from is the survey's
+-- own output or FACTION_TUNING further down.
 
 local M = {}
 
@@ -17,8 +18,7 @@ M.DEBUG = true
 M.DEBUG_DAILY_SUMMARY = true
 
 -- validateReferences() stops listing individual dangling ids after this
--- many, so a data pack with a broken frontier grid doesn't produce a
--- thousand log lines.
+-- many, so a broken frontier grid doesn't produce a thousand log lines.
 M.MAX_REPORTED_PROBLEMS = 20
 
 --------------------------------------------------------------------------
@@ -100,9 +100,9 @@ M.POWER_EVENT_EPSILON = 0.01
 -- Power a faction gains every resolved day with no player involvement,
 -- when its definition doesn't say otherwise.
 --
--- Zero by default: factions growing on their own should be defined by
--- content packs. The Sixth House is an obvious contender and that
--- can be defined in a pack's faction table.
+-- Zero by default: a faction that grows on its own is a deliberate choice
+-- rather than the norm. The Sixth House is the obvious contender, and
+-- FACTION_TUNING below is where it would be given a rate.
 M.DEFAULT_GROWTH_PER_DAY = 0
 
 -- Whether ambient growth drags other factions along the reaction table
@@ -166,15 +166,15 @@ M.FORTUNE_OCTAVES = 3
 -- rather than as fortune.
 M.FORTUNE_PERIOD_DAYS = 120
 
--- Per-faction multiplier on fortune's amplitude, when a pack's faction
--- definition doesn't say otherwise. A pack raises it for a faction whose
--- fortunes should swing (a smuggling ring, a cult) and sets it to 0 for
--- one that should sit exactly where its ground puts it.
+-- Per-faction multiplier on fortune's amplitude, where FACTION_TUNING does
+-- not say otherwise. Raise it for a faction whose fortunes should swing (a
+-- smuggling ring, a cult), set it to 0 for one that should sit exactly
+-- where its ground puts it.
 M.DEFAULT_VOLATILITY = 1
 
 -- Whether drift drags other factions along the reaction table the way an
 -- awarded change does. Off, for the reason GROWTH_PROPAGATES is off, only
--- more so: growth touches the handful of factions a pack gave a rate,
+-- more so: growth touches the handful of factions given a rate,
 -- and drift touches every faction every day.
 M.DRIFT_PROPAGATES = false
 
@@ -222,9 +222,9 @@ M.INVADER_MOVES_OTHERS = false
 -- Settlements
 --------------------------------------------------------------------------
 
--- The tier ladder, smallest to largest. This is the ranking: a pack
--- naming a tier is placing its holding on this scale and nothing else,
--- and every number below follows the order.
+-- The tier ladder, smallest to largest. This is the ranking: the survey
+-- places every settlement it finds on this scale and nothing else, and
+-- every number below follows the order.
 M.SETTLEMENT_TIER_ORDER = {
     'minor location',
     'outpost',
@@ -273,9 +273,9 @@ M.SETTLEMENT_TIERS = {
     ['small city']     = { weight = 0.75, influenceRange = 8000, cooldownDays = 40 },
     ['large city']     = { weight = 1.00, influenceRange = 10000, cooldownDays = 60 },
     metropolis         = { weight = 1.25, influenceRange = 12000, cooldownDays = 90 },
-    -- Nothing in Morrowind is one. It exists so a pack for a larger
-    -- landmass has somewhere to put its imperial capital without having
-    -- to redefine what a metropolis means everywhere else.
+    -- Nothing in Morrowind is one. It exists so a larger landmass has
+    -- somewhere to put its imperial capital without redefining what a
+    -- metropolis means everywhere else.
     megalopolis        = { weight = 1.50, influenceRange = 14000, cooldownDays = 120 },
 }
 
@@ -322,10 +322,9 @@ M.FRONTIER_COOLDOWN_DAYS = 3
 --
 -- Not a tuning value and not content knowledge: 8192 is the ESM3 grid
 -- the engine itself works in, so it is the same for Vvardenfell, Tamriel
--- Rebuilt, Project Cyrodiil and Skyrim Home of the Nords alike. A pack
--- must never redeclare it -- read it from the interface as
--- `BoP.CELL_SIZE`, so a pack's own geometry and the frontier grid can't
--- drift apart.
+-- Rebuilt, Project Cyrodiil and Skyrim Home of the Nords alike. Nothing
+-- should redeclare it -- read it from the interface as `BoP.CELL_SIZE`, so
+-- an extension's own geometry and the frontier grid can't drift apart.
 --
 -- `generateFrontier` still takes a `cellSize` override, which earns its
 -- keep only for content on a different grid entirely (ESM4 cells are a
@@ -342,8 +341,8 @@ M.FRONTIER_CELLS_PER_UNIT = 1
 -- Extra reach, in world units, beyond the generation radius derived from
 -- FRONTIER_GENERATION_POWER.
 --
--- Flat slack on top of that, for a pack that expects settlements to
--- appear at runtime in places nothing currently reaches.
+-- Flat slack on top of that, for settlements appearing at runtime in
+-- places nothing currently reaches.
 --
 -- Zero by default, because FRONTIER_GENERATION_POWER is the knob that
 -- actually wants turning. There is no longer such a thing as ground that
@@ -371,7 +370,7 @@ M.FRONTIER_REQUIRE_EXISTING_CELL = true
 -- seat, so the map has room for every faction to double its standing
 -- before anyone projects past the edge of the world.
 --
--- Raising it is how a pack buys more room, and the cost is paid in
+-- Raising it buys more room, and the cost is paid in
 -- unclaimed ground rather than in cells that can never be held. What
 -- fraction of the generated map starts unowned follows from this ratio
 -- alone -- not from the tier ranges, which cancel:
@@ -590,7 +589,7 @@ M.SURVEY_INTERIORS_PER_CELL = 10
 -- more doors per settlement than Bethesda did, so uncapped this ranks
 -- Karthwasten above Balmora. Capped at the footprint it can only ever
 -- double a place's size, which is enough to lift a real town off the
--- floor and not enough to let one pack's conventions reorder the map.
+-- floor and not enough to let one mod's authoring habits reorder the map.
 M.SURVEY_INTERIOR_CAP_RATIO = 1
 
 -- Tier by settlement size, largest first, where size is
@@ -603,7 +602,7 @@ M.SURVEY_INTERIOR_CAP_RATIO = 1
 -- No entry for 'megalopolis'. Nothing in a Morrowind load order can earn
 -- it -- Almalexia, the one place meant to hold it, has no exterior cells
 -- at all and so is never surveyed. The tier stays on the ladder for a
--- pack that registers its own settlements, and this table leaves it
+-- landmass that does have something that size; this table leaves it
 -- unreachable rather than handing it to whoever happens to be largest.
 M.SURVEY_TIER_BY_SIZE = {
     { size = 15, tier = 'metropolis' },
@@ -619,8 +618,8 @@ M.SURVEY_TIER_BY_SIZE = {
 -- entries belong here only where the game cannot say it.
 --
 -- Unknown ids are ignored, which is what lets the framework carry
--- Morrowind's one exception without becoming a Morrowind content pack:
--- in a load order without it, this table is inert.
+-- Morrowind's one exception without becoming Morrowind-specific: in a load
+-- order without it, this table is inert.
 M.FACTION_TUNING = {
     -- The invader holding Red Mountain. `type` takes it out of the
     -- politics entirely: it grows, it fights everyone, and nothing it

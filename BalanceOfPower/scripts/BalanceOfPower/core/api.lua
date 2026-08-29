@@ -1,10 +1,10 @@
 -- The public interface, exposed to other mods as
 -- require('openmw.interfaces').BalanceOfPower from any global script.
 --
--- This is the whole contract. A content pack should never require a file
+-- This is the whole contract. An extension should never require a file
 -- under scripts/BalanceOfPower/core/ -- the merged VFS would let it, but
 -- internals change without notice, and during alpha so does this file
--- (see `version`). Anything a pack needs and can't get here is a gap.
+-- (see `version`). Anything an extension needs and can't get here is a gap.
 
 local config = require('scripts.BalanceOfPower.core.config')
 local drift = require('scripts.BalanceOfPower.core.drift')
@@ -83,7 +83,7 @@ end
 --- How `factionId` feels about `towardId`, in roughly [-3, 3]; 0 if it
 -- has no opinion. Read from the game's own faction records, normalized
 -- and filtered to registered factions -- which is why it is a function
--- and not a table a pack can index.
+-- and not a table a caller can index.
 --
 -- This is also how far `factionId` moves when `towardId`'s power does.
 function M.regardOf(factionId, towardId)
@@ -358,7 +358,8 @@ end
 -- Worth reading after adding a faction. A zero in either column is a
 -- faction standing outside the politics in one direction -- never an
 -- error, close to invisible in play. A faction with no ESM record behind
--- it sits at movedBy = 0 until its pack authors its reaction row.
+-- it sits at movedBy = 0, which is what a modelled faction with no record
+-- behind it looks like.
 -- @return list of { id, moves, movedBy }, sorted by id
 function M.reactionAudit()
     return power.reactionAudit()
@@ -438,7 +439,7 @@ function M.dump()
     log.info('--------------------------------------------------------')
 end
 
---- Whether verbose logging is on, for packs that want to match it.
+--- Whether verbose logging is on, for extensions that want to match it.
 function M.isDebug()
     return config.DEBUG
 end
