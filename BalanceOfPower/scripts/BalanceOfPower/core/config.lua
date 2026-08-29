@@ -21,11 +21,6 @@ M.DEBUG_DAILY_SUMMARY = true
 -- thousand log lines.
 M.MAX_REPORTED_PROBLEMS = 20
 
--- Half-width, in cells, of the windowed map drawn around a position.
--- Sized to fit an in-game message box: 6 gives a 13x13 grid, which is
--- readable on screen where the full forty-by-fifty map is not.
-M.MAP_WINDOW_RADIUS = 6
-
 --------------------------------------------------------------------------
 -- Power
 --------------------------------------------------------------------------
@@ -194,7 +189,7 @@ M.DRIFT_PROPAGATES = false
 --   * it does not drift -- no capacity target, no fortune, so its ramp
 --     is its growth and nothing pulls back against it;
 --   * it takes no part in the reaction table in either direction;
---   * it fights everyone, without needing the `hostile` flag.
+--   * it fights everyone -- and it is the only thing that fights.
 --
 -- The payoff is that a setback dealt by content is PERMANENT. An award
 -- against an ordinary faction decays back toward its capacity; an
@@ -219,23 +214,9 @@ M.INVADER_MOVES_OTHERS = false
 -- Hostility
 --------------------------------------------------------------------------
 
--- Hostility is opt-in per faction (`hostile = true` in a pack's faction
--- definition) and defaults to nobody.
---
--- A flagged faction is hostile to the player, and fights any faction it
--- regards at or below this threshold. -3 is vanilla's "hated enemy"
--- value, so the rule reads as: a hostile faction attacks the people it
--- genuinely hates, and tolerates everyone else.
-M.HOSTILITY_REACTION_THRESHOLD = -3
-
--- Treat every faction as though it carried `hostile = true`.
---
--- Off by default, and not a small switch. Against Morrowind's full
--- reaction matrix -3 is commoner than it looks -- the vampire clans
--- alone bring a dozen, and Telvanni/Mages Guild and Thieves Guild/Camonna
--- Tong are mutual -- so this is closer to a general war than to a handful
--- of feuds.
-M.ALL_FACTIONS_HOSTILE = false
+-- Hostility has no tunables. An invader fights everyone and nobody else
+-- fights at all -- see core/hostility.lua for why that is one rule rather
+-- than a threshold and a set of switches.
 
 --------------------------------------------------------------------------
 -- Settlements

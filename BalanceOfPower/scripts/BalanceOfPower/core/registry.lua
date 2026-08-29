@@ -286,8 +286,6 @@ local function newFaction(id, recordId, landmass)
         -- How far this faction's fortunes swing, as a multiple of
         -- FORTUNE_SWING. 0 pins it to exactly what its ground supports.
         volatility = config.DEFAULT_VOLATILITY,
-        -- Opt in to fighting. See core/hostility.lua for what it means.
-        hostile = false,
         landmass = landmass,
         -- Filled in by registerLandmass from the settlements naming this
         -- faction. A faction holds seats; it has no geography of its own.
@@ -349,7 +347,7 @@ end
 
 -- Scalars a pack may set. The first pack to set one keeps it, because
 -- which pack won would otherwise depend on load order.
-local TUNABLE = { 'growthPerDay', 'hostile', 'recordId', 'landmass', 'type', 'volatility' }
+local TUNABLE = { 'growthPerDay', 'recordId', 'landmass', 'type', 'volatility' }
 
 local function applyTuning(faction, tuning, ctx)
     for _, field in ipairs(TUNABLE) do
@@ -398,7 +396,6 @@ local function prepareFaction(def, context, fallbackLandmass, staged)
             growthPerDay = checkNumber(def.growthPerDay, ctx, 'growthPerDay', nil),
             volatility = checkNumber(def.volatility, ctx, 'volatility', nil),
             type = def.type ~= nil and checkFactionType(def.type, ctx) or nil,
-            hostile = def.hostile == true or nil,
             recordId = def.recordId and checkString(def.recordId, ctx, 'recordId') or nil,
         },
         ctx = ctx,
@@ -502,10 +499,8 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
         -- tower, an unaffiliated Velothi holding -- projects nothing and
         -- is ordinary ground with a name.
         faction = def.faction,
-        -- The projection origin, and load-bearing: this is the point
-        -- every reach calculation measures from. For a multi-cell city it
-        -- should be the middle of the footprint, so Vivec radiates from
-        -- the city rather than from whichever cell was listed first.
+        -- The projection origin. Derived from the footprint below when a
+        -- definition does not give one; see there for what else rides on it.
         centroid = def.centroid and checkCoords(def.centroid, ctx, 'centroid') or nil,
         weight = checkNumber(def.weight, ctx, 'weight', tierDefaults.weight),
         influenceRange = checkPositive(def.influenceRange, ctx, 'influenceRange',
@@ -556,13 +551,18 @@ local function prepareSettlement(def, context, landmassId, staged, stagedSettlem
         fail(ctx, 'a settlement needs at least one exterior cell')
     end
 
-    -- Derived from the footprint unless the pack said otherwise, so a
-    -- fifteen-cell city radiates from its middle rather than from
-    -- whichever cell happened to be listed first. Deriving it here rather
-    -- than in every pack keeps one definition of where a cell is: a pack
-    -- computing this itself has to agree with the frontier generator
-    -- about the grid, and two copies of that arithmetic is how a map ends
-    -- up subtly out of register with its own settlements.
+    -- The middle of the footprint, and load-bearing twice over: it is the
+    -- point every reach calculation measures from, and it is what decides
+    -- which cell carries the settlement's mark on the map. Both want the
+    -- geometric middle, which is why one field answers both -- move it and
+    -- the label moves with the projection.
+    --
+    -- Derived here rather than by whatever supplies the definition, so
+    -- there is one definition of where a cell is. A second copy of this
+    -- arithmetic has to agree with the frontier generator about the grid,
+    -- and that is how a map ends up subtly out of register with its own
+    -- settlements. The survey never supplies one, so in practice this is
+    -- always the derived value.
     if not settlement.centroid then
         settlement.centroid = { x = sumX / #territories, y = sumY / #territories }
     end
