@@ -1,15 +1,29 @@
--- The territory overlay: who holds which settlement, drawn on Pixel Map.
+-- The map overlays: where the settlements are, and who controls the
+-- ground, drawn on Pixel Map.
+--
+-- Two layers, because they answer two questions at two scales. The
+-- settlement layer outlines named places and marks each with its tier;
+-- the control layer washes every held cell in its holder's colour. A
+-- player who wants the frontier without the labels, or the labels without
+-- the wash, turns one off.
 --
 -- PLAYER context only, because that is where Pixel Map lives. The
 -- framework's interface is global-only, so this asks for its data with
--- BoP_RequestMap exactly as any third-party mod would have to -- there is
--- no private channel here that an outside map could not also use.
+-- BoP_RequestMap and BoP_RequestTerritory exactly as any third-party mod
+-- would have to -- there is no private channel here that an outside map
+-- could not also use.
 --
 -- Optional in every direction. Pixel Map may not be installed, may load
 -- after this script, or may be reloaded underneath it; none of those is
 -- an error, and in all of them this simply draws nothing.
+--
+-- No cell geometry lives here. Pixel Map owns the grid its canvas is drawn
+-- on, so the range to paint, a cell's rectangle and the seam between two of
+-- them all come from `view`. This file decides only what colour a cell is
+-- and what its tooltip says.
 
 local core = require('openmw.core')
+local ui = require('openmw.ui')
 local util = require('openmw.util')
 
 local I = require('openmw.interfaces')
@@ -19,13 +33,26 @@ local eventnames = require('scripts.BalanceOfPower.core.eventnames')
 
 local l10n = core.l10n(config.L10N_CONTEXT, 'en')
 
--- gridX -> gridY -> { settlement, ownerName, color }, rebuilt whenever a
--- BoP_Map arrives. Keyed by grid rather than kept as a list because draw
--- culls to the visible cell range and then looks each one up, which turns
--- the per-frame cost into the size of the viewport instead of the size of
--- the world.
+-- gridX -> gridY -> { settlementId, settlement, owner, ownerName, color },
+-- rebuilt whenever a BoP_Map arrives. Keyed by grid rather than kept as a
+-- list because draw culls to the visible cell range and then looks each
+-- one up, which turns the per-frame cost into the size of the viewport
+-- instead of the size of the world. The perimeter test wants the same
+-- lookup for a cell's four neighbours, which a list could not answer.
 local byGrid = {}
+
+-- One row per settlement: { name, tier, gridX, gridY, color, ownerName }.
+-- A list rather than a grid because there are a few hundred of them
+-- against thousands of cells, and every one carries a marker that is
+-- sized in screen pixels and so can hang outside its own cell.
+local places = {}
 local haveData = false
+
+-- The control wash: gridX -> gridY -> colour. Separate from byGrid
+-- because it covers the whole generated map, arrives from a different
+-- event, and is drawn by a layer the player can turn off on its own.
+local controlByGrid = {}
+local haveControl = false
 
 --------------------------------------------------------------------------
 -- Colour
@@ -64,12 +91,41 @@ local function colorFor(factionId)
     return cached
 end
 
+local iconOutlineColor = util.color.rgb(0.05, 0.05, 0.05)
+
+-- ui.texture is a resource handle rather than a value, so one per tier is
+-- built once and kept. Empty until MAP_TIER_ICON_TEXTURE has entries, at
+-- which point that tier's icon stops being a plain square.
+local iconTextures = {}
+
+local function iconTextureFor(tier)
+    local path = config.MAP_TIER_ICON_TEXTURE[tier]
+    if not path then
+        return nil
+    end
+    local cached = iconTextures[tier]
+    if not cached then
+        cached = ui.texture { path = path }
+        iconTextures[tier] = cached
+    end
+    return cached
+end
+
 --------------------------------------------------------------------------
 -- Data
 --------------------------------------------------------------------------
 
+--- A no-op while the map is shut, so this is safe to call blindly every
+-- time the world moves under us.
+local function refresh()
+    if I.PixelMap then
+        I.PixelMap.redraw()
+    end
+end
+
 local function onMap(data)
     byGrid = {}
+    places = {}
     haveData = true
 
     for _, row in ipairs(data and data.cells or {}) do
@@ -79,26 +135,63 @@ local function onMap(data)
             byGrid[row.gridX] = column
         end
         column[row.gridY] = {
+            settlementId = row.settlementId,
             settlement = row.settlement,
+            owner = row.owner,
             ownerName = row.ownerName,
             color = colorFor(row.owner),
         }
     end
 
-    -- A no-op while the map is shut, so this is safe to call blindly
-    -- every time the world moves under us.
-    if I.PixelMap then
-        I.PixelMap.redraw()
+    for _, row in ipairs(data and data.settlements or {}) do
+        places[#places + 1] = {
+            name = row.name,
+            tier = row.tier,
+            gridX = row.gridX,
+            gridY = row.gridY,
+            ownerName = row.ownerName,
+            color = colorFor(row.owner),
+        }
     end
+
+    refresh()
+end
+
+local function onTerritory(data)
+    controlByGrid = {}
+    haveControl = true
+
+    for _, held in ipairs(data and data.owners or {}) do
+        local color = colorFor(held.faction)
+        local flat = held.cells
+        -- x, y, x, y, ... -- see BoP_Territory for why it arrives flat.
+        for index = 1, #flat - 1, 2 do
+            local gridX, gridY = flat[index], flat[index + 1]
+            local column = controlByGrid[gridX]
+            if not column then
+                column = {}
+                controlByGrid[gridX] = column
+            end
+            column[gridY] = color
+        end
+    end
+
+    refresh()
 end
 
 local function requestMap()
     core.sendGlobalEvent(eventnames.REQUEST_MAP, {})
+    core.sendGlobalEvent(eventnames.REQUEST_TERRITORY, {})
 end
 
 --------------------------------------------------------------------------
 -- Drawing
 --------------------------------------------------------------------------
+
+local function at(grid, gridX, gridY)
+    local column = grid[gridX]
+    return column and column[gridY] or nil
+end
 
 --- What the tooltip says over one settlement cell.
 local function describe(entry)
@@ -108,46 +201,82 @@ local function describe(entry)
     return l10n('mapTooltipUnowned', { settlement = entry.settlement })
 end
 
-local function draw(view)
-    -- No exterior under the player means no grid to paint on.
-    if not view.cell then
-        return {}
+--- Which outlined block a cell belongs to, for PixelMap.outline.
+--
+-- Settlement *and* owner, not settlement alone. A city taken in pieces is
+-- held in pieces, and one outline drawn around the whole of it would paint
+-- one colour over two claims -- exactly the thing this layer exists to
+-- show. Pixel Map compares whatever comes back, so a string of the two is
+-- all the grouping it needs.
+local function blockAt(gridX, gridY)
+    local entry = at(byGrid, gridX, gridY)
+    if not entry then
+        return nil
     end
+    return entry.settlementId .. '/' .. tostring(entry.owner)
+end
 
-    local minX, minY, maxX, maxY = view.bounds()
-    -- The framework's own figure rather than Pixel Map's: both read it
-    -- from the engine, but a disagreement here would slide the overlay
-    -- off the grid it is meant to be painting.
-    local size = config.CELL_SIZE
+--- The tier mark in a settlement's middle cell.
+--
+-- Sized in screen pixels, so the ladder stays readable at every zoom
+-- instead of collapsing with the map. A tier with no size on the ladder
+-- draws nothing, which is how a farm stays an outline. Pixel Map culls
+-- what is off canvas, so every settlement can be offered blindly.
+local function icon(out, view, place)
+    local size = config.MAP_TIER_ICON_SIZE[place.tier]
+    if not size then
+        return
+    end
+    out[#out + 1] = I.PixelMap.marker {
+        position = view.cellToWorld(place.gridX, place.gridY),
+        size = size,
+        color = place.color,
+        outline = config.MAP_ICON_OUTLINE,
+        outlineColor = iconOutlineColor,
+        resource = iconTextureFor(place.tier),
+        tooltip = describe { settlement = place.name, ownerName = place.ownerName },
+    }
+end
 
-    -- Cull to the visible cell range and look those up, rather than
-    -- walking every settlement in the world: zoomed out, the second costs
-    -- the same at every frame no matter how little of it is on screen.
-    local fromX = math.floor(minX / size)
-    local toX = math.floor(maxX / size)
-    local fromY = math.floor(minY / size)
-    local toY = math.floor(maxY / size)
+--- Settlements: the perimeter of each held block, then the tier marks.
+--
+-- The outline leaves the middle of a block empty on purpose -- it says
+-- where a place is without hiding the ground it stands on -- and its
+-- tooltip covers the cell whole, interior included.
+local function drawSettlements(view)
+    local out = I.PixelMap.outline {
+        group = blockAt,
+        color = function(_, gridX, gridY)
+            return at(byGrid, gridX, gridY).color
+        end,
+        width = config.MAP_OUTLINE_WIDTH,
+        alpha = config.MAP_OUTLINE_ALPHA,
+        tooltip = function(_, gridX, gridY)
+            return describe(at(byGrid, gridX, gridY))
+        end,
+    }
 
-    local out = {}
-    for gridX = fromX, toX do
-        local column = byGrid[gridX]
-        if column then
-            for gridY = fromY, toY do
-                local entry = column[gridY]
-                if entry then
-                    out[#out + 1] = I.PixelMap.cell {
-                        gridX = gridX,
-                        gridY = gridY,
-                        color = entry.color,
-                        alpha = config.MAP_FILL_ALPHA,
-                        border = config.MAP_CELL_BORDER,
-                        tooltip = describe(entry),
-                    }
-                end
-            end
+    -- Icons last, so they sit above every outline rather than only above
+    -- their own settlement's.
+    if view.cellBounds() then
+        for _, place in ipairs(places) do
+            icon(out, view, place)
         end
     end
+
     return out
+end
+
+--- The control wash: one colour per held cell, over the whole frontier.
+--
+-- Pixel Map merges runs of one colour along each row, so a faction holding
+-- a contiguous province costs a handful of quads rather than one per cell.
+local function drawControl()
+    return I.PixelMap.cells {
+        at = function(gridX, gridY)
+            return at(controlByGrid, gridX, gridY), config.MAP_CONTROL_ALPHA
+        end,
+    }
 end
 
 --------------------------------------------------------------------------
@@ -160,6 +289,17 @@ local function register()
     end
 
     I.PixelMap.registerLayer {
+        key = config.MAP_CONTROL_LAYER_KEY,
+        name = l10n('mapControlLayerName'),
+        order = config.MAP_CONTROL_LAYER_ORDER,
+        -- Deliberately not interactive. It covers most of the world, and
+        -- an interactive layer that size would make the map undraggable
+        -- everywhere anybody holds ground. The settlement layer above it
+        -- is what answers the cursor.
+        draw = drawControl,
+    }
+
+    I.PixelMap.registerLayer {
         key = config.MAP_LAYER_KEY,
         name = l10n('mapLayerName'),
         order = config.MAP_LAYER_ORDER,
@@ -168,12 +308,12 @@ local function register()
         -- settlements are a small fraction of the surface, so there is
         -- open ground to grab almost everywhere.
         interactive = true,
-        draw = draw,
+        draw = drawSettlements,
     }
 
     -- Registering says nothing about having anything to draw, and the
-    -- layer may well be registered long before the first BoP_Map lands.
-    if not haveData then
+    -- layers may well be registered long before the first BoP_Map lands.
+    if not haveData or not haveControl then
         requestMap()
     end
 end
@@ -197,6 +337,7 @@ return {
         -- reloadlua, which is what makes load order irrelevant here.
         PixelMapReady = register,
         [eventnames.MAP] = onMap,
+        [eventnames.TERRITORY] = onTerritory,
         [eventnames.DAY_RESOLVED] = onDayResolved,
     },
 }

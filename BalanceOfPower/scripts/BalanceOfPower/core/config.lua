@@ -592,18 +592,45 @@ M.FACTION_ALIASES = {
     ['blades'] = 'imperial legion',
 }
 
--- Tier by footprint, largest first. Footprint is the same quantity the
--- framework projects power over, so a city is a city because it covers a
--- city's worth of ground. Population deliberately does not feed in: tier
--- already scales power, and folding the garrison in as well would count
--- the same guards twice.
-M.SURVEY_TIER_BY_CELLS = {
-    { cells = 12, tier = 'metropolis' },
-    { cells = 6, tier = 'large city' },
-    { cells = 4, tier = 'small city' },
-    { cells = 3, tier = 'town' },
-    { cells = 2, tier = 'village' },
-    { cells = 1, tier = 'outpost' },
+-- How many named interiors count as one extra cell of footprint.
+--
+-- Footprint alone cannot see a settlement's weight. Two thirds of the
+-- named places in a Morrowind-plus-Tamriel-Rebuilt load order occupy
+-- exactly one exterior cell, which puts Caldera, Dagon Fel and Tel Mora
+-- in the same bracket as a lone farmhouse. Doors are the signal that
+-- separates them: a settlement's named interiors scale with how much of
+-- a place it is, and reading their *names* costs nothing -- the survey
+-- already walks every cell, and it is `cell:getAll` that is expensive,
+-- not the name.
+M.SURVEY_INTERIORS_PER_CELL = 10
+
+-- ...but never more than the footprint it is added to. Interior density
+-- is an authoring habit, not a measurement: Tamriel Rebuilt builds far
+-- more doors per settlement than Bethesda did, so uncapped this ranks
+-- Karthwasten above Balmora. Capped at the footprint it can only ever
+-- double a place's size, which is enough to lift a real town off the
+-- floor and not enough to let one pack's conventions reorder the map.
+M.SURVEY_INTERIOR_CAP_RATIO = 1
+
+-- Tier by settlement size, largest first, where size is
+--
+--   cells + min(cells, floor(interiors / SURVEY_INTERIORS_PER_CELL))
+--
+-- Population deliberately does not feed in: tier already scales power,
+-- and folding the garrison in as well would count the same guards twice.
+--
+-- No entry for 'megalopolis'. Nothing in a Morrowind load order can earn
+-- it -- Almalexia, the one place meant to hold it, has no exterior cells
+-- at all and so is never surveyed. The tier stays on the ladder for a
+-- pack that registers its own settlements, and this table leaves it
+-- unreachable rather than handing it to whoever happens to be largest.
+M.SURVEY_TIER_BY_SIZE = {
+    { size = 15, tier = 'metropolis' },
+    { size = 8, tier = 'large city' },
+    { size = 5, tier = 'small city' },
+    { size = 4, tier = 'town' },
+    { size = 2, tier = 'village' },
+    { size = 1, tier = 'outpost' },
 }
 
 -- Per-faction tuning the game's records have no field for, keyed by
@@ -632,23 +659,63 @@ M.FACTION_TUNING = {
 -- Map overlay
 --------------------------------------------------------------------------
 
--- The PixelMap layer's key and its place in the stack. Above the
--- built-ins (10 terrain, 20 grid) so ownership reads over the landscape
--- rather than under it.
-M.MAP_LAYER_KEY = 'BalanceOfPower_territory'
+-- Two PixelMap layers, and their place in the stack. The built-ins are
+-- 10 terrain and 20 grid.
+--
+-- Control sits *below* the grid: it is a wash over most of the map, and
+-- painted over the graticule it erases the one reference that says how
+-- far anything is. Settlements sit above everything, because they are
+-- what the eye is looking for.
+M.MAP_LAYER_KEY = 'BalanceOfPower_settlements'
 M.MAP_LAYER_ORDER = 30
 
--- Settlement fills are opaque: this layer answers "who holds what" at a
--- glance, and a translucent fill over relief shading makes two similar
--- faction colours impossible to tell apart.
-M.MAP_FILL_ALPHA = 1.0
+M.MAP_CONTROL_LAYER_KEY = 'BalanceOfPower_control'
+M.MAP_CONTROL_LAYER_ORDER = 15
 
--- White edge on each settlement square, in canvas pixels. A per-cell
--- overlay is read as a shape before it is read as a colour, so the border
--- is what separates two adjacent owners of similar hue. Clamped against
--- the cell size when zoomed out, so a distant city stays a coloured dot
--- rather than a white one.
-M.MAP_CELL_BORDER = 2
+-- The control wash. Half-transparent by requirement and by necessity:
+-- this layer covers most of the world, and an opaque one would be a
+-- political map with no landscape left under it.
+M.MAP_CONTROL_ALPHA = 0.5
+
+-- Settlement outline width, in canvas pixels.
+--
+-- Outline and no fill, so the extent of a city reads as a shape while the
+-- terrain inside it stays visible -- a filled city is a coloured blob
+-- that says nothing about what is under it. Clamped against the cell size
+-- when zoomed out, so a distant settlement stays a coloured mark rather
+-- than a solid square.
+M.MAP_OUTLINE_WIDTH = 2
+
+-- Settlement outlines are opaque. They are thin, and a translucent thin
+-- line over relief shading is the one thing that makes two similar
+-- faction colours impossible to tell apart.
+M.MAP_OUTLINE_ALPHA = 1.0
+
+-- The tier icon dropped in a settlement's middle cell, in screen pixels,
+-- so it holds its size at every zoom. The ladder is the ranking: a bigger
+-- place gets a bigger mark, and the gaps are wide enough to be read
+-- without a legend.
+--
+-- No entry means no icon, which is why 'minor location' is absent -- a
+-- farm is its outline and nothing more.
+M.MAP_TIER_ICON_SIZE = {
+    outpost = 6,
+    village = 8,
+    town = 10,
+    ['small city'] = 12,
+    ['large city'] = 15,
+    metropolis = 18,
+    megalopolis = 22,
+}
+
+-- Placeholder art. Every tier draws a plain square until there are icon
+-- assets to point at; a path put here is used in place of the square for
+-- that tier alone, so they can land one at a time.
+M.MAP_TIER_ICON_TEXTURE = {}
+
+-- Dark keyline around the icon, in screen pixels, so a pale faction's
+-- mark is still a shape against pale terrain.
+M.MAP_ICON_OUTLINE = 2
 
 -- Ground with a name and no claimant -- a derelict tower, an
 -- unaffiliated Velothi holding. Grey rather than absent, so the map

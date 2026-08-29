@@ -107,15 +107,45 @@ M.SNAPSHOT = 'BoP_Snapshot'
 -- putting it in the snapshot would make every caller pay for it.
 M.REQUEST_MAP = 'BoP_RequestMap'
 
--- The answer: { day, cells }.
+-- The answer: { day, cells, settlements }.
 --
--- One row per owned settlement cell: { gridX, gridY, settlement, owner,
--- ownerName }. Cells rather than settlements because ownership is
--- resolved per cell -- a city under attack can be held in pieces, and a
--- payload keyed by settlement could not say so.
+-- `cells` is one row per owned settlement cell: { gridX, gridY,
+-- settlement, settlementId, owner, ownerName }. Cells rather than
+-- settlements because ownership is resolved per cell -- a city under
+-- attack can be held in pieces, and a payload keyed by settlement could
+-- not say so.
+--
+-- `settlements` is the other half of that answer: one row per settlement,
+-- { id, name, tier, gridX, gridY, owner, ownerName }, where the grid
+-- coordinates are the settlement's middle cell. What a map cannot derive
+-- from `cells` alone is the tier and which of a city's cells is its
+-- centre, and both are wanted by anything drawing one mark per place
+-- rather than one per cell.
 --
 -- `owner` is nil for a settlement cell nobody holds, which is ordinary:
 -- a derelict tower is ground with a name and no claimant.
 M.MAP = 'BoP_Map'
+
+-- Ask who controls every cell in the world, frontier included: no
+-- payload.
+--
+-- Apart from REQUEST_MAP because the two are different sizes of question.
+-- A settlement map is a few hundred rows; this is every generated cell,
+-- which in a Tamriel-Rebuilt load order is several thousand. A caller
+-- that only wants to label towns should not pay for the wilderness.
+M.REQUEST_TERRITORY = 'BoP_RequestTerritory'
+
+-- The answer: { day, owners }.
+--
+-- One row per faction that holds anything: { faction, factionName,
+-- cells }, where `cells` is a flat array of grid coordinates --
+-- x1, y1, x2, y2, ... -- rather than a list of tables.
+--
+-- Flat, and grouped by faction, because of the size: a table per cell
+-- would be thousands of tables to serialize across the global/player
+-- boundary every time the map is asked for, and the owner is repeated on
+-- every one of them. Unowned cells are absent rather than listed under a
+-- null faction; there is nothing to draw for them.
+M.TERRITORY = 'BoP_Territory'
 
 return M

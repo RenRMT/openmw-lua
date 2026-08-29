@@ -181,37 +181,136 @@ local function onRequestSnapshot(data)
     })
 end
 
+--- The name a faction is shown under, or nil if it holds nothing.
+local function displayNameOf(factionId)
+    local faction = factionId and registry.factions[factionId] or nil
+    return faction and faction.displayName or nil
+end
+
+--- The cell nearest the middle of a settlement's footprint.
+--
+-- The mean of the footprint is not itself a cell -- a settlement wrapped
+-- around a bay has its centre of mass in the water -- so this takes the
+-- member cell closest to that mean. Whatever draws one mark per
+-- settlement needs a cell to put it in, and picking it here rather than
+-- in the map keeps every consumer agreeing on which one it is.
+local function middleCell(grid)
+    local sumX, sumY = 0, 0
+    for _, entry in ipairs(grid) do
+        sumX, sumY = sumX + entry.gridX, sumY + entry.gridY
+    end
+    local meanX, meanY = sumX / #grid, sumY / #grid
+
+    local best, bestDistance = grid[1], nil
+    for _, entry in ipairs(grid) do
+        local dx, dy = entry.gridX - meanX, entry.gridY - meanY
+        local distance = dx * dx + dy * dy
+        if not bestDistance or distance < bestDistance then
+            best, bestDistance = entry, distance
+        end
+    end
+    return best
+end
+
 --- Where every settlement stands, for whatever is drawing a map.
 --
 -- Walks settlements rather than the whole territory table so the frontier
 -- -- which is most of the map and changes hands constantly -- stays out
--- of the payload. A caller wanting that too should ask for it separately
--- rather than have this grow into a full world dump.
+-- of the payload. A caller wanting that too asks for it with
+-- REQUEST_TERRITORY rather than having this grow into a full world dump.
 local function onRequestMap()
     local rows = {}
+    local places = {}
 
     for _, settlementId in ipairs(registry.settlementIds) do
         local settlement = registry.settlements[settlementId]
+        local mine = {}
         for _, territoryId in ipairs(settlement.territoryIds) do
             local territory = registry.territories[territoryId]
             local gridX, gridY = cells.parse(territory.cells[1])
             if gridX then
                 local owner = state.getOwner(territoryId)
-                local faction = owner and registry.factions[owner] or nil
-                rows[#rows + 1] = {
+                local row = {
                     gridX = gridX,
                     gridY = gridY,
                     settlement = settlement.displayName,
+                    settlementId = settlementId,
                     owner = owner,
-                    ownerName = faction and faction.displayName or nil,
+                    ownerName = displayNameOf(owner),
                 }
+                rows[#rows + 1] = row
+                mine[#mine + 1] = row
             end
+        end
+
+        -- A settlement whose every cell is interior has no footprint to
+        -- put a mark in, and is left out rather than placed at nowhere.
+        if #mine > 0 then
+            local centre = middleCell(mine)
+            places[#places + 1] = {
+                id = settlementId,
+                name = settlement.displayName,
+                tier = settlement.tier,
+                gridX = centre.gridX,
+                gridY = centre.gridY,
+                owner = centre.owner,
+                ownerName = centre.ownerName,
+            }
         end
     end
 
     events.emit(events.MAP, {
         day = state.get().lastResolvedDay,
         cells = rows,
+        settlements = places,
+    })
+end
+
+--- Who controls every cell in the world, frontier included.
+--
+-- Grouped by faction and flattened to bare coordinates. See the event's
+-- comment for why: this is the whole generated map, and at one table per
+-- cell it would be thousands of them crossing the global/player boundary
+-- on every request.
+local function onRequestTerritory()
+    local byFaction = {}
+    local order = {}
+
+    local function add(territoryId)
+        local owner = state.getOwner(territoryId)
+        if not owner then
+            return
+        end
+        local bucket = byFaction[owner]
+        if not bucket then
+            bucket = {
+                faction = owner,
+                factionName = displayNameOf(owner),
+                cells = {},
+            }
+            byFaction[owner] = bucket
+            order[#order + 1] = bucket
+        end
+        for _, cellName in ipairs(registry.territories[territoryId].cells) do
+            local gridX, gridY = cells.parse(cellName)
+            if gridX then
+                local flat = bucket.cells
+                flat[#flat + 1] = gridX
+                flat[#flat + 1] = gridY
+            end
+        end
+    end
+
+    for _, territoryId in ipairs(registry.settlementCellIds) do
+        add(territoryId)
+    end
+    for _, territoryId in ipairs(registry.frontierIds) do
+        add(territoryId)
+    end
+
+    events.emit(events.TERRITORY, {
+        day = state.get().lastResolvedDay,
+        owners = order,
     })
 end
 
@@ -301,6 +400,7 @@ return {
         [events.AWARD_POWER] = onAwardPower,
         [events.REQUEST_SNAPSHOT] = onRequestSnapshot,
         [events.REQUEST_MAP] = onRequestMap,
+        [events.REQUEST_TERRITORY] = onRequestTerritory,
         [events.PAY_TRIBUTE] = onPayTribute,
     },
 }
