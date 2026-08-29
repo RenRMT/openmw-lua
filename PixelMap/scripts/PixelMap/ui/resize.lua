@@ -91,7 +91,7 @@ function M.classify(offset, size, opts)
     if right then return 'right' end
     if top then return 'top' end
     if bottom then return 'bottom' end
-    if offset.y < g + opts.title then return 'move' end
+    if offset.y < g + opts.move then return 'move' end
     return opts.fallback
 end
 

@@ -16,7 +16,6 @@ local profile = require('scripts.PixelMap.core.profile')
 local terrain = require('scripts.PixelMap.core.terrain')
 local tooltip = require('scripts.PixelMap.core.tooltip')
 local view = require('scripts.PixelMap.core.view')
-local scroll = require('scripts.PixelMap.ui.scroll')
 local uiResize = require('scripts.PixelMap.ui.resize')
 local widgets = require('scripts.PixelMap.ui.widgets')
 
@@ -40,14 +39,11 @@ local canvasContainer = nil
 local playerElement = nil
 local statusText = nil
 local toggleBoxes = {}
--- The layer toggles scroll sideways when there are more of them than fit.
--- The slot is held so a resize can refill it at the new width.
+-- The layer toggles wrap onto as many rows as the width needs. The slot is held
+-- so a resize can refill it, and the width it was filled at so one that has not
+-- changed does nothing.
 local toggleSlot = nil
-local toggleStrip = nil
-local toggleBar = nil
-local toggleOffset = 0
-local toggleContent = 0
-local toggleView = 0
+local toggleSlotWidth = nil
 -- What the canvas content was assembled for. When the set of layers or
 -- their draw order changes the container has to be reassembled; when only
 -- their contents change, it does not.
@@ -55,7 +51,7 @@ local canvasStructure = nil
 
 -- The map pan in progress. The chrome's own drags live in their widgets.
 local drag = nil
--- The window rect recorded when a title-bar or resize-strip drag began, so the
+-- The window rect recorded when a move- or resize-strip drag began, so the
 -- gesture resolves from its anchor rather than from the previous event.
 local windowStart = nil
 -- Canvas size when the layers were last redrawn during a resize, so a slow drag
@@ -67,9 +63,8 @@ local dragHandled = false
 
 local refresh
 local hide
-local scrollToggles
 local rebuildToggles
-local toggleThumb
+local toggleRowCount
 
 --------------------------------------------------------------------------
 -- Small widgets
@@ -98,10 +93,13 @@ local function flex(horizontal, content)
 end
 
 
+-- The margin covers one row of toggles; every row they wrap onto beyond the
+-- first comes out of the map rather than off the bottom of the window.
 local function canvasSizeFor(windowSize)
-    return util.vector2(
-        math.max(config.CANVAS_MIN_WIDTH, windowSize.x - config.WINDOW_MARGIN_X),
-        math.max(config.CANVAS_MIN_HEIGHT, windowSize.y - config.WINDOW_MARGIN_Y))
+    local width = math.max(config.CANVAS_MIN_WIDTH, windowSize.x - config.WINDOW_MARGIN_X)
+    local extraRows = math.max(0, toggleRowCount(width) - 1)
+    return util.vector2(width, math.max(config.CANVAS_MIN_HEIGHT,
+        windowSize.y - config.WINDOW_MARGIN_Y - extraRows * config.TOGGLE_HEIGHT))
 end
 
 -- Window sized to screen fraction (same ratio on 4K and 1080p).
@@ -165,8 +163,7 @@ local function applyWindowRect(position, size, redrawLayers)
     if canvasContainer then
         canvasContainer.props.size = canvasSize
     end
-    -- The toggle row spans the canvas, so its viewport and scrollbar are built
-    -- for a width that the resize has just invalidated.
+    -- The toggles wrap to the canvas width, which the resize has just changed.
     rebuildToggles(canvasSize.x)
 
     if redrawLayers then
@@ -178,14 +175,13 @@ end
 
 --------------------------------------------------------------------------
 
--- Every draggable part of the chrome -- the title bar, the eight resize strips,
--- the toggle scrollbar's thumb -- owns its own press/move/release through
--- widgets.draggable, and resolves from the rect recorded at press so a repeated
--- event lands in the same place. Only the map pan is left on the root, because
--- the canvas is a single widget and the gesture has to be told apart from the
--- click that recentres.
+-- Every draggable part of the chrome -- the top move band and the eight resize
+-- strips -- owns its own press/move/release through widgets.draggable, and
+-- resolves from the rect recorded at press so a repeated event lands in the same
+-- place. Only the map pan is left on the root, because the canvas is a single
+-- widget and the gesture has to be told apart from the click that recentres.
 
--- Move the window. The title bar hands over the total delta since its press.
+-- Move the window. The strip hands over the total delta since its press.
 local function moveWindow(delta)
     if not (windowElement and windowStart) then
         return
@@ -224,7 +220,13 @@ local frameHandlers = {
                         w = props.size.x, h = props.size.y }
         resizeDrawnAt = view.canvasSize
     end,
-    onMove = resizeWindow,
+    onMove = function(grab, delta)
+        if grab == 'move' then
+            moveWindow(delta)
+        else
+            resizeWindow(grab, delta)
+        end
+    end,
     onEnd = function()
         windowStart = nil
         -- Whatever the redraw throttle skipped on the way.
@@ -525,23 +527,54 @@ end
 
 local toggleLayer
 
--- Rough width of one toggle, for deciding whether the row overflows. The engine
--- reports no measured size back to Lua, so the strip's extent has to be
--- estimated; over-estimating only shows a scrollbar a little early.
+-- Rough width of one toggle, for deciding where a row breaks. The engine reports
+-- no measured size back to Lua, so the extent has to be estimated;
+-- over-estimating only wraps a toggle a little early.
 local function toggleWidth(layer)
     return config.TOGGLE_BOX + 5 + #layer.name * 8 + config.TOGGLE_GAP
 end
 
-toggleThumb = function()
-    local track = toggleView - 2 * config.SCROLL_ARROW
-    return scroll.thumb(toggleContent, toggleView, track, toggleOffset, config.TOGGLE_GAP)
+-- Walk the toggles, calling `onRow` at every break. Shared so the row count the
+-- canvas is sized from and the rows that are built cannot disagree.
+local function wrapToggles(width, onLayer, onRow)
+    local used = 0
+    for _, layer in ipairs(layers.list()) do
+        local span = toggleWidth(layer)
+        if used > 0 and used + span > width then
+            onRow()
+            used = 0
+        end
+        used = used + span
+        if onLayer then
+            onLayer(layer)
+        end
+    end
+    return used
 end
 
-local function buildToggleStrip()
+toggleRowCount = function(width)
+    local rows = 1
+    local used = wrapToggles(width, nil, function() rows = rows + 1 end)
+    return used > 0 and rows or math.max(1, rows - 1)
+end
+
+-- Returned as the contents of `toggleSlot`, which the window keeps a reference
+-- to so a resize can refill it at the new width rather than rebuild the window.
+local function toggleRowContent(width)
     toggleBoxes = {}
+    local rows = {}
     local row = {}
-    toggleContent = 0
-    for _, layer in ipairs(layers.list()) do
+
+    local function flush()
+        rows[#rows + 1] = {
+            type = ui.TYPE.Flex,
+            props = { horizontal = true, arrange = ui.ALIGNMENT.Center },
+            content = ui.content(row),
+        }
+        row = {}
+    end
+
+    wrapToggles(width, function(layer)
         local key = layer.key
         local box = widgets.checkbox {
             checked = layer.enabled,
@@ -552,73 +585,19 @@ local function buildToggleStrip()
         toggleBoxes[key] = box
         row[#row + 1] = box
         row[#row + 1] = { props = { size = util.vector2(config.TOGGLE_GAP, 0) } }
-        toggleContent = toggleContent + toggleWidth(layer)
-    end
-    return row
-end
+    end, flush)
 
--- Viewport clipping an inner flex, plus a scrollbar that appears only when the
--- toggles outrun the window. The bar carries no drag handler: a child widget
--- gets neither mousePress nor mouseMove, so the root gesture handler drives it.
---
--- Returned as the contents of `toggleSlot`, which the window keeps a reference
--- to so a resize can refill it at the new width rather than rebuild the window.
-local function toggleRowContent(width)
-    toggleView = width
-    local strip = buildToggleStrip()
-    if #strip == 0 then
+    if #row > 0 then
+        flush()
+    end
+    if #rows == 0 then
         return { text(l10n('noLayers')) }
     end
-
-    toggleOffset = scroll.clamp(toggleOffset, toggleContent, toggleView)
-    toggleStrip = {
-        type = ui.TYPE.Flex,
-        props = { horizontal = true, arrange = ui.ALIGNMENT.Center,
-                  position = util.vector2(-toggleOffset, 0) },
-        content = ui.content(strip),
-    }
-
-    local viewport = {
-        type = ui.TYPE.Widget,
-        props = { size = util.vector2(width, config.TOGGLE_HEIGHT) },
-        content = ui.content { toggleStrip },
-    }
-
-    -- A hidden widget still occupies its place in a flex, so the bar is left out
-    -- entirely rather than hidden when everything fits.
-    local thumb = toggleThumb()
-    if not thumb.visible then
-        toggleBar = nil
-        toggleOffset = 0
-        toggleStrip.props.position = util.vector2(0, 0)
-        return { viewport }
-    end
-
-    -- The thumb reports how far it has been pulled along the bar; the content
-    -- moves further than that, by however much it overflows. Anchored on the
-    -- offset at press, so a repeated event lands in the same place.
-    local dragFrom = toggleOffset
-    toggleBar = widgets.scrollbar {
-        name = 'togglebar',
-        horizontal = true,
-        thickness = config.SCROLL_THICKNESS,
-        length = width,
-        arrow = config.SCROLL_ARROW,
-        thumb = thumb,
-        onStepBack = function() scrollToggles(-config.SCROLL_STEP) end,
-        onStepOn = function() scrollToggles(config.SCROLL_STEP) end,
-        onDragStart = function() dragFrom = toggleOffset end,
-        onDrag = function(distance)
-            local track = toggleView - 2 * config.SCROLL_ARROW
-            local target = dragFrom + distance * scroll.dragScale(toggleContent, toggleView, track)
-            scrollToggles(target - toggleOffset)
-        end,
-    }
-
-    return { viewport, toggleBar }
+    return rows
 end
 
 local function buildToggleRow(width)
+    toggleSlotWidth = width
     toggleSlot = {
         type = ui.TYPE.Flex,
         props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
@@ -633,22 +612,11 @@ end
 -- `force` is for the latter: a resize fires every frame the cursor moves and the
 -- width usually has not changed, so by default an unchanged width does nothing.
 rebuildToggles = function(width, force)
-    if not toggleSlot or (not force and width == toggleView) then
+    if not toggleSlot or (not force and width == toggleSlotWidth) then
         return
     end
+    toggleSlotWidth = width
     toggleSlot.content = ui.content(toggleRowContent(width))
-end
-
--- Shift the toggle strip and move its thumb, without rebuilding either.
-scrollToggles = function(delta)
-    if not (windowElement and toggleStrip and toggleBar) then
-        return
-    end
-    toggleOffset = scroll.clamp(toggleOffset + delta, toggleContent, toggleView)
-    toggleStrip.props.position = util.vector2(-toggleOffset, 0)
-    widgets.thumbAt(toggleBar, toggleThumb(), config.SCROLL_ARROW,
-                    config.SCROLL_THICKNESS, true)
-    windowElement:update()
 end
 
 local function statusFor()
@@ -705,8 +673,12 @@ local function redrawLayers()
     if windowElement and canvasContainer and structureOf() ~= canvasStructure then
         canvasContainer.content = buildCanvasContent()
         -- A layer that has just appeared or gone needs its toggle added or
-        -- removed, which the width alone would not tell us.
-        rebuildToggles(view.canvasSize.x, true)
+        -- removed, and may push the row count -- and so the map's height -- over
+        -- or under a wrap. Neither follows from the width alone.
+        local canvasSize = canvasSizeFor(windowElement.layout.props.size)
+        view.setCanvasSize(canvasSize)
+        canvasContainer.props.size = canvasSize
+        rebuildToggles(canvasSize.x, true)
     end
     for _, layer in ipairs(layers.list()) do
         if layer.enabled then
@@ -747,23 +719,10 @@ local function body()
         props = { relativeSize = util.vector2(1, 1) },
         content = ui.content {
             flex(false, {
-                widgets.titleBar(l10n('windowTitle'), {
-                    name = 'titlebar',
-                    height = config.FRAME_TITLE_HEIGHT,
-                    onStart = function()
-                        if windowElement then
-                            local props = windowElement.layout.props
-                            windowStart = { x = props.position.x, y = props.position.y,
-                                            w = props.size.x, h = props.size.y }
-                        end
-                    end,
-                    onMove = moveWindow,
-                    onDone = function()
-                        windowStart = nil
-                        saveGeometry()
-                    end,
-                }),
-                { template = I.MWUI.templates.horizontalLine },
+                -- Empty band where a title bar would be. The frame's invisible
+                -- 'move' strip sits over it, so the window still drags from the
+                -- top without anything being drawn there.
+                { props = { size = util.vector2(0, config.FRAME_MOVE_HEIGHT) } },
                 buildToggleRow(view.canvasSize.x),
                 { template = I.MWUI.templates.interval },
                 canvasContainer,
@@ -852,9 +811,7 @@ local function destroy()
     statusText = nil
     toggleBoxes = {}
     toggleSlot = nil
-    toggleStrip = nil
-    toggleBar = nil
-    toggleOffset = 0
+    toggleSlotWidth = nil
 
     if windowElement then
         windowElement:destroy()

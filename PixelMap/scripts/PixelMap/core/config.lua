@@ -17,24 +17,19 @@ return {
     CANVAS_MIN_WIDTH = 480,
     CANVAS_MIN_HEIGHT = 360,
     WINDOW_MARGIN_X = 40,
-    -- Title, toggle row, button row and the gaps between. The toggle scrollbar's
-    -- height is reserved whether or not it is showing, so the canvas does not
-    -- change size as layers come and go.
-    WINDOW_MARGIN_Y = 128,
+    -- Move band, one toggle row, button row and the gaps between. Each extra
+    -- row the toggles wrap onto costs the canvas another TOGGLE_HEIGHT.
+    WINDOW_MARGIN_Y = 98,
     WINDOW_MIN_WIDTH = 420,
     WINDOW_MIN_HEIGHT = 320,
 
     -- Invisible grab strips; window is hand-rolled (ui.TYPE.Window cannot be resized).
     FRAME_GRAB = 8,
-    FRAME_TITLE_HEIGHT = 24,
+    -- Empty band at the top of the window that drags it. Nothing is drawn there:
+    -- a caption tells you nothing a map does not already show.
+    FRAME_MOVE_HEIGHT = 12,
 
-    -- Scrollbar geometry. ARROW is thickness + the gap either side of the
-    -- groove, which makes each arrow box square.
-    SCROLL_THICKNESS = 16,
-    SCROLL_ARROW = 19,
-    SCROLL_STEP = 60,
-
-    -- Layer toggles: one row, scrolled sideways when the layers outrun it.
+    -- Layer toggles: wrapped onto as many rows as the width needs.
     TOGGLE_HEIGHT = 24,
     TOGGLE_BOX = 14,
     TOGGLE_GAP = 10,
