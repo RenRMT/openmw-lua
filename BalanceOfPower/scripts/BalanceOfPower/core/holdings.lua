@@ -97,11 +97,6 @@ function M.seatProfile(factionId)
     return seatProfiles[factionId] or EMPTY_PROFILE
 end
 
---- The mean seat score across land-holding factions.
-function M.meanSeatScore()
-    ensure()
-    return meanScore
-end
 
 --- Starting power for a faction, from its holdings.
 --

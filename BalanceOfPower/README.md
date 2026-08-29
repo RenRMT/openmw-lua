@@ -97,9 +97,9 @@ The interface is global-context only, so player scripts have events to reach it
 instead: `BoP_AwardPower` to move a faction's standing, `BoP_RequestSnapshot`
 answered with everything a UI needs to draw the world, `BoP_RequestMap`
 answered with the settlements and `BoP_RequestTerritory` answered with who
-controls every cell, and `BoP_PayTribute` answered with `BoP_TributePaid`. The tribute window is built on exactly those
-and nothing else, so it doubles as a worked example of what an extension can
-do from player context.
+controls every cell, and `BoP_PayTribute` answered with `BoP_TributePaid`.
+The tribute window is built on exactly those and nothing else, so it doubles
+as a worked example of what an extension can do from player context.
 
 Never `require` a module under `core/` directly. The merged VFS allows it and
 the internals change without notice.

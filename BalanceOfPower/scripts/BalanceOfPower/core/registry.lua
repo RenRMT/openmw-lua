@@ -300,7 +300,7 @@ end
 -- Lazy rather than eager because records can only be read once content
 -- files have loaded, and it has to happen before any settlement binds to
 -- a faction. The first registerLandmass triggers it.
-function M.ensureFactions()
+local function ensureFactions()
     if M.factionsFromRecords then
         return 0
     end
@@ -332,7 +332,7 @@ end
 -- record for are admitted, so this cannot conjure a faction from a typo.
 -- @param ids list of faction ids named by settlements
 -- @return number newly registered
-function M.ensureFactionsHolding(ids)
+local function ensureFactionsHolding(ids)
     readRecords()
     local added = 0
     for _, factionId in ipairs(ids) do
@@ -592,7 +592,7 @@ end
 --- Recompute which factions hold ground. Called after every registration,
 -- because a later pack's settlements can make a power-only faction
 -- territorial.
-function M.deriveTerritorial()
+local function deriveTerritorial()
     for _, faction in pairs(M.factions) do
         faction.territorial = #faction.seats > 0
     end
@@ -610,7 +610,7 @@ function M.registerLandmass(def)
     end
 
     -- Before anything binds to a faction id.
-    M.ensureFactions()
+    ensureFactions()
 
     -- Phase one: validate everything, mutating nothing.
     local factionOps, settlements, territories = {}, {}, {}
@@ -640,7 +640,7 @@ function M.registerLandmass(def)
             holders[#holders + 1] = settlement.faction
         end
     end
-    M.ensureFactionsHolding(holders)
+    ensureFactionsHolding(holders)
 
     -- Phase two: commit. Nothing below can fail.
     local landmass = {
@@ -701,7 +701,7 @@ function M.registerLandmass(def)
 
     M.landmasses[id] = landmass
     M.generation = M.generation + 1
-    M.deriveTerritorial()
+    deriveTerritorial()
 
     local settlementCells = 0
     for _, settlement in ipairs(settlements) do

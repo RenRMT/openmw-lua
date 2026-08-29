@@ -193,11 +193,6 @@ function M.projectionFactors(territory)
     return projections[territory.id] or EMPTY
 end
 
---- Force a rebuild. Only needed if a pack mutates settlement geometry
--- after registration, which it shouldn't.
-function M.invalidateProjections()
-    projections = nil
-end
 
 --- How strong a faction is at a territory: its power scaled by how far
 -- its nearest foothold reaches there, and never less than the garrison
