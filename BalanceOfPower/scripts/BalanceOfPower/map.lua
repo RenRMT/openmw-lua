@@ -54,6 +54,10 @@ local haveData = false
 local controlByGrid = {}
 local haveControl = false
 
+-- The world moved while the map was shut, so what is held here is a day or
+-- more out of date. Cleared by the next request.
+local stale = false
+
 --------------------------------------------------------------------------
 -- Colour
 --------------------------------------------------------------------------
@@ -140,6 +144,11 @@ local function onMap(data)
             owner = row.owner,
             ownerName = row.ownerName,
             color = colorFor(row.owner),
+            -- Built here, not in blockAt: the outline asks every member cell
+            -- for its group five times over -- itself and its four
+            -- neighbours -- on every redraw, and a pan redraws several times
+            -- a second. This changes only when a BoP_Map lands.
+            block = row.settlementId .. '/' .. tostring(row.owner),
         }
     end
 
@@ -180,8 +189,23 @@ local function onTerritory(data)
 end
 
 local function requestMap()
+    stale = false
     core.sendGlobalEvent(eventnames.REQUEST_MAP, {})
     core.sendGlobalEvent(eventnames.REQUEST_TERRITORY, {})
+end
+
+--- Ask again if the world moved while the map was shut.
+--
+-- Called from the layers rather than from an open hook, because a draw is
+-- the first thing that happens when the window opens and there is no other
+-- signal. The answer arrives a moment later and redraws, so an
+-- already-open map shows one frame of yesterday's frontier -- a far better
+-- trade than rebuilding and serializing every owned cell in the world once
+-- an in-game day for nobody.
+local function refreshIfStale()
+    if stale then
+        requestMap()
+    end
 end
 
 --------------------------------------------------------------------------
@@ -210,10 +234,7 @@ end
 -- all the grouping it needs.
 local function blockAt(gridX, gridY)
     local entry = at(byGrid, gridX, gridY)
-    if not entry then
-        return nil
-    end
-    return entry.settlementId .. '/' .. tostring(entry.owner)
+    return entry and entry.block or nil
 end
 
 --- The tier mark in a settlement's middle cell.
@@ -244,6 +265,8 @@ end
 -- where a place is without hiding the ground it stands on -- and its
 -- tooltip covers the cell whole, interior included.
 local function drawSettlements(view)
+    refreshIfStale()
+
     local out = I.PixelMap.outline {
         group = blockAt,
         color = function(_, gridX, gridY)
@@ -272,6 +295,8 @@ end
 -- Pixel Map merges runs of one colour along each row, so a faction holding
 -- a contiguous province costs a handful of quads rather than one per cell.
 local function drawControl()
+    refreshIfStale()
+
     return I.PixelMap.cells {
         at = function(gridX, gridY)
             return at(controlByGrid, gridX, gridY), config.MAP_CONTROL_ALPHA
@@ -324,7 +349,14 @@ end
 -- one event worth relisting on -- redrawing off TERRITORY_FLIPPED would
 -- mean a request per flip, and a season's frontier churn is hundreds.
 local function onDayResolved()
-    requestMap()
+    -- Only worth asking for if somebody is looking. Otherwise this is the
+    -- whole world's ownership rebuilt, serialized across the global/player
+    -- boundary and thrown away, every simulated day.
+    if I.PixelMap and I.PixelMap.isOpen() then
+        requestMap()
+    else
+        stale = true
+    end
 end
 
 return {
