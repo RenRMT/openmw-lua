@@ -5,7 +5,6 @@ local core = require('openmw.core')
 local util = require('openmw.util')
 
 local config = require('scripts.PixelMap.core.config')
-local profile = require('scripts.PixelMap.core.profile')
 
 local M = {}
 
@@ -92,10 +91,6 @@ end
 local theme = THEMES[config.TERRAIN_THEME] and config.TERRAIN_THEME or next(THEMES)
 local style = THEMES[theme].palettes[config.TERRAIN_STYLE] and config.TERRAIN_STYLE or 'relief'
 
-function M.theme()
-    return theme
-end
-
 -- Switch themes (cache holds bands, not colours).
 function M.setTheme(newTheme)
     if THEMES[newTheme] then
@@ -107,10 +102,6 @@ end
 -- Off-map backdrop: the deepest water of the live theme.
 function M.voidColor()
     return THEMES[theme].void
-end
-
-function M.style()
-    return style
 end
 
 -- Switch styles (cache holds bands, not colours).
@@ -130,11 +121,6 @@ function M.mergeKey(band)
         return nil
     end
     return THEMES[theme].mergeKeys[style][band]
-end
-
--- Waterline is band boundary (two ranges banded separately, not blended across span).
-function M.isLand(band)
-    return band ~= nil and band >= WATER_BANDS
 end
 
 local function bandFor(height)
@@ -176,7 +162,7 @@ local function rotateIfFull()
 end
 
 -- Sample spacing: snapped to CELL_SIZE / 2^n so cache survives zoom. Negative n for continent zoom.
-function M.stepFor(view)
+local function stepFor(view)
     local width = view.canvasSize.x / view.zoom
     local height = view.canvasSize.y / view.zoom
     local target = math.max(width, height) / config.TERRAIN_SAMPLES
@@ -195,15 +181,26 @@ function M.stepFor(view)
     return config.CELL_SIZE / (2 ^ subdiv)
 end
 
+-- Engine queries since the last context(). A bare counter rather than a
+-- profiler call, because this is incremented once per cache miss in the
+-- sampling loop and the loop runs thousands of times per redraw; the layer
+-- reports the total once, afterwards.
+local queries = 0
+
+function M.queryCount()
+    return queries
+end
+
 -- Worked out once per redraw (interior returns nil).
 function M.context(view)
     if not view.cell then
         return nil
     end
     rotateIfFull()
+    queries = 0
 
     local minX, minY, maxX, maxY = view.bounds()
-    local step = M.stepFor(view)
+    local step = stepFor(view)
     local worldSpaceId = view.worldSpaceId or 'default'
     local oldByWs = previous[worldSpaceId]
     return {
@@ -238,7 +235,7 @@ function M.bandAt(ctx, x, y)
         return promoted or nil
     end
 
-    profile.count('queries', 1)
+    queries = queries + 1
     local ok, h = pcall(core.land.getHeightAt,
         util.vector3(x + ctx.step * 0.5, y + ctx.step * 0.5, 0), ctx.cell)
     local value = (ok and type(h) == 'number') and bandFor(h) or false
@@ -250,10 +247,6 @@ end
 
 function M.originX(view)
     return view.canvasSize.x * 0.5 - view.center.x * view.zoom
-end
-
-function M.originY(view)
-    return view.canvasSize.y * 0.5 + view.center.y * view.zoom
 end
 
 return M

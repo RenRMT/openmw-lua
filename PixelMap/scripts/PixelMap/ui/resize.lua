@@ -5,7 +5,7 @@
 local M = {}
 
 -- Which edges a grab pulls. `move` pulls none and translates instead.
-M.GRABS = {
+local GRABS = {
     move        = {},
     left        = { x = -1 },
     right       = { x = 1 },
@@ -33,13 +33,13 @@ end
 -- the same movement arriving twice lands in the same place. A leading edge moves
 -- the origin and shrinks the size together; a trailing edge only resizes.
 --
--- @param grab  a key of M.GRABS
+-- @param grab  a key of GRABS
 -- @param start { x, y, w, h } at press
 -- @param delta { x, y } cursor movement since press
 -- @param opts  { minW, minH, screenW, screenH }
 -- @return { x, y, w, h }
 function M.apply(grab, start, delta, opts)
-    local pull = M.GRABS[grab]
+    local pull = GRABS[grab]
     if not pull then
         return { x = start.x, y = start.y, w = start.w, h = start.h }
     end

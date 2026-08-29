@@ -13,10 +13,11 @@ local draw = require('scripts.PixelMap.core.draw')
 local frame = require('scripts.PixelMap.core.frame')
 local layers = require('scripts.PixelMap.core.layers')
 local profile = require('scripts.PixelMap.core.profile')
-local terrain = require('scripts.PixelMap.core.terrain')
+local render = require('scripts.PixelMap.core.render')
 local tooltip = require('scripts.PixelMap.core.tooltip')
 local view = require('scripts.PixelMap.core.view')
 local uiResize = require('scripts.PixelMap.ui.resize')
+local toggles = require('scripts.PixelMap.ui.toggles')
 local widgets = require('scripts.PixelMap.ui.widgets')
 
 local storage = require('openmw.storage')
@@ -28,26 +29,14 @@ local geometry = storage.playerSection('PixelMap/Window')
 local l10n = core.l10n(config.L10N_CONTEXT, 'en')
 
 local windowElement = nil
--- One Element per layer, kept across redraws so that a redraw replaces
--- that layer's contents and touches nothing else.
-local layerElements = {}
 -- Layout tables held by reference so chrome can be changed in place
 -- rather than rebuilt.
 local canvasContainer = nil
--- The player's own marker. Not a registered layer: it has no business in
--- the toggle row, and a map that can hide where you are is not a feature.
-local playerElement = nil
 local statusText = nil
-local toggleBoxes = {}
--- The layer toggles wrap onto as many rows as the width needs. The slot is held
--- so a resize can refill it, and the width it was filled at so one that has not
--- changed does nothing.
-local toggleSlot = nil
-local toggleSlotWidth = nil
--- What the canvas content was assembled for. When the set of layers or
--- their draw order changes the container has to be reassembled; when only
--- their contents change, it does not.
-local canvasStructure = nil
+-- The layer revision the canvas content was assembled at. When the set of
+-- layers or their draw order changes the container has to be reassembled;
+-- when only their contents change, it does not.
+local canvasRevision = nil
 
 -- The map pan in progress. The chrome's own drags live in their widgets.
 local drag = nil
@@ -63,8 +52,20 @@ local dragHandled = false
 
 local refresh
 local hide
-local rebuildToggles
-local toggleRowCount
+local toggleLayer
+
+-- The toggle row's own arguments, the same at every call site.
+local function onToggle(key)
+    toggleLayer(key)
+end
+
+local function noLayersText()
+    return l10n('noLayers')
+end
+
+local function rebuildToggles(width, force)
+    toggles.rebuild(width, onToggle, noLayersText(), force)
+end
 
 --------------------------------------------------------------------------
 -- Small widgets
@@ -97,7 +98,7 @@ end
 -- first comes out of the map rather than off the bottom of the window.
 local function canvasSizeFor(windowSize)
     local width = math.max(config.CANVAS_MIN_WIDTH, windowSize.x - config.WINDOW_MARGIN_X)
-    local extraRows = math.max(0, toggleRowCount(width) - 1)
+    local extraRows = math.max(0, toggles.rowCount(width) - 1)
     return util.vector2(width, math.max(config.CANVAS_MIN_HEIGHT,
         windowSize.y - config.WINDOW_MARGIN_Y - extraRows * config.TOGGLE_HEIGHT))
 end
@@ -357,274 +358,10 @@ local function catcher()
     }
 end
 
---- The player's own marker, in an element of its own so a pan can move it
--- without rebuilding the canvas.
---
--- The element is sized to the marker rather than to the canvas. A
--- full-canvas widget on top of the stack is a sheet over the whole map,
--- and a widget that needs mouse focus takes every click and hover with
--- it -- including the ones meant for the layers and the pan-catcher
--- underneath. Sized to the marker it covers a few dozen pixels, and only
--- the pixels it actually draws on.
-local function drawPlayer()
-    if not playerElement then
-        return
-    end
-
-    local marker = view.cell and draw.marker {
-        position = self.position,
-        size = config.PLAYER_MARKER_SIZE,
-        outline = config.PLAYER_MARKER_OUTLINE,
-        color = config.COLOR_PLAYER,
-    } or nil
-
-    if marker then
-        -- Take the marker's own geometry onto the wrapper, and its
-        -- visuals inside at the origin.
-        playerElement.layout.props.position = marker.props.position
-        playerElement.layout.props.size = marker.props.size
-        playerElement.layout.content = marker.content
-    else
-        playerElement.layout.props.position = util.vector2(0, 0)
-        playerElement.layout.props.size = util.vector2(0, 0)
-        playerElement.layout.content = ui.content {}
-    end
-    playerElement:update()
-end
-
-local function elementFor(layer)
-    local element = layerElements[layer.key]
-    if not element then
-        -- No `layer` field: this Element is not attached to a UI layer of
-        -- its own, it is placed inside the window's content.
-        element = ui.create {
-            type = ui.TYPE.Widget,
-            props = {
-                relativeSize = util.vector2(1, 1),
-                alpha = layer.alpha,
-                inheritAlpha = layer.alpha and true or nil,
-            },
-            content = ui.content {},
-        }
-        layerElements[layer.key] = element
-    end
-    return element
-end
-
-local function drawLayer(layer)
-    local element = elementFor(layer)
-
-    local started = profile.now()
-    local ok, drawn = pcall(layer.draw, view)
-    profile.add(layer.key .. '.draw', started)
-
-    if not ok then
-        -- A broken third-party layer takes itself off the map, not the
-        -- map off the screen.
-        print('PixelMap: layer "' .. layer.key .. '" failed to draw: ' .. tostring(drawn))
-        layer.enabled = false
-        drawn = {}
-    end
-
-    -- A layer is allowed to be expensive, but silently expensive is what a
-    -- player experiences as the map having become slow for no reason.
-    if type(drawn) == 'table' and #drawn > config.LAYER_WIDGET_WARN then
-        print(string.format('PixelMap: layer "%s" returned %d layouts; consider culling '
-            .. 'to view.cellBounds() or drawing through PixelMap.cells',
-            layer.key, #drawn))
-    end
-
-    local applied = profile.now()
-    element.layout.props.visible = true
-    element.layout.props.alpha = layer.alpha
-    element.layout.props.inheritAlpha = layer.alpha and true or nil
-    element.layout.content = ui.content(type(drawn) == 'table' and drawn or {})
-    element:update()
-    profile.add(layer.key .. '.ui', applied)
-end
-
---- Empty a layer without destroying its Element.
---
--- Both the content and the visible flag are cleared: `visible` alone is
--- enough if the prop behaves as its name says, and emptying the content
--- is enough if it does not.
-local function clearLayer(key)
-    local element = layerElements[key]
-    if not element then
-        return
-    end
-    element.layout.props.visible = false
-    element.layout.content = ui.content {}
-    element:update()
-end
-
-local function structureOf()
-    local parts = {}
-    for _, layer in ipairs(layers.list()) do
-        parts[#parts + 1] = layer.key .. (layer.interactive and '!' or '')
-    end
-    return table.concat(parts, ',')
-end
-
--- Assemble canvas: background, static layers, click-catcher, interactive layers.
+-- Assembled by render, which owns the layer Elements; the catcher is ours
+-- because what a press on the empty map means is the window's business.
 local function buildCanvasContent()
-    local content = {
-        -- Sized by ratio (fills canvas during resize while layers use old size).
-        {
-            type = ui.TYPE.Image,
-            props = {
-                resource = draw.whiteTexture,
-                color = terrain.voidColor(),
-                relativeSize = util.vector2(1, 1),
-            },
-        },
-    }
-
-    local above = {}
-    local live = {}
-    for _, layer in ipairs(layers.list()) do
-        live[layer.key] = true
-        local element = elementFor(layer)
-        if layer.interactive then
-            above[#above + 1] = element
-        else
-            content[#content + 1] = element
-        end
-    end
-
-    -- A layer that has unregistered still owns an Element. Nothing else
-    -- will ever reference it again, so this is where it goes.
-    for key, element in pairs(layerElements) do
-        if not live[key] then
-            element:destroy()
-            layerElements[key] = nil
-        end
-    end
-    content[#content + 1] = catcher()
-    for _, element in ipairs(above) do
-        content[#content + 1] = element
-    end
-
-    -- Rebuilt every time rather than cached like the layer elements, and
-    -- appended last, so the player is above whatever is registered on the
-    -- map. A cached one is created the first time the canvas is built,
-    -- which puts every layer registering after that -- anything wired up
-    -- on PixelMapReady -- newer than the marker, and a mod's opaque
-    -- ownership fills then paint over the one thing that must stay
-    -- visible.
-    if playerElement then
-        playerElement:destroy()
-    end
-    playerElement = ui.create {
-        type = ui.TYPE.Widget,
-        -- Geometry is written by drawPlayer, which sizes this to the
-        -- marker. Starts at zero rather than filling the canvas: see
-        -- there for why a full-size one is a problem.
-        props = {
-            position = util.vector2(0, 0),
-            size = util.vector2(0, 0),
-        },
-        content = ui.content {},
-    }
-    content[#content + 1] = playerElement
-
-    canvasStructure = structureOf()
-    return ui.content(content)
-end
-
-
-local toggleLayer
-
--- Rough width of one toggle, for deciding where a row breaks. The engine reports
--- no measured size back to Lua, so the extent has to be estimated;
--- over-estimating only wraps a toggle a little early.
-local function toggleWidth(layer)
-    return config.TOGGLE_BOX + 5 + #layer.name * 8 + config.TOGGLE_GAP
-end
-
--- Walk the toggles, calling `onRow` at every break. Shared so the row count the
--- canvas is sized from and the rows that are built cannot disagree.
-local function wrapToggles(width, onLayer, onRow)
-    local used = 0
-    for _, layer in ipairs(layers.list()) do
-        local span = toggleWidth(layer)
-        if used > 0 and used + span > width then
-            onRow()
-            used = 0
-        end
-        used = used + span
-        if onLayer then
-            onLayer(layer)
-        end
-    end
-    return used
-end
-
-toggleRowCount = function(width)
-    local rows = 1
-    local used = wrapToggles(width, nil, function() rows = rows + 1 end)
-    return used > 0 and rows or math.max(1, rows - 1)
-end
-
--- Returned as the contents of `toggleSlot`, which the window keeps a reference
--- to so a resize can refill it at the new width rather than rebuild the window.
-local function toggleRowContent(width)
-    toggleBoxes = {}
-    local rows = {}
-    local row = {}
-
-    local function flush()
-        rows[#rows + 1] = {
-            type = ui.TYPE.Flex,
-            props = { horizontal = true, arrange = ui.ALIGNMENT.Center },
-            content = ui.content(row),
-        }
-        row = {}
-    end
-
-    wrapToggles(width, function(layer)
-        local key = layer.key
-        local box = widgets.checkbox {
-            checked = layer.enabled,
-            label = layer.name,
-            size = config.TOGGLE_BOX,
-            onClick = function() toggleLayer(key) end,
-        }
-        toggleBoxes[key] = box
-        row[#row + 1] = box
-        row[#row + 1] = { props = { size = util.vector2(config.TOGGLE_GAP, 0) } }
-    end, flush)
-
-    if #row > 0 then
-        flush()
-    end
-    if #rows == 0 then
-        return { text(l10n('noLayers')) }
-    end
-    return rows
-end
-
-local function buildToggleRow(width)
-    toggleSlotWidth = width
-    toggleSlot = {
-        type = ui.TYPE.Flex,
-        props = { horizontal = false, arrange = ui.ALIGNMENT.Start },
-        content = ui.content(toggleRowContent(width)),
-    }
-    return toggleSlot
-end
-
--- Refill the slot at a new width. Called on resize, and when a layer registers
--- or unregisters and the row's contents are no longer what was built.
---
--- `force` is for the latter: a resize fires every frame the cursor moves and the
--- width usually has not changed, so by default an unchanged width does nothing.
-rebuildToggles = function(width, force)
-    if not toggleSlot or (not force and width == toggleSlotWidth) then
-        return
-    end
-    toggleSlotWidth = width
-    toggleSlot.content = ui.content(toggleRowContent(width))
+    return render.canvasContent(catcher())
 end
 
 local function statusFor()
@@ -646,12 +383,7 @@ local function updateChrome()
     if statusText then
         statusText.props.text = statusFor()
     end
-    for key, box in pairs(toggleBoxes) do
-        local layer = layers.get(key)
-        if layer then
-            widgets.setChecked(box, layer.enabled)
-        end
-    end
+    toggles.sync()
     windowElement:update()
 end
 
@@ -662,9 +394,9 @@ toggleLayer = function(key)
     layers.toggle(key)
     local layer = layers.get(key)
     if layer and layer.enabled then
-        drawLayer(layer)
+        render.drawLayer(layer)
     else
-        clearLayer(key)
+        render.clearLayer(key)
     end
     updateChrome()
 end
@@ -678,7 +410,7 @@ end
 local function redrawLayers()
     -- A layer registered since the window opened has no place in the
     -- canvas yet, and one removed still has one.
-    if windowElement and canvasContainer and structureOf() ~= canvasStructure then
+    if windowElement and canvasContainer and layers.revision() ~= canvasRevision then
         canvasContainer.content = buildCanvasContent()
         -- A layer that has just appeared or gone needs its toggle added or
         -- removed, and may push the row count -- and so the map's height -- over
@@ -688,14 +420,7 @@ local function redrawLayers()
         canvasContainer.props.size = canvasSize
         rebuildToggles(canvasSize.x, true)
     end
-    for _, layer in ipairs(layers.list()) do
-        if layer.enabled then
-            drawLayer(layer)
-        else
-            clearLayer(layer.key)
-        end
-    end
-    drawPlayer()
+    render.drawAll(self.position)
 end
 
 refresh = function()
@@ -731,7 +456,7 @@ local function body()
                 -- 'move' strip sits over it, so the window still drags from the
                 -- top without anything being drawn there.
                 { props = { size = util.vector2(0, config.FRAME_MOVE_HEIGHT) } },
-                buildToggleRow(view.canvasSize.x),
+                toggles.build(view.canvasSize.x, onToggle, l10n('noLayers')),
                 { template = I.MWUI.templates.interval },
                 canvasContainer,
                 { template = I.MWUI.templates.interval },
@@ -806,20 +531,11 @@ local function destroy()
     dragHandled = false
     windowStart = nil
 
-    for key, element in pairs(layerElements) do
-        element:destroy()
-        layerElements[key] = nil
-    end
-    if playerElement then
-        playerElement:destroy()
-        playerElement = nil
-    end
+    render.reset()
     canvasContainer = nil
-    canvasStructure = nil
+    canvasRevision = nil
     statusText = nil
-    toggleBoxes = {}
-    toggleSlot = nil
-    toggleSlotWidth = nil
+    toggles.reset()
 
     if windowElement then
         windowElement:destroy()

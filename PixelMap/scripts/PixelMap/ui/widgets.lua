@@ -20,7 +20,7 @@ local whiteTexture = ui.texture { path = 'white' }
 
 --- Look up a named child. A ui.content map raises on an unknown name rather
 -- than answering nil, so a miss has to be caught rather than tested for.
-function M.named(content, name)
+local function named(content, name)
     if not content then
         return nil
     end
@@ -56,8 +56,6 @@ local function colors()
     end
     return cached
 end
-
-M.colors = colors
 
 --------------------------------------------------------------------------
 -- Refresh hook
@@ -179,11 +177,9 @@ local function borderPieces(thickness)
     return pieces
 end
 
-M.borderPieces = borderPieces
-
 --- Wrap children in a thin border, ready for any fixed-size widget's content.
 -- The border goes on last so it draws over the children rather than under them.
-function M.framed(children, thickness)
+local function framed(children, thickness)
     local out = {}
     for _, child in ipairs(children or {}) do
         out[#out + 1] = child
@@ -229,8 +225,6 @@ local buttonFrame = {
         { external = { slot = true }, props = { position = v2(B, B), relativeSize = v2(1, 1) } },
     },
 }
-
-M.buttonFrame = buttonFrame
 
 --- A button in the engine's own frame, sized to its label.
 --
@@ -324,7 +318,7 @@ function M.checkbox(opts)
             name = 'box',
             type = ui.TYPE.Widget,
             props = { size = v2(size, size) },
-            content = M.framed(mark and { mark } or {}),
+            content = framed(mark and { mark } or {}),
         },
     }
 
@@ -349,17 +343,29 @@ function M.checkbox(opts)
 end
 
 --- Tick or untick an existing checkbox in place.
+--- Retick a checkbox in place.
+--
+-- Rebuilding the box means rebuilding its border -- eight images -- and the
+-- window calls this for every toggle on every redraw, which a pan fires
+-- several times a second. The state it is being set to is almost always the
+-- state it is already in, so the early return is what keeps a drag from
+-- churning through widgets nobody asked to change.
 function M.setChecked(node, checked)
     local spec = node and node.userData and node.userData.checkbox
     if not spec then
         return
     end
-    local box = M.named(node.content, 'box')
+    checked = checked and true or false
+    if spec.checked == checked then
+        return
+    end
+    spec.checked = checked
+    local box = named(node.content, 'box')
     if not box then
         return
     end
     local mark = checkMark({ checked = checked, image = spec.image, mark = spec.mark }, spec.size)
-    box.content = M.framed(mark and { mark } or {})
+    box.content = framed(mark and { mark } or {})
 end
 
 return M

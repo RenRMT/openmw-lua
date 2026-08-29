@@ -3,6 +3,12 @@
 local registry = {}
 local ordered = {}
 
+-- Bumped whenever the set of layers or their draw order changes. The window
+-- compares it to decide whether the canvas has to be reassembled, which it
+-- does on every redraw -- so this is a number to compare rather than a list
+-- to walk and a string to build.
+local revision = 0
+
 local function sortLayers()
     table.sort(ordered, function(a, b)
         if a.order == b.order then
@@ -51,6 +57,7 @@ local function register(layer)
     registry[entry.key] = entry
     ordered[#ordered + 1] = entry
     sortLayers()
+    revision = revision + 1
     return entry
 end
 
@@ -65,6 +72,7 @@ local function unregister(key)
             break
         end
     end
+    revision = revision + 1
     return true
 end
 
@@ -97,6 +105,10 @@ return {
     setAlpha = setAlpha,
     toggle = toggle,
     get = function(key) return registry[key] end,
+    -- Changes when a layer is added, replaced or removed -- which covers a
+    -- re-registration that flips `interactive`, since that goes through
+    -- register too.
+    revision = function() return revision end,
     -- Live: window reads this every rebuild frame, so layers registered mid-session appear immediately.
     list = function() return ordered end,
 }

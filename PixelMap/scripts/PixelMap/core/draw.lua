@@ -106,9 +106,7 @@ end
 
 -- Quad for one exterior cell; unit for territory/ownership overlays.
 --
--- Two call forms, because the positional one was here first:
---   cell(gridX, gridY, color, alpha, tooltip)
---   cell { gridX=, gridY=, color=, alpha=, tooltip=, border=, borderColor= }
+-- opts: gridX, gridY, color, alpha, tooltip, border, borderColor
 --
 -- With a tooltip or a border it becomes a widget wrapping the quad, since
 -- events go to widgets rather than bare images and a border needs a
@@ -116,14 +114,13 @@ end
 -- which is the point: an ownership overlay wants the whole square to
 -- answer, not a fixed-size marker in the middle of it. Hover needs
 -- `interactive = true` on the layer, as markers do.
-local function cell(gridX, gridY, color, alpha, tooltipText)
-    local border, borderColor = nil, nil
-    if type(gridX) == 'table' then
-        local opts = gridX
-        gridX, gridY = opts.gridX, opts.gridY
-        color, alpha, tooltipText = opts.color, opts.alpha, opts.tooltip
-        border, borderColor = opts.border, opts.borderColor
-    end
+--
+-- For a whole grid rather than one cell, `cells` and `outline` below do the
+-- cull and the loop as well.
+local function cell(opts)
+    local gridX, gridY = opts.gridX, opts.gridY
+    local color, alpha, tooltipText = opts.color, opts.alpha, opts.tooltip
+    local border, borderColor = opts.border, opts.borderColor
 
     local x, y, side = view.cellRect(gridX, gridY)
 

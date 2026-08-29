@@ -59,7 +59,6 @@ local function flush(header)
 end
 
 return {
-    enabled = enabled,
     reset = reset,
     now = now,
     add = add,
