@@ -14,7 +14,6 @@ local frontier = require('scripts.BalanceOfPower.core.frontier')
 local holdings = require('scripts.BalanceOfPower.core.holdings')
 local hostility = require('scripts.BalanceOfPower.core.hostility')
 local log = require('scripts.BalanceOfPower.core.log')
-local mapdump = require('scripts.BalanceOfPower.core.mapdump')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -315,11 +314,11 @@ end
 -- Hostility
 --------------------------------------------------------------------------
 --
--- One rule at three settings: a faction fights nobody unless its pack
--- flagged it hostile, and a flagged faction fights whoever it regards at
--- or below HOSTILITY_REACTION_THRESHOLD. The framework starts no fights
--- of its own -- it answers the question so everything spawning actors
--- answers it the same way.
+-- One rule: an invader fights everyone, and nobody else fights at all.
+-- The framework starts no fights of its own -- it answers the question so
+-- that everything spawning actors answers it the same way. Reaction rows
+-- are readable through regardOf but no longer decide this; see
+-- core/hostility.lua for why.
 
 --- Whether `factionId` attacks `towardId` on sight. Asymmetric: a
 -- peaceful faction does not go looking for the fight it ends up in.
@@ -339,8 +338,7 @@ function M.isHostileToPlayer(factionId)
 end
 
 --- Every registered faction `factionId` attacks on sight, sorted. Empty
--- for a peaceful faction, and for a hostile one with nobody it hates
--- enough -- worth checking after flagging one.
+-- for anything that is not an invader.
 function M.enemiesOf(factionId)
     return hostility.enemiesOf(factionId)
 end
@@ -416,9 +414,9 @@ function M.dump()
             tags = tags .. string.format(' [%+.2f/day]', faction.growthPerDay)
         end
         if hostility.isBelligerent(id) then
-            -- The enemy list, not just the flag: a hostile faction with
-            -- nobody it hates enough reads as a working one right up
-            -- until you notice it never fights anybody.
+            -- The enemy list, not just the flag: an invader with nobody to
+            -- fight reads as a working one right up until you notice it
+            -- never fights anybody.
             local enemies = hostility.enemiesOf(id)
             tags = tags .. ' [hostile: '
                 .. (#enemies > 0 and table.concat(enemies, ', ') or 'player only') .. ']'
@@ -438,25 +436,6 @@ function M.dump()
             standing.regions, standing.strain, tags)
     end
     log.info('--------------------------------------------------------')
-end
-
---- Draw the political map to the log, one character per exterior cell.
---
---   dumpMap()                                  every landmass, ownership
---   dumpMap({ landmass = 'vvardenfell' })      just one
---   dumpMap({ mode = 'projection' })           who *will* hold each cell
---   dumpMap({ mode = 'contest' })              where the fronts are
---
--- 'projection' is the one to read while tuning influence ranges: where it
--- disagrees with ownership, the front is moving.
-function M.dumpMap(opts)
-    mapdump.dump(opts)
-end
-
---- The same map as a list of text lines, for a caller that wants to put
--- it somewhere other than the log.
-function M.renderMap(opts)
-    return mapdump.render(opts)
 end
 
 --- Whether verbose logging is on, for packs that want to match it.
