@@ -5,12 +5,18 @@
 -- under scripts/BalanceOfPower/core/ -- the merged VFS would let it, but
 -- internals change without notice, and during alpha so does this file
 -- (see `version`). Anything an extension needs and can't get here is a gap.
+--
+-- Everything here reads or nudges a world the framework built for itself.
+-- There is nothing to register: core/survey.lua finds the settlements and
+-- core/frontier.lua derives the wilderness, both at load, and main.lua
+-- hands the results straight to the registry. An extension asks what is
+-- true and awards power for what the player did; it does not supply
+-- territory.
 
 local config = require('scripts.BalanceOfPower.core.config')
 local drift = require('scripts.BalanceOfPower.core.drift')
 local driver = require('scripts.BalanceOfPower.core.driver')
 local events = require('scripts.BalanceOfPower.core.events')
-local frontier = require('scripts.BalanceOfPower.core.frontier')
 local holdings = require('scripts.BalanceOfPower.core.holdings')
 local hostility = require('scripts.BalanceOfPower.core.hostility')
 local log = require('scripts.BalanceOfPower.core.log')
@@ -29,29 +35,6 @@ local M = {
     -- World units per exterior cell, as the engine defines it.
     CELL_SIZE = config.CELL_SIZE,
 }
-
---------------------------------------------------------------------------
--- Registration
---------------------------------------------------------------------------
-
-function M.registerLandmass(def)
-    local landmass = registry.addLandmass(def)
-    state.fillDefaults(registry)
-    return landmass
-end
-
---- Derive a landmass's frontier grid from its registered settlements.
--- Call after registerLandmass, once the settlements are in.
---
--- Only ground within reach of some settlement becomes territory, so the
--- map's size follows from the content rather than from a bounding box.
--- See core/frontier.lua for the options.
--- @return number of frontier territories created
-function M.generateFrontier(def)
-    local created = frontier.generate(def)
-    state.fillDefaults(registry)
-    return created
-end
 
 --------------------------------------------------------------------------
 -- Power

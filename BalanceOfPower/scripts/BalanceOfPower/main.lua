@@ -18,6 +18,7 @@ local types = require('openmw.types')
 local api = require('scripts.BalanceOfPower.core.api')
 local driver = require('scripts.BalanceOfPower.core.driver')
 local events = require('scripts.BalanceOfPower.core.events')
+local frontier = require('scripts.BalanceOfPower.core.frontier')
 local gold = require('scripts.BalanceOfPower.core.gold')
 local holdings = require('scripts.BalanceOfPower.core.holdings')
 local config = require('scripts.BalanceOfPower.core.config')
@@ -71,7 +72,7 @@ local function tuningFor(landmassId)
 end
 
 for landmassId, landmass in pairs(surveyed) do
-    api.registerLandmass({
+    registry.addLandmass({
         id = landmassId,
         displayName = landmass.displayName,
         factions = tuningFor(landmassId),
@@ -80,9 +81,16 @@ for landmassId, landmass in pairs(surveyed) do
     landmassIds[#landmassIds + 1] = landmassId
 end
 
+-- Every landmass first, then every frontier: the generator works outward
+-- from registered settlements, so it can only run once they are all in.
 for _, landmassId in ipairs(landmassIds) do
-    api.generateFrontier({ landmass = landmassId })
+    frontier.generate({ landmass = landmassId })
 end
+
+-- Once, rather than after each of the calls above. Ownership defaults are
+-- seeded again by onInit and onLoad, which is what actually matters -- this
+-- is here so anything reading state between now and then sees a full one.
+state.fillDefaults(registry)
 
 if #landmassIds == 0 then
     log.warn('the survey found no settlements -- nothing to simulate. This means '
