@@ -1,6 +1,11 @@
 -- The registry: the world the framework simulates, normalized into one
 -- shape and immutable after load (design doc 3.8).
 --
+-- What the survey and the frontier generator produce is a named place with
+-- a list of cells. What the simulation needs is one independently ownable
+-- thing per cell. Turning the first into the second is most of what this
+-- file does; keeping the result is the rest.
+--
 -- Nothing external fills this. There are no content packs: core/survey.lua
 -- reads the settlements out of whatever the player actually loaded, and
 -- core/frontier.lua derives the wilderness grid around them. Both hand
@@ -27,6 +32,7 @@ local core = require('openmw.core')
 
 local cells = require('scripts.BalanceOfPower.core.cells')
 local config = require('scripts.BalanceOfPower.core.config')
+local factionRecords = require('scripts.BalanceOfPower.core.factions')
 local log = require('scripts.BalanceOfPower.core.log')
 
 local M = {}
@@ -92,92 +98,13 @@ local function tierDefaultsFor(tier, ctx)
 end
 
 --------------------------------------------------------------------------
--- The game's faction records
---------------------------------------------------------------------------
-
--- Read once per session. Keys are lowercased throughout: the ESM stores
--- record ids as authored ("Sixth House") while ids are registered
--- lowercase, and a reaction row is a plain table whose key case the engine
--- does not normalize.
-local recordRows = nil   -- lowered id -> { lowered id -> reaction }
-local recordNames = nil  -- lowered id -> record display name
-
-local EMPTY = {}
-
-local function readRecords()
-    if recordRows then
-        return
-    end
-    recordRows, recordNames = {}, {}
-
-    local ok, records = pcall(function()
-        return core.factions.records
-    end)
-    if not ok or not records then
-        log.warn('no faction records available -- there is nobody to simulate')
-        return
-    end
-
-    for _, record in ipairs(records) do
-        local id = string.lower(record.id)
-        recordNames[id] = record.name
-        local row = {}
-        for other, value in pairs(record.reactions or EMPTY) do
-            local key = string.lower(tostring(other))
-            -- Every record carries a reaction toward itself; it is not an
-            -- opinion about anybody.
-            if key ~= id then
-                row[key] = value
-            end
-        end
-        recordRows[id] = row
-    end
-end
-
---- Normalized reaction rows from the game's records, keyed lowercase.
--- core/power.lua reads these; nothing else should need them.
-function M.recordRows()
-    readRecords()
-    return recordRows
-end
-
---- Record ids that take part in the politics at all: a non-zero opinion
--- of somebody, or somebody's non-zero opinion of them.
---
--- The filter exists because content files keep dead ids alive. Tamriel
--- Data ships a dozen records named "<Deprecated>" so old saves still
--- load; every one has an empty row and no column, and without this they
--- would all appear in the standings.
-local function participatingRecordIds()
-    readRecords()
-    local moves, movedBy = {}, {}
-    for id, row in pairs(recordRows) do
-        for other, value in pairs(row) do
-            if value ~= 0 then
-                movedBy[id] = true
-                moves[other] = true
-            end
-        end
-    end
-
-    local ids = {}
-    for id in pairs(recordRows) do
-        if moves[id] or movedBy[id] then
-            ids[#ids + 1] = id
-        end
-    end
-    table.sort(ids)
-    return ids
-end
-
---------------------------------------------------------------------------
 -- Factions
 --------------------------------------------------------------------------
 
 local function newFaction(id, recordId, landmass)
     return {
         id = id,
-        displayName = recordNames[string.lower(recordId or id)] or id,
+        displayName = factionRecords.nameOf(recordId or id) or id,
         -- The faction's id in the game's data, where it differs from the
         -- id registered here. For the faction whose modelled identity
         -- doesn't line up with a single record.
@@ -214,7 +141,7 @@ local function ensureFactions()
     M.factionsFromRecords = true
 
     local added = 0
-    for _, recordId in ipairs(participatingRecordIds()) do
+    for _, recordId in ipairs(factionRecords.participatingIds()) do
         if not M.factions[recordId] then
             M.factions[recordId] = newFaction(recordId, recordId, nil)
             added = added + 1
@@ -228,7 +155,7 @@ end
 
 --- Register faction ids that hold ground but the reaction filter dropped.
 --
--- participatingRecordIds() keeps out records nobody has an opinion about,
+-- factions.participatingIds() keeps out records nobody has an opinion about,
 -- which is right for the dead ids content files carry around and wrong
 -- for a real faction that simply has no politics. Bloodmoon's Skaal have
 -- a village, a garrison and an empty reaction row; without this they own
@@ -240,10 +167,9 @@ end
 -- @param ids list of faction ids named by settlements
 -- @return number newly registered
 local function ensureFactionsHolding(ids)
-    readRecords()
     local added = 0
     for _, factionId in ipairs(ids) do
-        if not M.factions[factionId] and recordRows[factionId] then
+        if not M.factions[factionId] and factionRecords.exists(factionId) then
             M.factions[factionId] = newFaction(factionId, factionId, nil)
             added = added + 1
         end

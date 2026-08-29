@@ -26,6 +26,7 @@
 local config = require('scripts.BalanceOfPower.core.config')
 local events = require('scripts.BalanceOfPower.core.events')
 local log = require('scripts.BalanceOfPower.core.log')
+local factionRecords = require('scripts.BalanceOfPower.core.factions')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local state = require('scripts.BalanceOfPower.core.state')
 
@@ -87,7 +88,7 @@ local function buildReactions()
     reactions, movesCount, movedByCount = {}, {}, {}
     local ids = registry.sortedFactionIds()
     local byRecordId = indexByRecordId(ids)
-    local rows = registry.recordRows()
+    local rows = factionRecords.rows()
 
     for _, id in ipairs(ids) do
         reactions[id] = {}
