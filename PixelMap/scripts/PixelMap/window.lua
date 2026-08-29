@@ -426,6 +426,14 @@ local function drawLayer(layer)
         drawn = {}
     end
 
+    -- A layer is allowed to be expensive, but silently expensive is what a
+    -- player experiences as the map having become slow for no reason.
+    if type(drawn) == 'table' and #drawn > config.LAYER_WIDGET_WARN then
+        print(string.format('PixelMap: layer "%s" returned %d layouts; consider culling '
+            .. 'to view.cellBounds() or drawing through PixelMap.cells',
+            layer.key, #drawn))
+    end
+
     local applied = profile.now()
     element.layout.props.visible = true
     element.layout.props.alpha = layer.alpha

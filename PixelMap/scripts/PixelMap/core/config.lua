@@ -128,6 +128,16 @@ return {
     -- Grid dropped when cell narrower than this.
     GRID_MIN_SPACING = 24,
     GRID_MAX_LINES = 200,
+
+    -- Ceilings for the per-cell helpers a third-party layer draws through.
+    -- A layer zoomed out over a large landmass can span two hundred thousand
+    -- cells, so the budget is what keeps a wash from becoming that many
+    -- widgets. Runs of one colour merge first, so the cap is rarely reached.
+    CELLS_MAX_QUADS = 4000,
+    OUTLINE_WIDTH = 2,
+    -- Layers over this many layouts are reported once per redraw. Not a limit:
+    -- a layer is allowed to be expensive, but it should be visible that it is.
+    LAYER_WIDGET_WARN = 6000,
     COLOR_GRID = util.color.rgb(0.35, 0.35, 0.38),
 
     -- Marker default: large for joystick cursor targeting.

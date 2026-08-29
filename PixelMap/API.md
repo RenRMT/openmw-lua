@@ -61,7 +61,9 @@ a second copy, so being called both ways is harmless — and so is
 pixels. It runs inside a `pcall`: a layer that errors switches itself off
 rather than taking the window down with it.
 
-Three helpers save you the arithmetic:
+Five helpers save you the arithmetic. The first three draw one thing;
+the last two draw a whole grid at once and are what you want for anything
+per-cell.
 
 ```lua
 -- A solid rectangle, in canvas pixels.
@@ -89,6 +91,60 @@ Marker sizes are **screen pixels and do not scale with zoom**. That is
 deliberate: a marker is a thing to aim at, and one that shrinks when the
 player zooms out is exactly what a controller's cursor cannot hit.
 
+Markers off the canvas are dropped and `marker` returns `nil`, so you can
+offer every one you have and let the view decide. `t[#t + 1] = nil` is a
+no-op in Lua, so the usual accumulate loop needs no guard. Pass
+`cull = false` if you have already culled yourself.
+
+### Painting per cell
+
+`cells` is the one to reach for when your data is "a colour for some set
+of cells" — territory, ownership, danger, discovery. It does the cull, the
+loop and a quad budget, and **merges runs of the same colour along each
+row**, so a faction holding a contiguous province costs a handful of
+widgets rather than one per cell.
+
+```lua
+I.PixelMap.cells {
+    -- Return a colour and alpha, or nil to leave the cell unpainted.
+    at     = function(gridX, gridY) return myGrid[gridX][gridY], 0.5 end,
+    margin = 0,      -- extra cells either way
+    budget = 4000,   -- most quads to emit
+}
+```
+
+`outline` draws the perimeter of every region on the grid: an edge only
+where the neighbour belongs somewhere else, so a fifteen-cell city reads
+as one shape rather than fifteen squares. What counts as the same region
+is yours — `group` returns any value that compares equal for cells that
+belong together, which lets you group by two things at once.
+
+```lua
+I.PixelMap.outline {
+    -- nil means the cell is in no region.
+    group   = function(gridX, gridY) return owner[gridX][gridY] end,
+    color   = function(id) return colorFor(id) end,   -- or a plain Color
+    width   = 2,
+    alpha   = 1,
+    tooltip = function(id, gridX, gridY) return 'Held by ' .. id end,
+}
+```
+
+The interior is left unpainted on purpose: an outline says where
+something is without hiding the ground it stands on. Put `cells`
+underneath if you want both. With `tooltip` you get an invisible
+full-cell hover target on top of each cell's edges — the empty middle of
+an outlined region answers the cursor — and the layer needs
+`interactive = true`.
+
+Both return a flat list, so you can concatenate them with anything else
+you draw.
+
+**Colours merge by value, not identity.** A fresh `util.color.rgb` per
+cell merges fine. Merged quads are plain images and take no events: if
+your cells must answer the cursor, use `outline`'s `tooltip`, or
+`cell{ tooltip = }` one at a time.
+
 ### The view
 
 | | |
@@ -101,14 +157,30 @@ player zooms out is exactly what a controller's cursor cannot hit.
 | `view.worldToCanvas(x, y)` | World → canvas pixels |
 | `view.canvasToWorld(x, y)` | Canvas pixels → world |
 | `view.bounds()` | `minX, minY, maxX, maxY` in world units |
+| `view.cellBounds(margin)` | `fromX, fromY, toX, toY` — the visible cell range, or `nil` in an interior |
+| `view.cellRect(gridX, gridY)` | `x, y, side` — one cell as a canvas rectangle |
+| `view.worldToCell(x, y)` | `gridX, gridY` |
+| `view.cellToWorld(gridX, gridY)` | Vector2, the centre of that cell |
 
-**Cull against `bounds()`.** The map covers hundreds of cells when zoomed
-out, and every layout you return becomes a widget. For per-cell fills,
-turn the bounds into a cell range and loop over that, not over your whole
-dataset.
+**Cull against `cellBounds()`.** The map covers hundreds of thousands of
+cells at minimum zoom, and every layout you return becomes a widget. Loop
+over the cell range and look your data up, rather than walking your whole
+dataset — the first costs what is on screen, the second costs the same at
+every zoom no matter how little of it is visible. `cells` and `outline`
+do this for you.
 
-`view.cell` is the test for "is there an exterior to draw" — not
-`worldSpaceId`, which a cell is allowed not to have.
+`cellBounds()` returns `nil` where there is no exterior, so it doubles as
+the "is there anything to draw" guard — that is the same question
+`view.cell` answers, and neither is `worldSpaceId`, which a cell is
+allowed not to have.
+
+There is deliberately **no exported cell size**. The engine does not
+publish one, and a constant copied into your mod is a constant that can
+silently disagree with the grid the canvas is drawn on. Work in grid
+indices and let `view` convert. `cellRect`'s side carries a one-pixel
+overlap that closes the seam between neighbouring cells at fractional
+zooms; anything you draw over a cell fill must take its geometry from
+there or it will not line up.
 
 ## Clicks and tooltips
 
@@ -141,4 +213,16 @@ above is in the way, and that is what `interactive` opts out of.
 | `I.PixelMap.redraw()` | Redraw now. A no-op while the window is shut, so call it blindly when your data changes. |
 | `I.PixelMap.isOpen()` | |
 | `I.PixelMap.view` | The table above. |
-| `I.PixelMap.version` | Currently 1. |
+| `I.PixelMap.version` | Currently 1. Gate on it if you use anything below. |
+
+`cells`, `outline`, `marker` culling and the four `view` cell functions
+are version 1. Check `I.PixelMap.version >= 1` before calling them if you
+want to keep working against an older Pixel Map.
+
+## Budgets
+
+A layer that returns more than a few thousand layouts is reported to the
+console once per redraw. It is not a limit — a layer is allowed to be
+expensive — but silently expensive is what a player experiences as the
+map having become slow for no reason. `cells` takes a `budget` and stops
+there; the built-in terrain and grid layers cap themselves the same way.

@@ -206,6 +206,24 @@ return {
         -- do not need to answer.
         cell = draw.cell,
 
+        --- Paint a colour over every visible cell that has one, in one
+        -- call: the viewport cull, the loop and a quad budget, with runs
+        -- of the same colour merged along each row.
+        --
+        -- opts: `at(gridX, gridY)` returning colour and alpha (nil colour
+        -- leaves the cell alone), `margin` in cells, `budget`.
+        cells = draw.cells,
+
+        --- The perimeter of every region on the visible grid: an edge
+        -- wherever the neighbour belongs to somewhere else.
+        --
+        -- opts: `group(gridX, gridY)` returning an id that compares equal
+        -- for cells that belong together (nil for none), `color` (a
+        -- Color, or a function of the id), `width`, `alpha`, `margin`,
+        -- and `tooltip(id, gridX, gridY)` which adds a hover target over
+        -- the whole cell and needs `interactive = true`.
+        outline = draw.outline,
+
         --- A marker centred on a world position, sized in screen pixels
         -- so it stays the same size at every zoom.
         --

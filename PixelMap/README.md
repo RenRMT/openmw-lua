@@ -61,7 +61,10 @@ onto further lines when enough mods have added layers to outrun the window:
 
 Your own position is always marked and has no toggle.
 
-Other mods can add layers of their own; see [API.md](API.md).
+Other mods can add layers of their own; see [API.md](API.md). The
+per-cell helpers there — a colour per cell, and the outline round a
+region — are what a territory or ownership overlay is built from, and
+they do the culling and merging that keeps a map that size quick.
 
 ## Known limits
 
