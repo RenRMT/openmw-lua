@@ -123,7 +123,7 @@ local function newFaction(id, recordId, landmass)
         -- FORTUNE_SWING. 0 pins it to exactly what its ground supports.
         volatility = config.DEFAULT_VOLATILITY,
         landmass = landmass,
-        -- Filled in by registerLandmass from the settlements naming this
+        -- Filled in by addLandmass from the settlements naming this
         -- faction. A faction holds seats; it has no geography of its own.
         seats = {},
     }
@@ -133,7 +133,7 @@ end
 --
 -- Lazy rather than eager because records can only be read once content
 -- files have loaded, and it has to happen before any settlement binds to
--- a faction. The first registerLandmass triggers it.
+-- a faction. The first addLandmass triggers it.
 local function ensureFactions()
     if M.factionsFromRecords then
         return 0
@@ -153,7 +153,7 @@ local function ensureFactions()
     return added
 end
 
---- Register faction ids that hold ground but the reaction filter dropped.
+--- Register one faction id that holds ground but the reaction filter dropped.
 --
 -- factions.participatingIds() keeps out records nobody has an opinion about,
 -- which is right for the dead ids content files carry around and wrong
@@ -164,20 +164,13 @@ end
 --
 -- Holding ground is participation. Only ids the game actually has a
 -- record for are admitted, so this cannot conjure a faction from a typo.
--- @param ids list of faction ids named by settlements
--- @return number newly registered
-local function ensureFactionsHolding(ids)
-    local added = 0
-    for _, factionId in ipairs(ids) do
-        if not M.factions[factionId] and factionRecords.exists(factionId) then
-            M.factions[factionId] = newFaction(factionId, factionId, nil)
-            added = added + 1
-        end
+-- @return true if this call registered one
+local function admitHolder(factionId)
+    if not factionId or M.factions[factionId] or not factionRecords.exists(factionId) then
+        return false
     end
-    if added > 0 then
-        log.info('registered %d factions that hold ground but have no reactions', added)
-    end
-    return added
+    M.factions[factionId] = newFaction(factionId, factionId, nil)
+    return true
 end
 
 -- Scalars FACTION_TUNING may set. The first setter keeps it: tuning is
@@ -271,15 +264,16 @@ end
 -- Interior cell names are carried on the settlement, and resolve to its
 -- first exterior territory, but never become territories themselves: an
 -- interior has no position on the grid to project onto or from.
-local function prepareSettlement(def, context, landmassId, staged, stagedSettlements)
+local function prepareSettlement(def, context, landmassId, staged)
     local id = def.id
     local ctx = string.format('%s settlement "%s"', context, id)
 
-    if M.settlements[id] or stagedSettlements[id] then
+    -- Committed as soon as it is prepared, so the registry itself is the
+    -- record of what has been claimed already.
+    if M.settlements[id] then
         log.warn('settlement "%s" is already registered -- skipping the duplicate', id)
         return nil
     end
-    stagedSettlements[id] = true
 
     local tier = def.tier or config.DEFAULT_SETTLEMENT_TIER
     local tierDefaults = tierDefaultsFor(tier, ctx)
@@ -434,9 +428,12 @@ local function deriveTerritorial()
     end
 end
 
---- Register a landmass: its factions, its settlements and its frontier
--- grid. Called once per surveyed worldspace at world init.
-function M.registerLandmass(def)
+--- Add a surveyed worldspace: its factions, its settlements and, later,
+-- its frontier grid. Called once per worldspace at world init.
+--
+-- `add` rather than `register`: nothing external calls this. The survey
+-- hands over what it found and this is where it becomes the world.
+function M.addLandmass(def)
     local id = def.id
     local context = string.format('landmass "%s"', id)
 
@@ -448,45 +445,6 @@ function M.registerLandmass(def)
     -- Before anything binds to a faction id.
     ensureFactions()
 
-    -- Normalized into staging first and committed below, so a definition
-    -- that turns out to be partly unusable does not leave the simulation
-    -- running on half a landmass. Anything skipped along the way has said
-    -- so in the log by the time we get there.
-    local factionOps, settlements, territories = {}, {}, {}
-    local stagedTerritories, stagedSettlements = {}, {}
-
-    for _, factionDef in ipairs(def.factions or {}) do
-        factionOps[#factionOps + 1] = prepareFaction(factionDef, context, id)
-    end
-    for _, settlementDef in ipairs(def.territories or {}) do
-        local settlement, cellTerritories =
-            prepareSettlement(settlementDef, context, id, stagedTerritories, stagedSettlements)
-        if settlement then
-            settlements[#settlements + 1] = settlement
-            for _, territory in ipairs(cellTerritories) do
-                territories[#territories + 1] = territory
-            end
-        end
-    end
-    for _, frontierDef in ipairs(def.frontier or {}) do
-        local territory = prepareFrontier(frontierDef, context, id, stagedTerritories)
-        if territory then
-            territories[#territories + 1] = territory
-        end
-    end
-
-    -- Settlements are prepared, so the ids they claim are known: admit any
-    -- that the reaction filter dropped but the game has a record for.
-    -- After validation and before the seats below bind to them.
-    local holders = {}
-    for _, settlement in ipairs(settlements) do
-        if settlement.faction then
-            holders[#holders + 1] = settlement.faction
-        end
-    end
-    ensureFactionsHolding(holders)
-
-    -- Commit. Nothing below can fail.
     local landmass = {
         id = id,
         displayName = def.displayName or id,
@@ -495,7 +453,19 @@ function M.registerLandmass(def)
         settlementIds = {},
     }
 
-    for _, op in ipairs(factionOps) do
+    -- Committed as we go. There is no staging pass because there is no
+    -- abort to protect: anything unusable is skipped where it is found,
+    -- having said so in the log. The order below is the real constraint --
+    -- factions before the settlements that name them, and a settlement
+    -- before the frontier ring that points at it.
+
+    -- Territories are staged only within a settlement: a settlement's cells
+    -- are prepared together and committed together, so until that happens
+    -- M.territories cannot answer for them.
+    local staged = {}
+
+    for _, factionDef in ipairs(def.factions or {}) do
+        local op = prepareFaction(factionDef, context, id)
         local faction = M.factions[op.id]
         if not faction then
             faction = newFaction(op.id, op.tuning.recordId, op.landmass)
@@ -506,33 +476,7 @@ function M.registerLandmass(def)
         landmass.factionIds[#landmass.factionIds + 1] = op.id
     end
 
-    for _, settlement in ipairs(settlements) do
-        M.settlements[settlement.id] = settlement
-        M.settlementIds[#M.settlementIds + 1] = settlement.id
-        landmass.settlementIds[#landmass.settlementIds + 1] = settlement.id
-        -- Hand the settlement to the faction whose seat it is. Done here
-        -- rather than in prepareSettlement because a settlement may name
-        -- a faction this same call is about to register, and validation
-        -- must not depend on the order the two appear in.
-        local faction = settlement.faction and M.factions[settlement.faction]
-        if faction then
-            faction.seats[#faction.seats + 1] = settlement
-        elseif settlement.faction then
-            -- Not fatal: the settlement is still ground, it simply
-            -- projects for nobody. Dangling ids are reported in full by
-            -- validateReferences().
-            log.warn('settlement "%s" names faction "%s", which is not registered '
-                .. '-- it will project nothing', settlement.id, tostring(settlement.faction))
-        end
-        -- An interior has no grid position, so it is not a territory. It
-        -- still has to resolve to somewhere, or standing inside Balmora
-        -- would report no territory at all.
-        for _, interior in ipairs(settlement.interiors) do
-            M.cellIndex[interior] = settlement.territoryIds[1]
-        end
-    end
-
-    for _, territory in ipairs(territories) do
+    local function addTerritory(territory)
         M.territories[territory.id] = territory
         if territory.kind == 'settlement' then
             M.settlementCellIds[#M.settlementCellIds + 1] = territory.id
@@ -544,31 +488,80 @@ function M.registerLandmass(def)
         indexCells(territory)
     end
 
+    local settlementCount, settlementCells, admitted = 0, 0, 0
+
+    for _, settlementDef in ipairs(def.territories or {}) do
+        local settlement, territories =
+            prepareSettlement(settlementDef, context, id, staged)
+        if settlement then
+            -- The reaction filter keeps out records nobody has an opinion
+            -- about, which is wrong for a faction that holds ground and
+            -- simply has no politics. Admitted here, before its seat binds.
+            if admitHolder(settlement.faction) then
+                admitted = admitted + 1
+            end
+
+            M.settlements[settlement.id] = settlement
+            M.settlementIds[#M.settlementIds + 1] = settlement.id
+            landmass.settlementIds[#landmass.settlementIds + 1] = settlement.id
+
+            local faction = settlement.faction and M.factions[settlement.faction]
+            if faction then
+                faction.seats[#faction.seats + 1] = settlement
+            elseif settlement.faction then
+                -- Not fatal: the settlement is still ground, it simply
+                -- projects for nobody. Dangling ids are reported in full by
+                -- validateReferences().
+                log.warn('settlement "%s" names faction "%s", which is not registered '
+                    .. '-- it will project nothing', settlement.id, tostring(settlement.faction))
+            end
+
+            -- An interior has no grid position, so it is not a territory. It
+            -- still has to resolve to somewhere, or standing inside Balmora
+            -- would report no territory at all.
+            for _, interior in ipairs(settlement.interiors) do
+                M.cellIndex[interior] = settlement.territoryIds[1]
+            end
+
+            for _, territory in ipairs(territories) do
+                addTerritory(territory)
+            end
+            settlementCount = settlementCount + 1
+            settlementCells = settlementCells + #settlement.territoryIds
+        end
+    end
+
+    local frontierCells = 0
+    for _, frontierDef in ipairs(def.frontier or {}) do
+        local territory = prepareFrontier(frontierDef, context, id, staged)
+        if territory then
+            addTerritory(territory)
+            frontierCells = frontierCells + 1
+        end
+    end
+
     M.landmasses[id] = landmass
     M.generation = M.generation + 1
     deriveTerritorial()
 
-    local settlementCells = 0
-    for _, settlement in ipairs(settlements) do
-        settlementCells = settlementCells + #settlement.territoryIds
+    if admitted > 0 then
+        log.info('registered %d factions that hold ground but have no reactions', admitted)
     end
-
     log.info('registered landmass "%s": %d factions, %d settlements over %d cells, '
         .. '%d frontier cells',
-        id, #landmass.factionIds, #settlements, settlementCells,
-        #territories - settlementCells)
+        id, #landmass.factionIds, settlementCount, settlementCells, frontierCells)
     return landmass
 end
 
---- Add frontier cells to a landmass that is already registered.
+--- Add frontier cells to a landmass that is already in the registry.
 --
--- Split out from registerLandmass because the frontier grid is derived
+-- Split out from addLandmass because the frontier grid is derived
 -- from the settlements rather than authored alongside them (see
 -- core/frontier.lua), so it can only be built once the landmass's
 -- settlements are in the registry.
 --
--- Staged then committed, as registerLandmass is.
-function M.registerFrontier(landmassId, definitions)
+-- Committed as it goes, as addLandmass is.
+function M.addFrontier(landmassId, definitions)
     local context = string.format('landmass "%s" frontier', landmassId)
     local landmass = M.landmasses[landmassId]
     if not landmass then
@@ -646,7 +639,7 @@ end
 -- frontier cell sit next to a Vvardenfell one. So references can only be
 -- checked once everything has loaded, which is why this is a separate
 -- call the driver makes on its first tick rather than a check inside
--- registerLandmass.
+-- addLandmass.
 function M.validateReferences()
     local problems = 0
 

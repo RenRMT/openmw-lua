@@ -168,7 +168,7 @@ end
 -- hundred with a landmass mod -- so the filter does nearly all the work.
 --
 -- @return { [landmassId] = { id, displayName, territories = {...} } },
---         ready for registerLandmass, plus the settlement count.
+--         ready for the registry, plus the settlement count.
 function M.plan()
     -- Two passes: the set of standalone names has to be complete before
     -- any "X, Y" cell can be judged a district of X or a place of its own.

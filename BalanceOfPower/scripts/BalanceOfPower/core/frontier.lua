@@ -337,7 +337,7 @@ function M.generate(def)
         }
     end
 
-    registry.registerFrontier(landmassId, definitions)
+    registry.addFrontier(landmassId, definitions)
 
     ----------------------------------------------------------------------
     -- 5. Wire the settlements back to their ring.

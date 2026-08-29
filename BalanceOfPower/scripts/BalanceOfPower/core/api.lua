@@ -35,7 +35,7 @@ local M = {
 --------------------------------------------------------------------------
 
 function M.registerLandmass(def)
-    local landmass = registry.registerLandmass(def)
+    local landmass = registry.addLandmass(def)
     state.fillDefaults(registry)
     return landmass
 end
