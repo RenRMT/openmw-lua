@@ -12,7 +12,7 @@
 -- to do version reconciliation.
 --
 -- The save-compat hazard the doc flags is handled by two rules, both
--- enforced here rather than by every data pack:
+-- enforced here, once:
 --   * deserialize() starts from a fresh, fully-shaped state and copies
 --     known sections in, so a save written before a section existed
 --     loads without erroring on the missing key;
@@ -115,11 +115,28 @@ end
 
 --- Seed ownership for any registered territory that has none yet.
 -- Idempotent and cheap, so the driver just calls it every tick rather
--- than tracking whether a data pack registered late.
+-- than tracking whether the survey has finished.
 --
 -- Power is seeded separately, by holdings.seedPower -- see there for why.
 -- @return number of keys seeded
+-- What the last fillDefaults() ran against: the registry's generation, and the
+-- state table itself. The driver calls fillDefaults every tick so anything
+-- registered late is still seeded, and that is worth keeping -- but between
+-- ticks nothing it looks at has changed unless the registry grew or the state
+-- was replaced, and walking every territory once an in-game hour forever to
+-- seed nothing is not what the save-compat guarantee is asking for.
+--
+-- The state is compared by identity rather than by a counter because reset()
+-- and deserialize() both swap the whole table, which is every way it can
+-- become something this has not seen.
+local filledGeneration = nil
+local filledData = nil
+
 function M.fillDefaults(registry)
+    if filledData == data and filledGeneration == registry.generation then
+        return 0
+    end
+
     local seeded = 0
 
     for id, territory in pairs(registry.territories) do
@@ -135,6 +152,8 @@ function M.fillDefaults(registry)
 
     -- surroundedSince needs no seeding: absent means not surrounded, and
     -- the daily pass writes it the first time one is.
+
+    filledData, filledGeneration = data, registry.generation
 
     if seeded > 0 then
         log.debug('seeded %d state entries from static definitions', seeded)

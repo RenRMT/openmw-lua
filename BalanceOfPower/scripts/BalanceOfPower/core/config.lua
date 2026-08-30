@@ -1,7 +1,8 @@
--- Every tunable number in the framework lives here.
--- Data packs never edit this file -- per-faction and per-territory
--- overrides are authored in the pack's own definitions, and the values
--- here are only the fallbacks used when a definition leaves a field out.
+-- Every tunable number in the framework lives here, and this is the only
+-- place any of them is written. Nothing outside the framework supplies
+-- definitions -- the world is surveyed, not authored -- so where a comment
+-- below says a value is a fallback, what it falls back from is the survey's
+-- own output or FACTION_TUNING further down.
 
 local M = {}
 
@@ -17,14 +18,8 @@ M.DEBUG = true
 M.DEBUG_DAILY_SUMMARY = true
 
 -- validateReferences() stops listing individual dangling ids after this
--- many, so a data pack with a broken frontier grid doesn't produce a
--- thousand log lines.
+-- many, so a broken frontier grid doesn't produce a thousand log lines.
 M.MAX_REPORTED_PROBLEMS = 20
-
--- Half-width, in cells, of the windowed map drawn around a position.
--- Sized to fit an in-game message box: 6 gives a 13x13 grid, which is
--- readable on screen where the full forty-by-fifty map is not.
-M.MAP_WINDOW_RADIUS = 6
 
 --------------------------------------------------------------------------
 -- Power
@@ -105,9 +100,9 @@ M.POWER_EVENT_EPSILON = 0.01
 -- Power a faction gains every resolved day with no player involvement,
 -- when its definition doesn't say otherwise.
 --
--- Zero by default: factions growing on their own should be defined by
--- content packs. The Sixth House is an obvious contender and that
--- can be defined in a pack's faction table.
+-- Zero by default: a faction that grows on its own is a deliberate choice
+-- rather than the norm. The Sixth House is the obvious contender, and
+-- FACTION_TUNING below is where it would be given a rate.
 M.DEFAULT_GROWTH_PER_DAY = 0
 
 -- Whether ambient growth drags other factions along the reaction table
@@ -171,15 +166,15 @@ M.FORTUNE_OCTAVES = 3
 -- rather than as fortune.
 M.FORTUNE_PERIOD_DAYS = 120
 
--- Per-faction multiplier on fortune's amplitude, when a pack's faction
--- definition doesn't say otherwise. A pack raises it for a faction whose
--- fortunes should swing (a smuggling ring, a cult) and sets it to 0 for
--- one that should sit exactly where its ground puts it.
+-- Per-faction multiplier on fortune's amplitude, where FACTION_TUNING does
+-- not say otherwise. Raise it for a faction whose fortunes should swing (a
+-- smuggling ring, a cult), set it to 0 for one that should sit exactly
+-- where its ground puts it.
 M.DEFAULT_VOLATILITY = 1
 
 -- Whether drift drags other factions along the reaction table the way an
 -- awarded change does. Off, for the reason GROWTH_PROPAGATES is off, only
--- more so: growth touches the handful of factions a pack gave a rate,
+-- more so: growth touches the handful of factions given a rate,
 -- and drift touches every faction every day.
 M.DRIFT_PROPAGATES = false
 
@@ -194,7 +189,7 @@ M.DRIFT_PROPAGATES = false
 --   * it does not drift -- no capacity target, no fortune, so its ramp
 --     is its growth and nothing pulls back against it;
 --   * it takes no part in the reaction table in either direction;
---   * it fights everyone, without needing the `hostile` flag.
+--   * it fights everyone -- and it is the only thing that fights.
 --
 -- The payoff is that a setback dealt by content is PERMANENT. An award
 -- against an ordinary faction decays back toward its capacity; an
@@ -219,31 +214,17 @@ M.INVADER_MOVES_OTHERS = false
 -- Hostility
 --------------------------------------------------------------------------
 
--- Hostility is opt-in per faction (`hostile = true` in a pack's faction
--- definition) and defaults to nobody.
---
--- A flagged faction is hostile to the player, and fights any faction it
--- regards at or below this threshold. -3 is vanilla's "hated enemy"
--- value, so the rule reads as: a hostile faction attacks the people it
--- genuinely hates, and tolerates everyone else.
-M.HOSTILITY_REACTION_THRESHOLD = -3
-
--- Treat every faction as though it carried `hostile = true`.
---
--- Off by default, and not a small switch. Against Morrowind's full
--- reaction matrix -3 is commoner than it looks -- the vampire clans
--- alone bring a dozen, and Telvanni/Mages Guild and Thieves Guild/Camonna
--- Tong are mutual -- so this is closer to a general war than to a handful
--- of feuds.
-M.ALL_FACTIONS_HOSTILE = false
+-- Hostility has no tunables. An invader fights everyone and nobody else
+-- fights at all -- see core/hostility.lua for why that is one rule rather
+-- than a threshold and a set of switches.
 
 --------------------------------------------------------------------------
 -- Settlements
 --------------------------------------------------------------------------
 
--- The tier ladder, smallest to largest. This is the ranking: a pack
--- naming a tier is placing its holding on this scale and nothing else,
--- and every number below follows the order.
+-- The tier ladder, smallest to largest. This is the ranking: the survey
+-- places every settlement it finds on this scale and nothing else, and
+-- every number below follows the order.
 M.SETTLEMENT_TIER_ORDER = {
     'minor location',
     'outpost',
@@ -292,9 +273,9 @@ M.SETTLEMENT_TIERS = {
     ['small city']     = { weight = 0.75, influenceRange = 8000, cooldownDays = 40 },
     ['large city']     = { weight = 1.00, influenceRange = 10000, cooldownDays = 60 },
     metropolis         = { weight = 1.25, influenceRange = 12000, cooldownDays = 90 },
-    -- Nothing in Morrowind is one. It exists so a pack for a larger
-    -- landmass has somewhere to put its imperial capital without having
-    -- to redefine what a metropolis means everywhere else.
+    -- Nothing in Morrowind is one. It exists so a larger landmass has
+    -- somewhere to put its imperial capital without redefining what a
+    -- metropolis means everywhere else.
     megalopolis        = { weight = 1.50, influenceRange = 14000, cooldownDays = 120 },
 }
 
@@ -341,10 +322,9 @@ M.FRONTIER_COOLDOWN_DAYS = 3
 --
 -- Not a tuning value and not content knowledge: 8192 is the ESM3 grid
 -- the engine itself works in, so it is the same for Vvardenfell, Tamriel
--- Rebuilt, Project Cyrodiil and Skyrim Home of the Nords alike. A pack
--- must never redeclare it -- read it from the interface as
--- `BoP.CELL_SIZE`, so a pack's own geometry and the frontier grid can't
--- drift apart.
+-- Rebuilt, Project Cyrodiil and Skyrim Home of the Nords alike. Nothing
+-- should redeclare it -- read it from the interface as `BoP.CELL_SIZE`, so
+-- an extension's own geometry and the frontier grid can't drift apart.
 --
 -- `generateFrontier` still takes a `cellSize` override, which earns its
 -- keep only for content on a different grid entirely (ESM4 cells are a
@@ -361,8 +341,8 @@ M.FRONTIER_CELLS_PER_UNIT = 1
 -- Extra reach, in world units, beyond the generation radius derived from
 -- FRONTIER_GENERATION_POWER.
 --
--- Flat slack on top of that, for a pack that expects settlements to
--- appear at runtime in places nothing currently reaches.
+-- Flat slack on top of that, for settlements appearing at runtime in
+-- places nothing currently reaches.
 --
 -- Zero by default, because FRONTIER_GENERATION_POWER is the knob that
 -- actually wants turning. There is no longer such a thing as ground that
@@ -390,7 +370,7 @@ M.FRONTIER_REQUIRE_EXISTING_CELL = true
 -- seat, so the map has room for every faction to double its standing
 -- before anyone projects past the edge of the world.
 --
--- Raising it is how a pack buys more room, and the cost is paid in
+-- Raising it buys more room, and the cost is paid in
 -- unclaimed ground rather than in cells that can never be held. What
 -- fraction of the generated map starts unowned follows from this ratio
 -- alone -- not from the tier ranges, which cancel:
@@ -592,18 +572,45 @@ M.FACTION_ALIASES = {
     ['blades'] = 'imperial legion',
 }
 
--- Tier by footprint, largest first. Footprint is the same quantity the
--- framework projects power over, so a city is a city because it covers a
--- city's worth of ground. Population deliberately does not feed in: tier
--- already scales power, and folding the garrison in as well would count
--- the same guards twice.
-M.SURVEY_TIER_BY_CELLS = {
-    { cells = 12, tier = 'metropolis' },
-    { cells = 6, tier = 'large city' },
-    { cells = 4, tier = 'small city' },
-    { cells = 3, tier = 'town' },
-    { cells = 2, tier = 'village' },
-    { cells = 1, tier = 'outpost' },
+-- How many named interiors count as one extra cell of footprint.
+--
+-- Footprint alone cannot see a settlement's weight. Two thirds of the
+-- named places in a Morrowind-plus-Tamriel-Rebuilt load order occupy
+-- exactly one exterior cell, which puts Caldera, Dagon Fel and Tel Mora
+-- in the same bracket as a lone farmhouse. Doors are the signal that
+-- separates them: a settlement's named interiors scale with how much of
+-- a place it is, and reading their *names* costs nothing -- the survey
+-- already walks every cell, and it is `cell:getAll` that is expensive,
+-- not the name.
+M.SURVEY_INTERIORS_PER_CELL = 10
+
+-- ...but never more than the footprint it is added to. Interior density
+-- is an authoring habit, not a measurement: Tamriel Rebuilt builds far
+-- more doors per settlement than Bethesda did, so uncapped this ranks
+-- Karthwasten above Balmora. Capped at the footprint it can only ever
+-- double a place's size, which is enough to lift a real town off the
+-- floor and not enough to let one mod's authoring habits reorder the map.
+M.SURVEY_INTERIOR_CAP_RATIO = 1
+
+-- Tier by settlement size, largest first, where size is
+--
+--   cells + min(cells, floor(interiors / SURVEY_INTERIORS_PER_CELL))
+--
+-- Population deliberately does not feed in: tier already scales power,
+-- and folding the garrison in as well would count the same guards twice.
+--
+-- No entry for 'megalopolis'. Nothing in a Morrowind load order can earn
+-- it -- Almalexia, the one place meant to hold it, has no exterior cells
+-- at all and so is never surveyed. The tier stays on the ladder for a
+-- landmass that does have something that size; this table leaves it
+-- unreachable rather than handing it to whoever happens to be largest.
+M.SURVEY_TIER_BY_SIZE = {
+    { size = 15, tier = 'metropolis' },
+    { size = 8, tier = 'large city' },
+    { size = 5, tier = 'small city' },
+    { size = 4, tier = 'town' },
+    { size = 2, tier = 'village' },
+    { size = 1, tier = 'outpost' },
 }
 
 -- Per-faction tuning the game's records have no field for, keyed by
@@ -611,8 +618,8 @@ M.SURVEY_TIER_BY_CELLS = {
 -- entries belong here only where the game cannot say it.
 --
 -- Unknown ids are ignored, which is what lets the framework carry
--- Morrowind's one exception without becoming a Morrowind content pack:
--- in a load order without it, this table is inert.
+-- Morrowind's one exception without becoming Morrowind-specific: in a load
+-- order without it, this table is inert.
 M.FACTION_TUNING = {
     -- The invader holding Red Mountain. `type` takes it out of the
     -- politics entirely: it grows, it fights everyone, and nothing it
@@ -632,23 +639,63 @@ M.FACTION_TUNING = {
 -- Map overlay
 --------------------------------------------------------------------------
 
--- The PixelMap layer's key and its place in the stack. Above the
--- built-ins (10 terrain, 20 grid) so ownership reads over the landscape
--- rather than under it.
-M.MAP_LAYER_KEY = 'BalanceOfPower_territory'
+-- Two PixelMap layers, and their place in the stack. The built-ins are
+-- 10 terrain and 20 grid.
+--
+-- Control sits *below* the grid: it is a wash over most of the map, and
+-- painted over the graticule it erases the one reference that says how
+-- far anything is. Settlements sit above everything, because they are
+-- what the eye is looking for.
+M.MAP_LAYER_KEY = 'BalanceOfPower_settlements'
 M.MAP_LAYER_ORDER = 30
 
--- Settlement fills are opaque: this layer answers "who holds what" at a
--- glance, and a translucent fill over relief shading makes two similar
--- faction colours impossible to tell apart.
-M.MAP_FILL_ALPHA = 1.0
+M.MAP_CONTROL_LAYER_KEY = 'BalanceOfPower_control'
+M.MAP_CONTROL_LAYER_ORDER = 15
 
--- White edge on each settlement square, in canvas pixels. A per-cell
--- overlay is read as a shape before it is read as a colour, so the border
--- is what separates two adjacent owners of similar hue. Clamped against
--- the cell size when zoomed out, so a distant city stays a coloured dot
--- rather than a white one.
-M.MAP_CELL_BORDER = 2
+-- The control wash. Half-transparent by requirement and by necessity:
+-- this layer covers most of the world, and an opaque one would be a
+-- political map with no landscape left under it.
+M.MAP_CONTROL_ALPHA = 0.5
+
+-- Settlement outline width, in canvas pixels.
+--
+-- Outline and no fill, so the extent of a city reads as a shape while the
+-- terrain inside it stays visible -- a filled city is a coloured blob
+-- that says nothing about what is under it. Clamped against the cell size
+-- when zoomed out, so a distant settlement stays a coloured mark rather
+-- than a solid square.
+M.MAP_OUTLINE_WIDTH = 2
+
+-- Settlement outlines are opaque. They are thin, and a translucent thin
+-- line over relief shading is the one thing that makes two similar
+-- faction colours impossible to tell apart.
+M.MAP_OUTLINE_ALPHA = 1.0
+
+-- The tier icon dropped in a settlement's middle cell, in screen pixels,
+-- so it holds its size at every zoom. The ladder is the ranking: a bigger
+-- place gets a bigger mark, and the gaps are wide enough to be read
+-- without a legend.
+--
+-- No entry means no icon, which is why 'minor location' is absent -- a
+-- farm is its outline and nothing more.
+M.MAP_TIER_ICON_SIZE = {
+    outpost = 6,
+    village = 8,
+    town = 10,
+    ['small city'] = 12,
+    ['large city'] = 15,
+    metropolis = 18,
+    megalopolis = 22,
+}
+
+-- Placeholder art. Every tier draws a plain square until there are icon
+-- assets to point at; a path put here is used in place of the square for
+-- that tier alone, so they can land one at a time.
+M.MAP_TIER_ICON_TEXTURE = {}
+
+-- Dark keyline around the icon, in screen pixels, so a pale faction's
+-- mark is still a shape against pale terrain.
+M.MAP_ICON_OUTLINE = 2
 
 -- Ground with a name and no claimant -- a derelict tower, an
 -- unaffiliated Velothi holding. Grey rather than absent, so the map

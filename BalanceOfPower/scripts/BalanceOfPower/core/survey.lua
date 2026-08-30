@@ -1,5 +1,5 @@
 -- Reads the world's settlements out of the game, so the framework has
--- something to simulate without a content pack listing it.
+-- something to simulate without anyone listing it by hand.
 --
 -- A settlement is a named exterior cell, and its holder is whoever has
 -- armed men standing in it. Both come from content the player actually
@@ -11,8 +11,10 @@
 -- because the first list of places is how a framework stops working on
 -- the second game somebody points it at.
 --
--- Exteriors only. Interiors would move the answer on a handful of
--- settlements for six times the cells, and this runs at load.
+-- Ownership is read from exteriors only. Interiors are counted but never
+-- entered: tallying who stands in them would move the answer on a handful
+-- of settlements for six times the cells, and this runs at load. Their
+-- names are free -- the walk over world.cells happens either way.
 
 local types = require('openmw.types')
 local world = require('openmw.world')
@@ -111,10 +113,22 @@ local function holderOf(guards, members)
     return nil, 'none'
 end
 
-local function tierFor(cellCount)
-    local ladder = config.SURVEY_TIER_BY_CELLS
+--- How big a place is, in cells, counting its doors.
+--
+-- See SURVEY_INTERIORS_PER_CELL for why interiors are in here at all and
+-- why their contribution is capped.
+local function sizeOf(cellCount, interiorCount)
+    local perCell = config.SURVEY_INTERIORS_PER_CELL
+    local fromDoors = perCell > 0 and math.floor(interiorCount / perCell) or 0
+    local cap = math.floor(cellCount * config.SURVEY_INTERIOR_CAP_RATIO)
+    return cellCount + math.min(fromDoors, cap)
+end
+
+local function tierFor(cellCount, interiorCount)
+    local size = sizeOf(cellCount, interiorCount or 0)
+    local ladder = config.SURVEY_TIER_BY_SIZE
     for _, step in ipairs(ladder) do
-        if cellCount >= step.cells then
+        if size >= step.size then
             return step.tier
         end
     end
@@ -154,19 +168,36 @@ end
 -- hundred with a landmass mod -- so the filter does nearly all the work.
 --
 -- @return { [landmassId] = { id, displayName, territories = {...} } },
---         ready for registerLandmass, plus the settlement count.
+--         ready for the registry, plus the settlement count.
 function M.plan()
     -- Two passes: the set of standalone names has to be complete before
     -- any "X, Y" cell can be judged a district of X or a place of its own.
     local standalone = {}
     local named = {}
+    local interiorNames = {}
     for _, cell in ipairs(world.cells) do
-        if cell.isExterior and cell.name and cell.name ~= '' then
-            named[#named + 1] = cell
-            if not string.find(cell.name, ',', 1, true) then
-                standalone[cell.name] = true
+        if cell.name and cell.name ~= '' then
+            if cell.isExterior then
+                named[#named + 1] = cell
+                if not string.find(cell.name, ',', 1, true) then
+                    standalone[cell.name] = true
+                end
+            else
+                interiorNames[#interiorNames + 1] = cell.name
             end
         end
+    end
+
+    -- Doors, by the settlement whose name they carry. Counted by name
+    -- alone rather than per landmass: an interior belongs to no
+    -- worldspace, so two landmasses that both hold an "Ald Velothi" would
+    -- share the tally. Harmless -- it can only make a duplicated name
+    -- read one tier large, and the same collision already has the pair
+    -- sharing a display name on the map.
+    local interiors = {}
+    for _, interiorName in ipairs(interiorNames) do
+        local prefix = string.match(interiorName, '^([^,]+),') or interiorName
+        interiors[prefix] = (interiors[prefix] or 0) + 1
     end
 
     local found, order = {}, {}
@@ -216,15 +247,15 @@ function M.plan()
             territories[#territories + 1] = {
                 id = idFor(entry.name, entry.landmassId),
                 displayName = entry.name,
-                tier = tierFor(#entry.cells),
+                tier = tierFor(#entry.cells, interiors[entry.name] or 0),
                 region = (strongest(entry.regions)),
                 cells = entry.cells,
                 -- Whose seat it is, and so whose power it projects.
                 faction = faction,
                 -- ...and who holds the ground on day one. The two are the
                 -- same faction here and set separately on purpose: an
-                -- authored pack could only say whose seat a place was and
-                -- had to let projection work out who held it, but a
+                -- authored list could only say whose seat a place was and
+                -- would have to let projection work out who held it, but a
                 -- survey has watched armed men stand in the cell. That is
                 -- an observation, not an inference, so the map is correct
                 -- the moment it loads rather than after the first

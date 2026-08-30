@@ -1,8 +1,8 @@
 # Balance of Power — a factions framework
 
 Tracks faction power and territory control, and exposes an interface that
-content packs and extensions read. It ships **no factions and no
-territories**. On its own it does nothing.
+extensions read. It ships **no factions and no territories of its own** —
+it surveys whatever your load order actually contains and simulates that.
 
 The framework decides *what the numbers are*, and stops there. It places no
 actor, starts no fight and writes no quest — it answers the questions those
@@ -11,7 +11,7 @@ things need answered, so that every mod built on it answers them the same way.
 ## What it models
 
 **Power** is a faction's standing, one number. It moves for four reasons: an
-award — from a content pack, or from the player paying tribute — ambient growth,
+award — from an extension, or from the player paying tribute — ambient growth,
 propagation along the game's own reaction table, and drift.
 
 **Territory** is ownership of an exterior cell. A faction projects onto a cell
@@ -95,23 +95,24 @@ hostility, and emits events when the map moves — including
 
 The interface is global-context only, so player scripts have events to reach it
 instead: `BoP_AwardPower` to move a faction's standing, `BoP_RequestSnapshot`
-answered with everything a UI needs to draw the world, and `BoP_PayTribute`
-answered with `BoP_TributePaid`. The tribute window is built on exactly those
-and nothing else, so it doubles as a worked example of what an extension can
-do from player context.
+answered with everything a UI needs to draw the world, `BoP_RequestMap`
+answered with the settlements and `BoP_RequestTerritory` answered with who
+controls every cell, and `BoP_PayTribute` answered with `BoP_TributePaid`.
+The tribute window is built on exactly those and nothing else, so it doubles
+as a worked example of what an extension can do from player context.
 
 Never `require` a module under `core/` directly. The merged VFS allows it and
 the internals change without notice.
 
 ## Status
 
-In development, and unstable: the interface version is 0. The Morrowind content
-pack and the debug overlay are not yet published here.
+In development, and unstable: the interface version is 0. The debug overlay
+is not yet published here.
 
 ## Setup
 
 Point `openmw.cfg` at the mod directory and enable its script list. The
-framework must load before any content pack.
+framework must load before anything built on it.
 
 ```
 data="<path to>/openmw-lua/BalanceOfPower"

@@ -28,7 +28,7 @@ local M = {}
 local sealed = false
 
 --- The in-game calendar day, as an integer index.
-function M.currentDay()
+local function currentDay()
     return math.floor(core.getGameTime() / time.day)
 end
 
@@ -74,15 +74,15 @@ end
 -- a period timer either drifts against midnight or swallows the jump entirely.
 -- Comparing day indices instead anchors the tick to the game calendar,
 -- and a jump is caught as however many days it actually was.
-function M.poll()
-    -- Cheap and idempotent, so it runs every tick rather than requiring
-    -- the framework to know whether a pack registered late. Engine load
-    -- order between script bodies and onInit/onLoad handlers decides
-    -- whether registration lands before or after the framework's own
-    -- handlers, and this makes that difference not matter.
+local function poll()
+    -- Cheap and idempotent, so it runs every tick rather than requiring the
+    -- framework to know whether the survey has finished. Engine load order
+    -- between script bodies and onInit/onLoad handlers decides whether
+    -- registration lands before or after the framework's own handlers, and
+    -- this makes that difference not matter.
     state.fillDefaults(registry)
 
-    -- The only point at which every pack is known to have registered.
+    -- The only point at which the whole world is known to be registered.
     -- Starting power is measured against the whole world's holdings, so
     -- it can only be seeded here.
     if not sealed then
@@ -92,7 +92,7 @@ function M.poll()
     end
 
     local data = state.get()
-    local today = M.currentDay()
+    local today = currentDay()
 
     if data.lastResolvedDay == nil then
         -- First tick of a new game, or of a save made before this
@@ -143,7 +143,7 @@ function M.forceDays(count)
     state.fillDefaults(registry)
     holdings.seedPower()
     if data.lastResolvedDay == nil then
-        data.lastResolvedDay = M.currentDay()
+        data.lastResolvedDay = currentDay()
     end
 
     for _ = 1, count do
@@ -152,7 +152,7 @@ function M.forceDays(count)
     end
 
     log.info('forced %d day(s); simulation is now at day %d (calendar is at %d)',
-        count, data.lastResolvedDay, M.currentDay())
+        count, data.lastResolvedDay, currentDay())
     return data.lastResolvedDay
 end
 
@@ -166,7 +166,7 @@ end
 -- `core.getGameTime()` returning in-game seconds were all checked
 -- against the openmw_aux.time and openmw.core docs during development.
 function M.start()
-    time.runRepeatedly(M.poll, config.TICK_POLL_HOURS * time.hour, { type = time.GameTime })
+    time.runRepeatedly(poll, config.TICK_POLL_HOURS * time.hour, { type = time.GameTime })
 end
 
 return M

@@ -185,7 +185,7 @@ local function buildProjections()
 end
 
 --- The factions that can reach a territory, and by what fraction of
--- their power. Rebuilt automatically whenever a pack registers anything.
+-- their power. Rebuilt automatically whenever the registry changes.
 function M.projectionFactors(territory)
     if projections == nil or projectionGeneration ~= registry.generation then
         buildProjections()
@@ -193,11 +193,6 @@ function M.projectionFactors(territory)
     return projections[territory.id] or EMPTY
 end
 
---- Force a rebuild. Only needed if a pack mutates settlement geometry
--- after registration, which it shouldn't.
-function M.invalidateProjections()
-    projections = nil
-end
 
 --- How strong a faction is at a territory: its power scaled by how far
 -- its nearest foothold reaches there, and never less than the garrison
@@ -399,8 +394,8 @@ end
 --- Hand every unheld territory to whoever projects most onto it.
 --
 -- This is what removes the need to hand-author an owner for a
--- procedurally generated frontier grid: a pack declares where the seats
--- of power are, and the map falls out of that. An authored defaultOwner
+-- procedurally generated frontier grid: the survey finds where the seats
+-- of power are, and the map falls out of that. A defaultOwner
 -- still wins where one is given, which is how an invasion homeland stays
 -- with its invader regardless of who projects onto it.
 --

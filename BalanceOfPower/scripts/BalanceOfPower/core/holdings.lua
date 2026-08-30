@@ -97,11 +97,6 @@ function M.seatProfile(factionId)
     return seatProfiles[factionId] or EMPTY_PROFILE
 end
 
---- The mean seat score across land-holding factions.
-function M.meanSeatScore()
-    ensure()
-    return meanScore
-end
 
 --- Starting power for a faction, from its holdings.
 --
@@ -118,11 +113,11 @@ end
 --- Seed starting power for any faction that has none yet.
 --
 -- Called from the driver's first tick, because the mean a faction is
--- measured against isn't known until every pack has registered: seeding
--- during registration would score pack one against pack one alone.
+-- measured against isn't known until the whole world is registered: seeding
+-- during registration would score the first landmass against itself alone.
 --
 -- Only fills nils, so a loaded save keeps its numbers while a newly
--- installed pack's factions still get a derived value.
+-- appeared faction still gets a derived value.
 -- @return number of factions seeded
 function M.seedPower()
     local data = state.get()

@@ -7,17 +7,18 @@
 --
 -- Its territory comes from the game rather than from an authored list:
 -- core/survey.lua reads the world's named exterior cells at load and
--- registers whoever has armed men standing in them. A content pack is
--- for tuning the records cannot express, not for listing places.
+-- registers whoever has armed men standing in them. FACTION_TUNING in
+-- config is for the handful of numbers the records cannot express; nothing
+-- lists places.
 
 local core = require('openmw.core')
 local interfaces = require('openmw.interfaces')
 local types = require('openmw.types')
 
 local api = require('scripts.BalanceOfPower.core.api')
-local cells = require('scripts.BalanceOfPower.core.cells')
 local driver = require('scripts.BalanceOfPower.core.driver')
 local events = require('scripts.BalanceOfPower.core.events')
+local frontier = require('scripts.BalanceOfPower.core.frontier')
 local gold = require('scripts.BalanceOfPower.core.gold')
 local holdings = require('scripts.BalanceOfPower.core.holdings')
 local config = require('scripts.BalanceOfPower.core.config')
@@ -71,7 +72,7 @@ local function tuningFor(landmassId)
 end
 
 for landmassId, landmass in pairs(surveyed) do
-    api.registerLandmass({
+    registry.addLandmass({
         id = landmassId,
         displayName = landmass.displayName,
         factions = tuningFor(landmassId),
@@ -80,9 +81,16 @@ for landmassId, landmass in pairs(surveyed) do
     landmassIds[#landmassIds + 1] = landmassId
 end
 
+-- Every landmass first, then every frontier: the generator works outward
+-- from registered settlements, so it can only run once they are all in.
 for _, landmassId in ipairs(landmassIds) do
-    api.generateFrontier({ landmass = landmassId })
+    frontier.generate({ landmass = landmassId })
 end
+
+-- Once, rather than after each of the calls above. Ownership defaults are
+-- seeded again by onInit and onLoad, which is what actually matters -- this
+-- is here so anything reading state between now and then sees a full one.
+state.fillDefaults(registry)
 
 if #landmassIds == 0 then
     log.warn('the survey found no settlements -- nothing to simulate. This means '
@@ -181,37 +189,129 @@ local function onRequestSnapshot(data)
     })
 end
 
+--- The name a faction is shown under, or nil if it holds nothing.
+local function displayNameOf(factionId)
+    local faction = factionId and registry.factions[factionId] or nil
+    return faction and faction.displayName or nil
+end
+
 --- Where every settlement stands, for whatever is drawing a map.
 --
 -- Walks settlements rather than the whole territory table so the frontier
 -- -- which is most of the map and changes hands constantly -- stays out
--- of the payload. A caller wanting that too should ask for it separately
--- rather than have this grow into a full world dump.
+-- of the payload. A caller wanting that too asks for it with
+-- REQUEST_TERRITORY rather than having this grow into a full world dump.
 local function onRequestMap()
     local rows = {}
+    local places = {}
 
     for _, settlementId in ipairs(registry.settlementIds) do
         local settlement = registry.settlements[settlementId]
+
+        -- Which cell carries the settlement's mark: the member nearest the
+        -- middle of its footprint. The middle itself is not a cell -- a
+        -- settlement wrapped around a bay has its centre of mass in the
+        -- water -- so a member has to be chosen, and choosing it here keeps
+        -- every consumer agreeing on which one it is.
+        --
+        -- The centroid the registry derived is that middle, and each of a
+        -- settlement's territories already carries its own cell centre, so
+        -- this picks a winner rather than deriving the mean a second time.
+        local centre = settlement.centroid
+        local middle, nearest = nil, nil
+
         for _, territoryId in ipairs(settlement.territoryIds) do
             local territory = registry.territories[territoryId]
-            local gridX, gridY = cells.parse(territory.cells[1])
+            -- A settlement territory is one cell, so its grid array is the
+            -- one pair.
+            local gridX, gridY = territory.grid[1], territory.grid[2]
             if gridX then
                 local owner = state.getOwner(territoryId)
-                local faction = owner and registry.factions[owner] or nil
-                rows[#rows + 1] = {
+                local row = {
                     gridX = gridX,
                     gridY = gridY,
                     settlement = settlement.displayName,
+                    settlementId = settlementId,
                     owner = owner,
-                    ownerName = faction and faction.displayName or nil,
+                    ownerName = displayNameOf(owner),
                 }
+                rows[#rows + 1] = row
+
+                local dx = territory.centroid.x - centre.x
+                local dy = territory.centroid.y - centre.y
+                local distance = dx * dx + dy * dy
+                if not nearest or distance < nearest then
+                    middle, nearest = row, distance
+                end
             end
+        end
+
+        -- A settlement whose every cell is interior has no footprint to
+        -- put a mark in, and is left out rather than placed at nowhere.
+        if middle then
+            places[#places + 1] = {
+                id = settlementId,
+                name = settlement.displayName,
+                tier = settlement.tier,
+                gridX = middle.gridX,
+                gridY = middle.gridY,
+                owner = middle.owner,
+                ownerName = middle.ownerName,
+            }
         end
     end
 
     events.emit(events.MAP, {
         day = state.get().lastResolvedDay,
         cells = rows,
+        settlements = places,
+    })
+end
+
+--- Who controls every cell in the world, frontier included.
+--
+-- Grouped by faction and flattened to bare coordinates. See the event's
+-- comment for why: this is the whole generated map, and at one table per
+-- cell it would be thousands of them crossing the global/player boundary
+-- on every request.
+local function onRequestTerritory()
+    local byFaction = {}
+    local order = {}
+
+    local function add(territoryId)
+        local owner = state.getOwner(territoryId)
+        if not owner then
+            return
+        end
+        local bucket = byFaction[owner]
+        if not bucket then
+            bucket = {
+                faction = owner,
+                factionName = displayNameOf(owner),
+                cells = {},
+            }
+            byFaction[owner] = bucket
+            order[#order + 1] = bucket
+        end
+        -- Already flat, and already parsed: the registry works these out
+        -- when the territory is registered. This is a copy, not a walk
+        -- over cell names.
+        local flat = bucket.cells
+        for _, value in ipairs(registry.territories[territoryId].grid) do
+            flat[#flat + 1] = value
+        end
+    end
+
+    for _, territoryId in ipairs(registry.settlementCellIds) do
+        add(territoryId)
+    end
+    for _, territoryId in ipairs(registry.frontierIds) do
+        add(territoryId)
+    end
+
+    events.emit(events.TERRITORY, {
+        day = state.get().lastResolvedDay,
+        owners = order,
     })
 end
 
@@ -301,6 +401,7 @@ return {
         [events.AWARD_POWER] = onAwardPower,
         [events.REQUEST_SNAPSHOT] = onRequestSnapshot,
         [events.REQUEST_MAP] = onRequestMap,
+        [events.REQUEST_TERRITORY] = onRequestTerritory,
         [events.PAY_TRIBUTE] = onPayTribute,
     },
 }

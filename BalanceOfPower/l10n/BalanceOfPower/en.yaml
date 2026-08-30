@@ -122,6 +122,7 @@ surrounded: "{place} is surrounded."
 relieved: "{place} is no longer surrounded."
 
 # --- map overlay ---------------------------------------------------------
-mapLayerName: "Settlement"
+mapLayerName: "Settlements"
+mapControlLayerName: "Territory"
 mapTooltipHeld: "{settlement} — {faction}"
 mapTooltipUnowned: "{settlement} — unclaimed"

@@ -1,20 +1,25 @@
 -- The public interface, exposed to other mods as
 -- require('openmw.interfaces').BalanceOfPower from any global script.
 --
--- This is the whole contract. A content pack should never require a file
+-- This is the whole contract. An extension should never require a file
 -- under scripts/BalanceOfPower/core/ -- the merged VFS would let it, but
 -- internals change without notice, and during alpha so does this file
--- (see `version`). Anything a pack needs and can't get here is a gap.
+-- (see `version`). Anything an extension needs and can't get here is a gap.
+--
+-- Everything here reads or nudges a world the framework built for itself.
+-- There is nothing to register: core/survey.lua finds the settlements and
+-- core/frontier.lua derives the wilderness, both at load, and main.lua
+-- hands the results straight to the registry. An extension asks what is
+-- true and awards power for what the player did; it does not supply
+-- territory.
 
 local config = require('scripts.BalanceOfPower.core.config')
 local drift = require('scripts.BalanceOfPower.core.drift')
 local driver = require('scripts.BalanceOfPower.core.driver')
 local events = require('scripts.BalanceOfPower.core.events')
-local frontier = require('scripts.BalanceOfPower.core.frontier')
 local holdings = require('scripts.BalanceOfPower.core.holdings')
 local hostility = require('scripts.BalanceOfPower.core.hostility')
 local log = require('scripts.BalanceOfPower.core.log')
-local mapdump = require('scripts.BalanceOfPower.core.mapdump')
 local power = require('scripts.BalanceOfPower.core.power')
 local registry = require('scripts.BalanceOfPower.core.registry')
 local resolve = require('scripts.BalanceOfPower.core.resolve')
@@ -30,29 +35,6 @@ local M = {
     -- World units per exterior cell, as the engine defines it.
     CELL_SIZE = config.CELL_SIZE,
 }
-
---------------------------------------------------------------------------
--- Registration
---------------------------------------------------------------------------
-
-function M.registerLandmass(def)
-    local landmass = registry.registerLandmass(def)
-    state.fillDefaults(registry)
-    return landmass
-end
-
---- Derive a landmass's frontier grid from its registered settlements.
--- Call after registerLandmass, once the settlements are in.
---
--- Only ground within reach of some settlement becomes territory, so the
--- map's size follows from the content rather than from a bounding box.
--- See core/frontier.lua for the options.
--- @return number of frontier territories created
-function M.generateFrontier(def)
-    local created = frontier.generate(def)
-    state.fillDefaults(registry)
-    return created
-end
 
 --------------------------------------------------------------------------
 -- Power
@@ -84,7 +66,7 @@ end
 --- How `factionId` feels about `towardId`, in roughly [-3, 3]; 0 if it
 -- has no opinion. Read from the game's own faction records, normalized
 -- and filtered to registered factions -- which is why it is a function
--- and not a table a pack can index.
+-- and not a table a caller can index.
 --
 -- This is also how far `factionId` moves when `towardId`'s power does.
 function M.regardOf(factionId, towardId)
@@ -315,11 +297,11 @@ end
 -- Hostility
 --------------------------------------------------------------------------
 --
--- One rule at three settings: a faction fights nobody unless its pack
--- flagged it hostile, and a flagged faction fights whoever it regards at
--- or below HOSTILITY_REACTION_THRESHOLD. The framework starts no fights
--- of its own -- it answers the question so everything spawning actors
--- answers it the same way.
+-- One rule: an invader fights everyone, and nobody else fights at all.
+-- The framework starts no fights of its own -- it answers the question so
+-- that everything spawning actors answers it the same way. Reaction rows
+-- are readable through regardOf but no longer decide this; see
+-- core/hostility.lua for why.
 
 --- Whether `factionId` attacks `towardId` on sight. Asymmetric: a
 -- peaceful faction does not go looking for the fight it ends up in.
@@ -339,8 +321,7 @@ function M.isHostileToPlayer(factionId)
 end
 
 --- Every registered faction `factionId` attacks on sight, sorted. Empty
--- for a peaceful faction, and for a hostile one with nobody it hates
--- enough -- worth checking after flagging one.
+-- for anything that is not an invader.
 function M.enemiesOf(factionId)
     return hostility.enemiesOf(factionId)
 end
@@ -360,7 +341,8 @@ end
 -- Worth reading after adding a faction. A zero in either column is a
 -- faction standing outside the politics in one direction -- never an
 -- error, close to invisible in play. A faction with no ESM record behind
--- it sits at movedBy = 0 until its pack authors its reaction row.
+-- it sits at movedBy = 0, which is what a modelled faction with no record
+-- behind it looks like.
 -- @return list of { id, moves, movedBy }, sorted by id
 function M.reactionAudit()
     return power.reactionAudit()
@@ -416,9 +398,9 @@ function M.dump()
             tags = tags .. string.format(' [%+.2f/day]', faction.growthPerDay)
         end
         if hostility.isBelligerent(id) then
-            -- The enemy list, not just the flag: a hostile faction with
-            -- nobody it hates enough reads as a working one right up
-            -- until you notice it never fights anybody.
+            -- The enemy list, not just the flag: an invader with nobody to
+            -- fight reads as a working one right up until you notice it
+            -- never fights anybody.
             local enemies = hostility.enemiesOf(id)
             tags = tags .. ' [hostile: '
                 .. (#enemies > 0 and table.concat(enemies, ', ') or 'player only') .. ']'
@@ -440,26 +422,7 @@ function M.dump()
     log.info('--------------------------------------------------------')
 end
 
---- Draw the political map to the log, one character per exterior cell.
---
---   dumpMap()                                  every landmass, ownership
---   dumpMap({ landmass = 'vvardenfell' })      just one
---   dumpMap({ mode = 'projection' })           who *will* hold each cell
---   dumpMap({ mode = 'contest' })              where the fronts are
---
--- 'projection' is the one to read while tuning influence ranges: where it
--- disagrees with ownership, the front is moving.
-function M.dumpMap(opts)
-    mapdump.dump(opts)
-end
-
---- The same map as a list of text lines, for a caller that wants to put
--- it somewhere other than the log.
-function M.renderMap(opts)
-    return mapdump.render(opts)
-end
-
---- Whether verbose logging is on, for packs that want to match it.
+--- Whether verbose logging is on, for extensions that want to match it.
 function M.isDebug()
     return config.DEBUG
 end
